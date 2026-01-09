@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c8vntvjl577ft"]
 
-[ext_resource type="Script" uid="uid://c8nw4o33dqa56" path="res://addons/logot/logot_sidebar.gd" id="1_sidebar"]
+[ext_resource type="Script" uid="uid://usye8cdv5bv3" path="res://addons/logot/logot_sidebar.gd" id="1_sidebar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 8.0
@@ -23,5 +23,6 @@ script = ExtResource("1_sidebar")
 
 [node name="SidebarTree" type="Tree" parent="." unique_id=1725578257]
 layout_mode = 2
-columns = 2
+columns = 5
 hide_root = true
+auto_tooltip = false

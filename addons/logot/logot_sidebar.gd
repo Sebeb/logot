@@ -5,12 +5,30 @@ extends PanelContainer
 const LogLevel = preload("res://addons/logot/log_level.gd")
 
 ## Shared sidebar component used by both in-game logot and editor panel.
-## Uses Godot's Tree component with tri-state checkboxes:
-## - Checked: SHOWN (visible)
-## - Indeterminate [-]: HIDDEN (logged but not displayed)
-## - Unchecked: OFF (not logged at all)
+## Uses Godot's Tree component with clickable icons:
+## - Visible icon: SHOWN (visible)
+## - Hidden icon: HIDDEN (logged but not displayed)
+## - Off icon: OFF (not logged at all)
+## Left-click toggles between SHOWN and HIDDEN, right-click toggles OFF.
 
 const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
+
+# Tree column indices
+const COL_NAME := 0        # Name/label column (expands)
+const COL_OFF := 1         # Off count column (fixed)
+const COL_HIDDEN := 2      # Hidden count column (fixed)
+const COL_SHOWN := 3       # Shown count column (fixed)
+const COL_ICON := 4        # Icon button / checkbox column (fixed, far right)
+
+# Stats column colors
+const COLOR_SHOWN := Color.WHITE
+const COLOR_HIDDEN := Color(1, 1, 1, 0.65)  # Semi-transparent white
+const COLOR_OFF := Color(1, 1, 1, 0.3)     # Semi-transparent white
+
+# Visibility icons
+const ICON_VISIBLE := preload("res://addons/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://addons/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://addons/assets/channel_off.svg")
 
 const LEVEL_COLORS := {
 	LogLevel.ERROR: Color8(204, 101, 102),
@@ -73,12 +91,21 @@ func _ready() -> void:
 
 
 func _setup_tree() -> void:
-	_tree.set_column_expand(0, true)
-	_tree.set_column_expand(1, false)
+	_tree.columns = 5
+	_tree.set_column_expand(COL_NAME, true)
+	_tree.set_column_expand(COL_OFF, false)
+	_tree.set_column_expand(COL_HIDDEN, false)
+	_tree.set_column_expand(COL_SHOWN, false)
+	_tree.set_column_expand(COL_ICON, false)
 
-	_tree.set_column_clip_content(0, false)
-	_tree.set_column_clip_content(1, false)
+	_tree.set_column_clip_content(COL_NAME, false)
+	_tree.set_column_clip_content(COL_OFF, false)
+	_tree.set_column_clip_content(COL_HIDDEN, false)
+	_tree.set_column_clip_content(COL_SHOWN, false)
+	_tree.set_column_clip_content(COL_ICON, true)
+	_tree.set_column_custom_minimum_width(COL_ICON, 50)
 	_tree.item_edited.connect(_on_tree_item_edited)
+	_tree.button_clicked.connect(_on_tree_button_clicked)
 	_tree.gui_input.connect(_on_tree_gui_input)
 
 	# Create invisible root
@@ -86,19 +113,31 @@ func _setup_tree() -> void:
 
 	# Create section roots
 	_levels_root = _tree.create_item(root)
-	_levels_root.set_text(0, "Levels")
-	_levels_root.set_selectable(0, false)
-	_levels_root.set_selectable(1, false)
+	_levels_root.set_text(COL_NAME, "Levels")
+	_levels_root.set_icon(COL_SHOWN, ICON_VISIBLE)
+	_levels_root.set_icon(COL_HIDDEN, ICON_HIDDEN)
+	_levels_root.set_icon(COL_OFF, ICON_OFF)
+	_levels_root.set_tooltip_text(COL_SHOWN, "Shown Logs Count")
+	_levels_root.set_tooltip_text(COL_HIDDEN, "Hidden Logs Count")
+	_levels_root.set_tooltip_text(COL_OFF, "Off Logs Count")
+	_set_item_not_selectable(_levels_root)
 
 	_channels_root = _tree.create_item(root)
-	_channels_root.set_text(0, "Channels")
-	_channels_root.set_selectable(0, false)
-	_channels_root.set_selectable(1, false)
+	_channels_root.set_text(COL_NAME, "Channels")
+	_set_item_not_selectable(_channels_root)
 
 	_settings_root = _tree.create_item(root)
-	_settings_root.set_text(0, "Settings")
-	_settings_root.set_selectable(0, false)
-	_settings_root.set_selectable(1, false)
+	_settings_root.set_text(COL_NAME, "Settings")
+	_set_item_not_selectable(_settings_root)
+
+
+## Helper to set all columns as not selectable
+func _set_item_not_selectable(item: TreeItem) -> void:
+	item.set_selectable(COL_NAME, false)
+	item.set_selectable(COL_SHOWN, false)
+	item.set_selectable(COL_HIDDEN, false)
+	item.set_selectable(COL_OFF, false)
+	item.set_selectable(COL_ICON, false)
 
 
 func _init_default_levels() -> void:
@@ -142,7 +181,7 @@ func get_setting(name: String) -> bool:
 func set_setting(name: String, value: bool) -> void:
 	_settings[name] = value
 	if _settings_items.has(name):
-		_settings_items[name].set_checked(0, value)
+		_settings_items[name].set_checked(COL_NAME, value)
 
 
 ## Add a channel if not already known
@@ -307,13 +346,13 @@ func _rebuild_settings_items() -> void:
 	# Build settings items
 	for setting in _available_settings:
 		var item := _tree.create_item(_settings_root)
-		item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-		item.set_text(0, setting.get("label", setting.name))
-		item.set_editable(0, true)
-		item.set_checked(0, _settings.get(setting.name, setting.get("default", false)))
-		item.set_selectable(0, false)
-		item.set_selectable(1, false)
-		item.set_metadata(0, {"type": "setting", "name": setting.name})
+		# Use checkbox mode in the name column so checkbox appears next to text
+		item.set_cell_mode(COL_NAME, TreeItem.CELL_MODE_CHECK)
+		item.set_text(COL_NAME, setting.get("label", setting.name))
+		item.set_editable(COL_NAME, true)
+		item.set_checked(COL_NAME, _settings.get(setting.name, setting.get("default", false)))
+		_set_item_not_selectable(item)
+		item.set_metadata(COL_NAME, {"type": "setting", "name": setting.name})
 		_settings_items[setting.name] = item
 
 
@@ -322,23 +361,19 @@ func _add_level_tree_item(level: int) -> void:
 	var level_name: String = LogLevel.names.get(level, "UNKNOWN").capitalize()
 	var color: Color = LEVEL_COLORS.get(level, Color.WHITE)
 
-	item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-	item.set_text(0, level_name)
-	item.set_custom_color(0, color)
-	item.set_editable(0, true)
-	item.set_selectable(0, false)
-	item.set_selectable(1, false)
+	item.set_text(COL_NAME, level_name)
+	item.set_custom_color(COL_NAME, color)
+	_set_item_not_selectable(item)
 
 	# Store level in metadata for callback
-	item.set_metadata(0, {"type": "level", "value": level})
+	item.set_metadata(COL_NAME, {"type": "level", "value": level})
 
-	# Set initial checkbox state
-	_update_tree_item_checkbox(item, _level_visibility.get(level, VisibilityMode.SHOWN))
+	# Stats columns setup
+	_setup_stats_columns(item)
 
-	# Stats in column 1
-	item.set_text(1, "(0/0/0)")
-	item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
-	item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
+	# Add visibility icon button in icon column (far right)
+	var mode = _level_visibility.get(level, VisibilityMode.SHOWN)
+	item.add_button(COL_ICON, _get_icon_for_mode(mode), 0)
 
 	_level_items[level] = item
 
@@ -347,39 +382,47 @@ func _add_channel_tree_item(channel: String) -> void:
 	var item := _tree.create_item(_channels_root)
 	var display_name := channel if channel != "" else DEFAULT_CHANNEL_DISPLAY_NAME
 
-	item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
-	item.set_text(0, display_name)
-	item.set_editable(0, true)
-	item.set_selectable(0, false)
-	item.set_selectable(1, false)
+	item.set_text(COL_NAME, display_name)
+	_set_item_not_selectable(item)
 
 	# Store channel in metadata for callback
-	item.set_metadata(0, {"type": "channel", "value": channel})
+	item.set_metadata(COL_NAME, {"type": "channel", "value": channel})
 
-	# Set initial checkbox state
-	_update_tree_item_checkbox(item, _channel_visibility.get(channel, VisibilityMode.SHOWN))
+	# Stats columns setup
+	_setup_stats_columns(item)
 
-	# Stats in column 1
-	item.set_text(1, "(0/0/0)")
-	item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
-	item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
+	# Add visibility icon button in icon column (far right)
+	var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
+	item.add_button(COL_ICON, _get_icon_for_mode(mode), 0)
 
 	_channel_items[channel] = item
 
 
-## Update a tree item's checkbox to reflect visibility mode
-## SHOWN = checked, HIDDEN = indeterminate ([-]), OFF = unchecked
-func _update_tree_item_checkbox(item: TreeItem, mode: int) -> void:
+## Helper to set up stats columns with proper alignment and colors
+func _setup_stats_columns(item: TreeItem) -> void:
+	for col in [COL_SHOWN, COL_HIDDEN, COL_OFF]:
+		item.set_text_alignment(col, HORIZONTAL_ALIGNMENT_RIGHT)
+		item.set_text_overrun_behavior(col, TextServer.OVERRUN_NO_TRIMMING)
+	item.set_custom_color(COL_SHOWN, COLOR_SHOWN)
+	item.set_custom_color(COL_HIDDEN, COLOR_HIDDEN)
+	item.set_custom_color(COL_OFF, COLOR_OFF)
+
+
+## Get the icon for a visibility mode
+func _get_icon_for_mode(mode: int) -> Texture2D:
 	match mode:
 		VisibilityMode.SHOWN:
-			item.set_checked(0, true)
-			item.set_indeterminate(0, false)
+			return ICON_VISIBLE
 		VisibilityMode.HIDDEN:
-			item.set_checked(0, false)
-			item.set_indeterminate(0, true)
+			return ICON_HIDDEN
 		VisibilityMode.OFF:
-			item.set_checked(0, false)
-			item.set_indeterminate(0, false)
+			return ICON_OFF
+	return ICON_VISIBLE
+
+
+## Update a tree item's button icon to reflect visibility mode
+func _update_tree_item_icon(item: TreeItem, mode: int) -> void:
+	item.set_button(COL_ICON, 0, _get_icon_for_mode(mode))
 
 
 func _update_ui() -> void:
@@ -388,35 +431,34 @@ func _update_ui() -> void:
 		var item: TreeItem = _level_items[level]
 		var mode = _level_visibility.get(level, VisibilityMode.SHOWN)
 		var base_color: Color = LEVEL_COLORS.get(level, Color.WHITE)
-		_update_tree_item_checkbox(item, mode)
+		_update_tree_item_icon(item, mode)
 		_update_tree_item_style(item, mode, base_color)
 
 	# Update channel items
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-		_update_tree_item_checkbox(item, mode)
+		_update_tree_item_icon(item, mode)
 		_update_tree_item_style(item, mode, Color.WHITE)
 
-	# Update settings items
+	# Update settings items (checkbox in name column)
 	for setting_name in _settings_items:
-		_settings_items[setting_name].set_checked(0, _settings.get(setting_name, false))
+		_settings_items[setting_name].set_checked(COL_NAME, _settings.get(setting_name, false))
 
 	_update_stats_display()
 
 
 ## Update a tree item's visual style based on visibility mode
-## OFF = semi-transparent + italics, others = normal
+## OFF = semi-transparent, others = normal
 func _update_tree_item_style(item: TreeItem, mode: int, base_color: Color) -> void:
 	if mode == VisibilityMode.OFF:
-		# Semi-transparent and italic for OFF items
-		var transparent_color := Color(base_color.r, base_color.g, base_color.b, 0.5)
-		item.set_custom_color(0, transparent_color)
-		item.set_custom_color(1, Color(1, 1, 1, 0.5))
+		item.set_custom_color(COL_NAME, COLOR_OFF)
 	else:
 		# Normal styling
-		item.set_custom_color(0, base_color)
-		item.set_custom_color(1, Color.WHITE)
+		item.set_custom_color(COL_NAME, base_color)
+	item.set_custom_color(COL_SHOWN, COLOR_SHOWN)
+	item.set_custom_color(COL_HIDDEN, COLOR_HIDDEN)
+	item.set_custom_color(COL_OFF, COLOR_OFF)
 
 
 func _update_stats_display() -> void:
@@ -425,43 +467,35 @@ func _update_stats_display() -> void:
 		var item: TreeItem = _level_items[level]
 		var stats = _level_stats.get(level, {"shown": 0, "hidden": 0, "off": 0})
 		var mode = _level_visibility.get(level, VisibilityMode.SHOWN)
-		item.set_text(1, _format_stats(stats, mode))
-		item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
-		item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
+		_set_item_stats(item, stats, mode)
 
 	# Update channel stats
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
 		var stats = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-		item.set_text(1, _format_stats(stats, mode))
-		item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
-		item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
+		_set_item_stats(item, stats, mode)
 
 
-## Format stats string based on visibility mode
+## Set stats for an item across the three stats columns
 ## - Don't show 0 counts
-## - Hidden counts are semi-transparent (using BBCode-like markup not available, so we skip them visually)
 ## - Off counts only shown on OFF items
-func _format_stats(stats: Dictionary, mode: int) -> String:
-	var parts: Array[String] = []
-
+func _set_item_stats(item: TreeItem, stats: Dictionary, mode: int) -> void:
 	# Shown count - only display if > 0
-	if stats.shown > 0:
-		parts.append(str(stats.shown))
+	item.set_text(COL_SHOWN, str(stats.shown) if stats.shown > 0 else "")
+	item.set_tooltip_text(COL_SHOWN, "Shown Logs Count")
 
-	# Hidden count - only display if > 0, shown semi-transparently via color
-	if stats.hidden > 0:
-		parts.append("[%d]" % stats.hidden)
+
+	# Hidden count - only display if > 0
+	item.set_text(COL_HIDDEN, str(stats.hidden) if stats.hidden > 0 else "")
+	item.set_tooltip_text(COL_HIDDEN, "Hidden Logs Count")
 
 	# Off count - only display if > 0 AND mode is OFF
 	if stats.off > 0 and mode == VisibilityMode.OFF:
-		parts.append("(%d)" % stats.off)
-
-	if parts.is_empty():
-		return ""
-
-	return " ".join(parts)
+		item.set_text(COL_OFF, str(stats.off))
+	else:
+		item.set_text(COL_OFF, "")
+	item.set_tooltip_text(COL_OFF, "Off Logs Count")
 
 
 # =============================================================================
@@ -473,49 +507,94 @@ func _on_tree_item_edited() -> void:
 	if item == null:
 		return
 
-	var metadata = item.get_metadata(0)
+	var metadata = item.get_metadata(COL_NAME)
 	if not metadata is Dictionary:
 		return
 
 	var item_type: String = metadata.get("type", "")
 
-	match item_type:
-		"setting":
-			var setting_name: String = metadata.get("name", "")
-			_settings[setting_name] = item.is_checked(0)
-			setting_changed.emit(setting_name, _settings[setting_name])
-
-		"level":
-			var level: int = metadata.get("value", 0)
-			_cycle_level_visibility(level)
-
-		"channel":
-			var channel: String = metadata.get("value", "")
-			_cycle_channel_visibility(channel)
+	# Only settings use checkboxes (in name column)
+	if item_type == "setting":
+		var setting_name: String = metadata.get("name", "")
+		_settings[setting_name] = item.is_checked(COL_NAME)
+		setting_changed.emit(setting_name, _settings[setting_name])
 
 
+## Handle button clicks on tree items (left-click on visibility icons)
+func _on_tree_button_clicked(item: TreeItem, _column: int, _id: int, mouse_button_index: int) -> void:
+	var metadata = item.get_metadata(COL_NAME)
+	if not metadata is Dictionary:
+		return
+
+	var item_type: String = metadata.get("type", "")
+
+	match mouse_button_index:
+		MOUSE_BUTTON_LEFT:
+			# Left-click toggles between SHOWN and HIDDEN
+			match item_type:
+				"level":
+					var level: int = metadata.get("value", 0)
+					_cycle_level_visibility(level)
+				"channel":
+					var channel: String = metadata.get("value", "")
+					_cycle_channel_visibility(channel)
+
+		MOUSE_BUTTON_RIGHT:
+			# Right-click toggles OFF
+			match item_type:
+				"level":
+					var level: int = metadata.get("value", 0)
+					_toggle_level_off(level)
+				"channel":
+					var channel: String = metadata.get("value", "")
+					_toggle_channel_off(channel)
+
+
+## Handle clicks on the tree rows
+## Left-click anywhere toggles between SHOWN and HIDDEN
+## Right-click anywhere toggles OFF
 func _on_tree_gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-		var item := _tree.get_item_at_position(event.position)
-		if item == null:
-			return
+	if not event is InputEventMouseButton or not event.pressed:
+		return
 
-		var metadata = item.get_metadata(0)
-		if not metadata is Dictionary:
-			return
+	var item := _tree.get_item_at_position(event.position)
+	if item == null:
+		return
 
-		var item_type: String = metadata.get("type", "")
+	var metadata = item.get_metadata(COL_NAME)
+	if not metadata is Dictionary:
+		return
 
-		match item_type:
-			"level":
-				var level: int = metadata.get("value", 0)
-				_toggle_level_off(level)
-				_tree.accept_event()
+	var item_type: String = metadata.get("type", "")
 
-			"channel":
-				var channel: String = metadata.get("value", "")
-				_toggle_channel_off(channel)
-				_tree.accept_event()
+	# Only handle level and channel items (not settings)
+	if item_type != "level" and item_type != "channel":
+		return
+
+	match event.button_index:
+		MOUSE_BUTTON_LEFT:
+			# Left-click toggles between SHOWN and HIDDEN
+			match item_type:
+				"level":
+					var level: int = metadata.get("value", 0)
+					_cycle_level_visibility(level)
+					_tree.accept_event()
+				"channel":
+					var channel: String = metadata.get("value", "")
+					_cycle_channel_visibility(channel)
+					_tree.accept_event()
+
+		MOUSE_BUTTON_RIGHT:
+			# Right-click toggles OFF
+			match item_type:
+				"level":
+					var level: int = metadata.get("value", 0)
+					_toggle_level_off(level)
+					_tree.accept_event()
+				"channel":
+					var channel: String = metadata.get("value", "")
+					_toggle_channel_off(channel)
+					_tree.accept_event()
 
 
 ## Left-click cycles between SHOWN and HIDDEN only

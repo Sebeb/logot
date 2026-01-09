@@ -22,8 +22,14 @@ func _enter_tree() -> void:
 	_scroll_container.add_child(_editor_panel)
 	_editor_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_editor_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var shortcut = Shortcut.new()
+	var key_event = InputEventKey.new()
+	key_event.keycode = KEY_QUOTELEFT
+	# key_event.meta_pressed = true
+	# key_event.command_or_control_autoremap = true # Swaps Ctrl for Command on Mac.
+	shortcut.events = [key_event]
+	add_control_to_bottom_panel(_scroll_container, "Logot", shortcut)
 
-	add_control_to_bottom_panel(_scroll_container, "Logot")
 
 	# Connect to editor play signal for "clear on play" feature
 	var editor_interface := get_editor_interface()
