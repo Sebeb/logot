@@ -14,6 +14,7 @@ signal custom_setting_changed(setting_name: String, value: bool)
 signal cleared()
 signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
+signal display_rebuilt()  # Emitted after display is rebuilt, for external stats updates
 
 # =============================================================================
 # SHARED CLASSES
@@ -34,6 +35,8 @@ class LogEntry:
 	var id: int
 	var level: int              # LogLevel constant
 	var channel: String         # "" for no channel (displayed as "General")
+	var instance_name: String   # Name of the instance this log came from (empty for local)
+	var session_id: int         # Session ID of the instance this log came from (-1 for editor)
 	var objects: Array          # Original objects passed to log()
 	var formatted: String       # Pre-formatted BBCode string for first line
 	var formatted_full: String  # Full formatted text (all lines)
@@ -44,10 +47,12 @@ class LogEntry:
 	var timestamp: String       # Captured at creation time (HH:MM:SS format)
 	var collapse_count: int     # Number of duplicate entries collapsed into this one
 
-	func _init(p_id: int, p_level: int, p_channel: String, p_objects: Array, p_formatted: String, p_formatted_full: String = "", p_stack_trace: String = "", p_extra_lines: int = 0, p_timestamp: String = ""):
+	func _init(p_id: int, p_level: int, p_channel: String, p_objects: Array, p_formatted: String, p_formatted_full: String = "", p_stack_trace: String = "", p_extra_lines: int = 0, p_timestamp: String = "", p_instance_name: String = "", p_session_id: int = -1):
 		id = p_id
 		level = p_level
 		channel = p_channel
+		instance_name = p_instance_name
+		session_id = p_session_id
 		objects = p_objects
 		formatted = p_formatted
 		formatted_full = p_formatted_full if p_formatted_full != "" else p_formatted
@@ -139,6 +144,7 @@ var _level_visibility_getter: Callable  # Returns int (VisibilityMode) for a giv
 var _level_visibility_setter: Callable  # Sets visibility mode for a given level
 var _channel_visibility_getter: Callable  # Returns int (VisibilityMode) for a given channel
 var _channel_visibility_setter: Callable  # Sets visibility mode for a given channel
+var _instance_visibility_getter: Callable  # Returns int (VisibilityMode) for a given session_id
 var _custom_settings: Array = []
 
 # Autocomplete state
@@ -195,6 +201,10 @@ func set_channel_visibility_provider(getter: Callable, setter: Callable) -> void
 	_channel_visibility_setter = setter
 
 
+func set_instance_visibility_provider(getter: Callable) -> void:
+	_instance_visibility_getter = getter
+
+
 ## Get level visibility mode (uses provider if set, otherwise local dictionary)
 func _get_level_visibility(level: int) -> int:
 	if _level_visibility_getter.is_valid():
@@ -223,6 +233,13 @@ func _set_channel_visibility(channel: String, mode: int) -> void:
 		_channel_visibility_setter.call(channel, mode)
 	else:
 		_channel_visibility[channel] = mode
+
+
+## Get instance visibility mode (uses provider if set, otherwise SHOWN)
+func _get_instance_visibility(session_id: int) -> int:
+	if _instance_visibility_getter.is_valid():
+		return _instance_visibility_getter.call(session_id)
+	return VisibilityMode.SHOWN
 
 
 func set_autocomplete_popup(popup: ItemList) -> void:
@@ -270,13 +287,14 @@ func _get_entry_display_text(entry, truncate: bool, count: int = 1) -> String:
 	var full_text := _format_objects(entry.objects)
 	var display_text: String
 	var extra_lines: int
+	var instance_name: String = entry.instance_name if "instance_name" in entry else ""
 
 	if entry.expanded:
 		# Expanded: show full text with stack trace
 		display_text = full_text
 		extra_lines = 0
 		var formatted_trace := _format_stack_trace(entry.stack_trace) if entry.stack_trace != "" else ""
-		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, false, extra_lines, entry.stack_trace, count, formatted_trace)
+		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, false, extra_lines, entry.stack_trace, count, formatted_trace, instance_name)
 	else:
 		# Collapsed: show first line only if truncating
 		if truncate and entry.extra_line_count > 0:
@@ -284,7 +302,7 @@ func _get_entry_display_text(entry, truncate: bool, count: int = 1) -> String:
 		else:
 			display_text = full_text
 		extra_lines = entry.extra_line_count if truncate else 0
-		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, count)
+		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, count, "", instance_name)
 
 
 ## Return additional sidebar settings
@@ -445,12 +463,15 @@ func _should_display(entry) -> bool:
 	var level_mode = _get_level_visibility(entry.level)
 	var channel_mode = _get_channel_visibility(entry.channel)
 
+	# Check instance visibility using the entry's session_id
+	var instance_mode = _get_instance_visibility(entry.session_id)
+
 	if _search_filter != "":
 		var search_text := _format_objects(entry.objects).to_lower()
 		if not search_text.contains(_search_filter):
 			return false
 
-	return level_mode == VisibilityMode.SHOWN and channel_mode == VisibilityMode.SHOWN
+	return level_mode == VisibilityMode.SHOWN and channel_mode == VisibilityMode.SHOWN and instance_mode == VisibilityMode.SHOWN
 
 
 func _format_objects(objects: Array) -> String:
@@ -478,7 +499,8 @@ static func _get_level_color_hex(level: int) -> String:
 ##   - stack_trace: Stack trace string (for expanded view, or to determine expandability)
 ##   - collapse_count: Number of collapsed duplicates (badge shown after channel)
 ##   - formatted_stack_trace: Pre-formatted stack trace BBCode (for expanded view)
-static func format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "") -> String:
+##   - instance_name: Name of the instance this log came from (empty for local/editor)
+static func format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "", instance_name: String = "") -> String:
 	var color: String = LogotDisplay._get_level_color_hex(level)
 
 	# Build extra lines indicator for collapsed view
@@ -499,6 +521,11 @@ static func format_display_text(text: String, level: int, channel: String, times
 	# Build cell contents
 	var timestamp_content := "[color=dim_gray]%s[/color]" % timestamp
 
+	# Instance content (shown before channel if from a remote instance)
+	var instance_content := ""
+	if instance_name != "":
+		instance_content = "[color=dim_gray][%s][/color] " % instance_name
+
 	# Channel content with optional collapse count badge
 	var channel_content := ""
 	if channel != "":
@@ -513,14 +540,16 @@ static func format_display_text(text: String, level: int, channel: String, times
 	if has_expandable and entry_id >= 0:
 		var url_action := "%s:%d" % [toggle_action, entry_id]
 		timestamp_content = "[url=%s]%s[/url]" % [url_action, timestamp_content]
+		if instance_content != "":
+			instance_content = "[url=%s]%s[/url]" % [url_action, instance_content]
 		if channel_content != "":
 			channel_content = "[url=%s]%s[/url]" % [url_action, channel_content]
 		if count_content != "":
 			count_content = "[url=%s]%s[/url]" % [url_action, count_content]
 		message_content = "[url=%s]%s[/url]" % [url_action, message_content]
 
-	# Build single row: [timestamp] [channel + count] [message]
-	return "[table=3][cell]%s [/cell] [cell]%s%s%s[/cell][/table]" % [timestamp_content, channel_content, count_content, message_content]
+	# Build single row: [timestamp] [instance + channel + count] [message]
+	return "[table=3][cell]%s [/cell] [cell]%s%s%s%s[/cell][/table]" % [timestamp_content, instance_content, channel_content, count_content, message_content]
 
 
 ## Parse and format a single stack frame line
@@ -655,6 +684,7 @@ func _rebuild_display() -> void:
 			entry.visible = false
 
 	_update_sidebar_stats()
+	display_rebuilt.emit()
 
 
 # =============================================================================
@@ -664,6 +694,7 @@ func _rebuild_display() -> void:
 func _update_stats_for_entry(entry) -> void:
 	var level_mode = _get_level_visibility(entry.level)
 	var channel_mode = _get_channel_visibility(entry.channel)
+	var instance_mode = _get_instance_visibility(entry.session_id)
 
 	var level_stats: FilterStats = _level_stats.get(entry.level)
 	var channel_stats: FilterStats = _channel_stats.get(entry.channel)
@@ -680,7 +711,8 @@ func _update_stats_for_entry(entry) -> void:
 		var search_text := _format_objects(entry.objects).to_lower()
 		hidden_by_search = not search_text.contains(_search_filter)
 
-	var is_shown: bool = (level_mode == VisibilityMode.SHOWN) and (channel_mode == VisibilityMode.SHOWN) and not hidden_by_search
+	# Entry is shown only if all filters allow it
+	var is_shown: bool = (level_mode == VisibilityMode.SHOWN) and (channel_mode == VisibilityMode.SHOWN) and (instance_mode == VisibilityMode.SHOWN) and not hidden_by_search
 
 	# Note: We no longer track off_count here. Logs that exist but are hidden by OFF mode
 	# are just hidden, not "off". The off_count is now only for logs that were never created

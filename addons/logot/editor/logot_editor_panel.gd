@@ -24,6 +24,22 @@ var _logot_connected := false
 var _connect_in_progress := false
 var _connect_attempts := 0
 
+# Debugger plugin for running game instances
+var _debugger_plugin = null
+
+# Instance log entries: {instance_id: Array[LogEntry]}
+var _instance_log_entries: Dictionary = {}
+
+# Instance statistics: {instance_id: {level: FilterStats, channel: FilterStats}}
+var _instance_stats: Dictionary = {}
+
+# Instance naming
+var _instance_names: Dictionary = {}  # {session_id: String}
+var _next_game_instance_number := 1
+
+# Special session ID for the editor instance
+const EDITOR_SESSION_ID := -1
+
 const MAX_CONNECT_ATTEMPTS := 60
 const CONNECT_RETRY_DELAY_SEC := 0.25
 
@@ -56,6 +72,7 @@ func _ready() -> void:
 	_display.cleared.connect(_on_cleared)
 	_display.level_visibility_changed.connect(_on_level_visibility_changed)
 	_display.channel_visibility_changed.connect(_on_channel_visibility_changed)
+	_display.display_rebuilt.connect(_on_display_rebuilt)
 
 	# Initialize the display
 	_display._init_base()
@@ -82,21 +99,67 @@ func _ready() -> void:
 	# Connect to Logot autoload
 	call_deferred("_connect_to_logot")
 
+	# Connect debugger plugin if already set
+	if _debugger_plugin:
+		_connect_debugger_plugin()
+
+
+## Set the debugger plugin reference (called from logot_plugin.gd)
+func set_debugger_plugin(plugin) -> void:
+	_debugger_plugin = plugin
+	_connect_debugger_plugin()
+
+
+## Connect to debugger plugin signals
+func _connect_debugger_plugin() -> void:
+	if not _debugger_plugin:
+		return
+
+	if not _debugger_plugin.instance_started.is_connected(_on_instance_started):
+		_debugger_plugin.instance_started.connect(_on_instance_started)
+	if not _debugger_plugin.instance_stopped.is_connected(_on_instance_stopped):
+		_debugger_plugin.instance_stopped.connect(_on_instance_stopped)
+	if not _debugger_plugin.log_received.is_connected(_on_instance_log_received):
+		_debugger_plugin.log_received.connect(_on_instance_log_received)
+	if not _debugger_plugin.channel_discovered.is_connected(_on_instance_channel_discovered):
+		_debugger_plugin.channel_discovered.connect(_on_instance_channel_discovered)
+	if not _debugger_plugin.logs_cleared.is_connected(_on_instance_logs_cleared):
+		_debugger_plugin.logs_cleared.connect(_on_instance_logs_cleared)
+
 
 func _get_log_entries() -> Array:
+	var all_entries: Array = []
+
+	# Get editor instance entries (mark with editor session ID)
 	if _logot and _logot.has_method("get_log_entries"):
-		return _logot.get_log_entries()
-	return []
+		for entry in _logot.get_log_entries():
+			# Mark editor entries with the editor session ID if not already set
+			if entry.session_id == -1:
+				entry.session_id = EDITOR_SESSION_ID
+			all_entries.append(entry)
+
+	# Get game instance entries (already have session_id set from _create_entry_from_data)
+	for session_id in _instance_log_entries:
+		if session_id == EDITOR_SESSION_ID:
+			continue  # Skip editor entries (already added above)
+		for entry in _instance_log_entries[session_id]:
+			all_entries.append(entry)
+
+	# Sort by ID to maintain chronological order
+	all_entries.sort_custom(func(a, b): return a.id < b.id)
+
+	return all_entries
 
 
 func _get_entry_display_text(entry, truncate: bool) -> String:
 	var full_text = _display._format_objects(entry.objects) if _display else str(entry.objects)
+	var instance_name: String = entry.instance_name
 
 	if entry.expanded:
 		var formatted_trace := ""
 		if _display and entry.stack_trace != "":
 			formatted_trace = _display._format_stack_trace(entry.stack_trace)
-		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace)
+		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace, instance_name)
 
 	# Collapsed view
 	var display_text: String
@@ -105,7 +168,7 @@ func _get_entry_display_text(entry, truncate: bool) -> String:
 	else:
 		display_text = full_text
 	var extra_lines = entry.extra_line_count if truncate else 0
-	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
+	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, 0, "", instance_name)
 
 
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
@@ -224,13 +287,46 @@ func _sync_existing_entries() -> void:
 			_display.set_rejected_level_count_provider(_logot.get_rejected_level_count)
 		if _logot.has_method("get_rejected_channel_count"):
 			_display.set_rejected_channel_count_provider(_logot.get_rejected_channel_count)
+
+		# Set up instance visibility provider
+		_display.set_instance_visibility_provider(_get_instance_visibility)
+
+		# Add "Editor" as the first instance
+		_register_editor_instance()
+
 		_display._rebuild_display()
+
+
+## Register the Editor as a special instance
+func _register_editor_instance() -> void:
+	if not _display or not _display._sidebar:
+		return
+
+	_instance_names[EDITOR_SESSION_ID] = "Editor"
+	_instance_log_entries[EDITOR_SESSION_ID] = []
+	_instance_stats[EDITOR_SESSION_ID] = {"level": {}, "channel": {}}
+
+	_display._sidebar.add_instance(EDITOR_SESSION_ID, "Editor")
+
+	# Connect to instance visibility changes
+	if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
+		_display._sidebar.instance_visibility_changed.connect(_on_instance_visibility_changed)
+
+	# Log the editor instance registration
+	_log_instance_event("[color=cyan]Instance connected:[/color] Editor")
 
 
 func _get_commands() -> Dictionary:
 	if _logot and "console_commands" in _logot:
 		return _logot.console_commands
 	return {}
+
+
+## Get instance visibility mode for a session_id (used as provider for display)
+func _get_instance_visibility(session_id: int) -> int:
+	if _display and _display._sidebar:
+		return _display._sidebar.get_instance_visibility(session_id)
+	return LogotDisplay.VisibilityMode.SHOWN
 
 
 # =============================================================================
@@ -240,13 +336,30 @@ func _get_commands() -> Dictionary:
 func _on_log_entry_added(entry) -> void:
 	if not _display:
 		return
+
+	# Mark entry with editor session ID
+	entry.session_id = EDITOR_SESSION_ID
+
+	# Check if Editor instance is OFF (don't even track the entry)
+	if _display._sidebar:
+		var instance_mode = _display._sidebar.get_instance_visibility(EDITOR_SESSION_ID)
+		if instance_mode == LogotDisplay.VisibilityMode.OFF:
+			_update_instance_off_stats(EDITOR_SESSION_ID, {
+				"level": entry.level,
+				"channel": entry.channel
+			})
+			return
+
 	_display._ensure_channel_exists(entry.channel)
 	_display._update_stats_for_entry(entry)
+	_update_instance_stats(EDITOR_SESSION_ID, entry)
 
+	# _should_display now handles level, channel, AND instance visibility
 	if _display._should_display(entry):
 		_display._display_entry(entry)
 
 	_display._update_sidebar_stats()
+	_update_sidebar_instance_stats()
 
 
 func _on_logs_cleared() -> void:
@@ -285,6 +398,249 @@ func _on_channel_visibility_changed(channel: String, mode: int) -> void:
 		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
 		if "_display" in _logot and _logot._display:
 			_logot._display._rebuild_display()
+
+
+func _on_display_rebuilt() -> void:
+	# Update instance stats after any display rebuild (level/channel/instance visibility changes)
+	_update_sidebar_instance_stats()
+
+
+# =============================================================================
+# INSTANCE SIGNAL HANDLERS (from debugger plugin)
+# =============================================================================
+
+func _on_instance_started(session_id: int) -> void:
+	if not _display:
+		# Defer until display is ready
+		call_deferred("_on_instance_started", session_id)
+		return
+
+	# Register if not already registered
+	if session_id not in _instance_names:
+		_register_game_instance(session_id)
+
+	# Log the connection
+	var instance_name := _instance_names.get(session_id, "Unknown")
+	_log_instance_event("[color=cyan]Instance connected:[/color] %s" % instance_name)
+
+
+## Register a game instance with a generated name and initialize storage
+func _register_game_instance(session_id: int) -> void:
+	# Generate a meaningful instance name
+	var instance_name := _generate_instance_name(session_id)
+	_instance_names[session_id] = instance_name
+
+	# Initialize storage for this instance
+	_instance_log_entries[session_id] = []
+	_instance_stats[session_id] = {"level": {}, "channel": {}}
+
+	# Add instance to sidebar
+	if _display and _display._sidebar:
+		_display._sidebar.add_instance(session_id, instance_name)
+
+		# Connect to instance visibility changes
+		if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
+			_display._sidebar.instance_visibility_changed.connect(_on_instance_visibility_changed)
+
+
+func _on_instance_stopped(session_id: int) -> void:
+	if not _display:
+		return
+
+	# Get instance name before removing
+	var instance_name := _instance_names.get(session_id, "Unknown")
+
+	# Mark instance as inactive in sidebar (keeps stats visible)
+	if _display._sidebar:
+		_display._sidebar.remove_instance(session_id)
+
+	# Log the disconnection
+	_log_instance_event("[color=orange]Instance disconnected:[/color] %s" % instance_name)
+
+
+## Generate a meaningful name for an instance
+func _generate_instance_name(session_id: int) -> String:
+	# Check if debugger plugin has a name from the game
+	var game_name := ""
+	if _debugger_plugin:
+		game_name = _debugger_plugin.get_session_name(session_id)
+
+	# If the game provided a project name, use "Game N (ProjectName)"
+	# Otherwise just use "Game N"
+	if game_name != "" and game_name != "Instance %d" % session_id:
+		var name := "Game %d (%s)" % [_next_game_instance_number, game_name]
+		_next_game_instance_number += 1
+		return name
+	else:
+		var name := "Game %d" % _next_game_instance_number
+		_next_game_instance_number += 1
+		return name
+
+
+## Log an instance connection/disconnection event
+func _log_instance_event(message: String) -> void:
+	if not _display or not _display.rich_label:
+		return
+
+	# Get current timestamp
+	var time := Time.get_time_dict_from_system()
+	var timestamp := "%02d:%02d:%02d" % [time.hour, time.minute, time.second]
+
+	# Format and display the message
+	var formatted := "[color=dim_gray]%s[/color] %s\n" % [timestamp, message]
+	_display.rich_label.append_text(formatted)
+
+
+func _on_instance_log_received(session_id: int, entry_data: Dictionary) -> void:
+	if not _display:
+		return
+
+	# Auto-register instance if not already registered (handles race condition)
+	if session_id not in _instance_names:
+		_register_game_instance(session_id)
+
+	# Check if this instance is OFF (don't even track the entry)
+	if _display._sidebar:
+		var instance_mode = _display._sidebar.get_instance_visibility(session_id)
+		if instance_mode == LogotDisplay.VisibilityMode.OFF:
+			_update_instance_off_stats(session_id, entry_data)
+			return
+
+	# Reconstruct LogEntry from the data (includes session_id)
+	var entry = _create_entry_from_data(entry_data, session_id)
+
+	# Store in instance log entries
+	_instance_log_entries[session_id].append(entry)
+
+	_display._ensure_channel_exists(entry.channel)
+	_display._update_stats_for_entry(entry)
+	_update_instance_stats(session_id, entry)
+
+	# _should_display now handles level, channel, AND instance visibility
+	if _display._should_display(entry):
+		_display._display_entry(entry)
+
+	_display._update_sidebar_stats()
+	_update_sidebar_instance_stats()
+
+
+func _on_instance_channel_discovered(session_id: int, channel: String) -> void:
+	if _display:
+		_display._ensure_channel_exists(channel)
+
+
+func _on_instance_logs_cleared(session_id: int) -> void:
+	if session_id in _instance_log_entries:
+		_instance_log_entries[session_id].clear()
+	if session_id in _instance_stats:
+		_instance_stats[session_id] = {"level": {}, "channel": {}}
+	# Instance stats will be updated via display_rebuilt signal
+	if _display:
+		_display._rebuild_display()
+
+
+func _on_instance_visibility_changed(instance_id: int, mode: int) -> void:
+	# Rebuild display to reflect visibility change
+	# Instance stats will be updated via the display_rebuilt signal
+	if _display:
+		_display._rebuild_display()
+
+
+## Create a LogEntry from serialized data received from game instance
+func _create_entry_from_data(data: Dictionary, session_id: int) -> LogotDisplay.LogEntry:
+	# Get the instance name for this session
+	var instance_name := _instance_names.get(session_id, "")
+
+	var entry = LogotDisplay.LogEntry.new(
+		data.get("id", 0),
+		data.get("level", 0),
+		data.get("channel", ""),
+		data.get("objects", []),
+		data.get("formatted", ""),
+		data.get("formatted_full", ""),
+		data.get("stack_trace", ""),
+		data.get("extra_line_count", 0),
+		data.get("timestamp", ""),
+		instance_name,
+		session_id
+	)
+	return entry
+
+
+## Update stats for a specific instance
+func _update_instance_stats(session_id: int, entry) -> void:
+	if session_id not in _instance_stats:
+		_instance_stats[session_id] = {"level": {}, "channel": {}}
+
+	var stats = _instance_stats[session_id]
+
+	# Update level stats
+	if entry.level not in stats.level:
+		stats.level[entry.level] = {"shown": 0, "hidden": 0, "off": 0}
+	stats.level[entry.level].shown += 1
+
+	# Update channel stats
+	if entry.channel not in stats.channel:
+		stats.channel[entry.channel] = {"shown": 0, "hidden": 0, "off": 0}
+	stats.channel[entry.channel].shown += 1
+
+
+## Update stats when an instance log is rejected due to OFF visibility
+func _update_instance_off_stats(session_id: int, entry_data: Dictionary) -> void:
+	if session_id not in _instance_stats:
+		_instance_stats[session_id] = {"level": {}, "channel": {}}
+
+	var stats = _instance_stats[session_id]
+	var level: int = entry_data.get("level", 0)
+	var channel: String = entry_data.get("channel", "")
+
+	if level not in stats.level:
+		stats.level[level] = {"shown": 0, "hidden": 0, "off": 0}
+	stats.level[level].off += 1
+
+	if channel not in stats.channel:
+		stats.channel[channel] = {"shown": 0, "hidden": 0, "off": 0}
+	stats.channel[channel].off += 1
+
+	_update_sidebar_instance_stats()
+
+
+## Update sidebar with instance statistics
+## Recalculates shown/hidden counts based on current visibility state of all filters
+func _update_sidebar_instance_stats() -> void:
+	if not _display or not _display._sidebar:
+		return
+
+	# Recalculate stats for each instance based on current visibility
+	var instance_counts: Dictionary = {}  # {session_id: {shown: int, hidden: int, off: int}}
+
+	# Initialize counts for all known instances (include OFF counts from rejected logs)
+	for session_id in _instance_names:
+		var off_count := 0
+		# Sum up OFF counts from _instance_stats (logs rejected due to OFF visibility)
+		if session_id in _instance_stats:
+			var stats = _instance_stats[session_id]
+			for level in stats.level:
+				off_count += stats.level[level].off
+		instance_counts[session_id] = {"shown": 0, "hidden": 0, "off": off_count}
+
+	# Count entries based on current visibility of ALL filters (level, channel, instance)
+	for entry in _get_log_entries():
+		var session_id: int = entry.session_id
+		if session_id not in instance_counts:
+			instance_counts[session_id] = {"shown": 0, "hidden": 0, "off": 0}
+
+		# Use _should_display which checks all visibility filters (level, channel, instance)
+		if _display._should_display(entry):
+			instance_counts[session_id].shown += 1
+		else:
+			instance_counts[session_id].hidden += 1
+
+	# Update sidebar with recalculated stats
+	for session_id in instance_counts:
+		var counts = instance_counts[session_id]
+		_display._sidebar.set_instance_stats(session_id, counts.shown, counts.hidden, counts.off)
+
 
 # =============================================================================
 # INPUT HANDLING

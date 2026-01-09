@@ -111,6 +111,12 @@ const LogotCommand = LogotDisplay.LogotCommand
 
 
 # =============================================================================
+# DEBUGGER COMMUNICATION (game -> editor)
+# =============================================================================
+const DEBUGGER_MESSAGE_PREFIX := "logot"
+var _debugger_connected := false
+
+# =============================================================================
 # EXISTING CONSOLE PROPERTIES
 # =============================================================================
 var enabled := true
@@ -213,6 +219,9 @@ func log_msg(objects: Array, level: int = LogLevel.MESSAGE, channel: String = ""
 
 	_trim_old_entries()
 
+	# Send to editor via debugger (for running game instances)
+	_send_log_entry_to_editor(entry)
+
 	# Emit signal for editor panel
 	log_entry_added.emit(entry)
 
@@ -309,6 +318,8 @@ func _ensure_channel_exists(channel: String) -> void:
 			_channel_visibility[channel] = VisibilityMode.SHOWN
 		if _display:
 			_display._ensure_channel_exists(channel)
+		# Notify editor via debugger
+		_send_debugger_message("channel_discovered", [channel])
 		channel_discovered.emit(channel)
 
 
@@ -408,6 +419,8 @@ func _clear_logs() -> void:
 	_off_channel_counts.clear()
 	if _display:
 		_display._clear_logs()
+	# Notify editor via debugger
+	_send_debugger_message("logs_cleared", [])
 	logs_cleared.emit()
 
 
@@ -449,8 +462,75 @@ func _enter_tree() -> void:
 	# Only set up game UI when NOT in editor
 	if not Engine.is_editor_hint():
 		_setup_game_ui()
+		_setup_debugger_connection()
 
 	process_mode = PROCESS_MODE_ALWAYS
+
+
+# =============================================================================
+# DEBUGGER CONNECTION (for editor communication)
+# =============================================================================
+
+## Set up debugger connection to communicate with editor
+func _setup_debugger_connection() -> void:
+	if not EngineDebugger.is_active():
+		return
+
+	# Register message capture for receiving commands from editor
+	EngineDebugger.register_message_capture(DEBUGGER_MESSAGE_PREFIX, _on_debugger_message)
+	_debugger_connected = true
+
+	# Send hello message to let editor know we're here
+	var project_name = ProjectSettings.get_setting("application/config/name", "Game")
+	_send_debugger_message("hello", [project_name])
+
+
+## Handle messages from editor debugger plugin
+func _on_debugger_message(message: String, data: Array) -> bool:
+	match message:
+		"logot:set_level_visibility":
+			if data.size() >= 2:
+				set_level_visibility(int(data[0]), int(data[1]))
+				if _display:
+					_display._rebuild_display()
+			return true
+		"logot:set_channel_visibility":
+			if data.size() >= 2:
+				set_channel_visibility(str(data[0]), int(data[1]))
+				if _display:
+					_display._rebuild_display()
+			return true
+		"logot:clear":
+			_clear_logs()
+			return true
+	return false
+
+
+## Send a message to the editor debugger plugin
+func _send_debugger_message(message: String, data: Array = []) -> void:
+	if not _debugger_connected or not EngineDebugger.is_active():
+		return
+	EngineDebugger.send_message(DEBUGGER_MESSAGE_PREFIX + ":" + message, data)
+
+
+## Send log entry to editor (called when a new log is created)
+func _send_log_entry_to_editor(entry: LogEntry) -> void:
+	if not _debugger_connected:
+		return
+
+	# Serialize entry data for transmission
+	var entry_data := {
+		"id": entry.id,
+		"level": entry.level,
+		"channel": entry.channel,
+		"objects": entry.objects,
+		"formatted": entry.formatted,
+		"formatted_full": entry.formatted_full,
+		"stack_trace": entry.stack_trace,
+		"extra_line_count": entry.extra_line_count,
+		"timestamp": entry.timestamp,
+	}
+	_send_debugger_message("log_entry", [entry_data])
 
 
 ## Set up the in-game console overlay UI (only called when running as game)
