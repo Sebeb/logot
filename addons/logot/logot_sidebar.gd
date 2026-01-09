@@ -1,10 +1,10 @@
 @tool
-class_name ConsoleSidebar
+class_name LogotSidebar
 extends PanelContainer
 
 const LogLevel = preload("res://addons/logot/log_level.gd")
 
-## Shared sidebar component used by both in-game console and editor panel.
+## Shared sidebar component used by both in-game logot and editor panel.
 ## Uses Godot's Tree component with tri-state checkboxes:
 ## - Checked: SHOWN (visible)
 ## - Indeterminate [-]: HIDDEN (logged but not displayed)
@@ -79,6 +79,7 @@ func _setup_tree() -> void:
 	_tree.set_column_clip_content(0, false)
 	_tree.set_column_clip_content(1, false)
 	_tree.item_edited.connect(_on_tree_item_edited)
+	_tree.gui_input.connect(_on_tree_gui_input)
 
 	# Create invisible root
 	var root := _tree.create_item()
@@ -386,13 +387,16 @@ func _update_ui() -> void:
 	for level in _level_items:
 		var item: TreeItem = _level_items[level]
 		var mode = _level_visibility.get(level, VisibilityMode.SHOWN)
+		var base_color: Color = LEVEL_COLORS.get(level, Color.WHITE)
 		_update_tree_item_checkbox(item, mode)
+		_update_tree_item_style(item, mode, base_color)
 
 	# Update channel items
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
 		_update_tree_item_checkbox(item, mode)
+		_update_tree_item_style(item, mode, Color.WHITE)
 
 	# Update settings items
 	for setting_name in _settings_items:
@@ -401,12 +405,27 @@ func _update_ui() -> void:
 	_update_stats_display()
 
 
+## Update a tree item's visual style based on visibility mode
+## OFF = semi-transparent + italics, others = normal
+func _update_tree_item_style(item: TreeItem, mode: int, base_color: Color) -> void:
+	if mode == VisibilityMode.OFF:
+		# Semi-transparent and italic for OFF items
+		var transparent_color := Color(base_color.r, base_color.g, base_color.b, 0.5)
+		item.set_custom_color(0, transparent_color)
+		item.set_custom_color(1, Color(1, 1, 1, 0.5))
+	else:
+		# Normal styling
+		item.set_custom_color(0, base_color)
+		item.set_custom_color(1, Color.WHITE)
+
+
 func _update_stats_display() -> void:
 	# Update level stats
 	for level in _level_items:
 		var item: TreeItem = _level_items[level]
 		var stats = _level_stats.get(level, {"shown": 0, "hidden": 0, "off": 0})
-		item.set_text(1, "(%d/%d/%d)" % [stats.shown, stats.hidden, stats.off])
+		var mode = _level_visibility.get(level, VisibilityMode.SHOWN)
+		item.set_text(1, _format_stats(stats, mode))
 		item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
 		item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
 
@@ -414,9 +433,35 @@ func _update_stats_display() -> void:
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
 		var stats = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
-		item.set_text(1, "(%d/%d/%d)" % [stats.shown, stats.hidden, stats.off])
+		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
+		item.set_text(1, _format_stats(stats, mode))
 		item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
 		item.set_text_overrun_behavior(1, TextServer.OVERRUN_NO_TRIMMING)
+
+
+## Format stats string based on visibility mode
+## - Don't show 0 counts
+## - Hidden counts are semi-transparent (using BBCode-like markup not available, so we skip them visually)
+## - Off counts only shown on OFF items
+func _format_stats(stats: Dictionary, mode: int) -> String:
+	var parts: Array[String] = []
+
+	# Shown count - only display if > 0
+	if stats.shown > 0:
+		parts.append(str(stats.shown))
+
+	# Hidden count - only display if > 0, shown semi-transparently via color
+	if stats.hidden > 0:
+		parts.append("[%d]" % stats.hidden)
+
+	# Off count - only display if > 0 AND mode is OFF
+	if stats.off > 0 and mode == VisibilityMode.OFF:
+		parts.append("(%d)" % stats.off)
+
+	if parts.is_empty():
+		return ""
+
+	return " ".join(parts)
 
 
 # =============================================================================
@@ -449,17 +494,81 @@ func _on_tree_item_edited() -> void:
 			_cycle_channel_visibility(channel)
 
 
+func _on_tree_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		var item := _tree.get_item_at_position(event.position)
+		if item == null:
+			return
+
+		var metadata = item.get_metadata(0)
+		if not metadata is Dictionary:
+			return
+
+		var item_type: String = metadata.get("type", "")
+
+		match item_type:
+			"level":
+				var level: int = metadata.get("value", 0)
+				_toggle_level_off(level)
+				_tree.accept_event()
+
+			"channel":
+				var channel: String = metadata.get("value", "")
+				_toggle_channel_off(channel)
+				_tree.accept_event()
+
+
+## Left-click cycles between SHOWN and HIDDEN only
 func _cycle_level_visibility(level: int) -> void:
 	var current = _level_visibility.get(level, VisibilityMode.SHOWN)
-	var next_mode = (current + 1) % 3
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		# If currently OFF, clicking enables it as SHOWN
+		next_mode = VisibilityMode.SHOWN
+	else:
+		# Toggle between SHOWN and HIDDEN
+		next_mode = VisibilityMode.HIDDEN if current == VisibilityMode.SHOWN else VisibilityMode.SHOWN
 	_level_visibility[level] = next_mode
 	_update_ui()
 	level_visibility_changed.emit(level, next_mode)
 
 
+## Left-click cycles between SHOWN and HIDDEN only
 func _cycle_channel_visibility(channel: String) -> void:
 	var current = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-	var next_mode = (current + 1) % 3
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		# If currently OFF, clicking enables it as SHOWN
+		next_mode = VisibilityMode.SHOWN
+	else:
+		# Toggle between SHOWN and HIDDEN
+		next_mode = VisibilityMode.HIDDEN if current == VisibilityMode.SHOWN else VisibilityMode.SHOWN
+	_channel_visibility[channel] = next_mode
+	_update_ui()
+	channel_visibility_changed.emit(channel, next_mode)
+
+
+## Right-click toggles OFF state
+func _toggle_level_off(level: int) -> void:
+	var current = _level_visibility.get(level, VisibilityMode.SHOWN)
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		next_mode = VisibilityMode.SHOWN
+	else:
+		next_mode = VisibilityMode.OFF
+	_level_visibility[level] = next_mode
+	_update_ui()
+	level_visibility_changed.emit(level, next_mode)
+
+
+## Right-click toggles OFF state
+func _toggle_channel_off(channel: String) -> void:
+	var current = _channel_visibility.get(channel, VisibilityMode.SHOWN)
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		next_mode = VisibilityMode.SHOWN
+	else:
+		next_mode = VisibilityMode.OFF
 	_channel_visibility[channel] = next_mode
 	_update_ui()
 	channel_visibility_changed.emit(channel, next_mode)

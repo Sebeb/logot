@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://4c1jkrksvemx"]
 
-[ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/logot/console_theme.tres" id="1_theme"]
+[ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/logot/logot_theme.tres" id="1_theme"]
 [ext_resource type="FontFile" uid="uid://mduarxacu6jr" path="res://addons/logot/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
-[ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/logot/console_sidebar.tscn" id="2_sidebar"]
+[ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/logot/logot_sidebar.tscn" id="2_sidebar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
 bg_color = Color(0, 0, 0, 0.843137)
@@ -37,7 +37,7 @@ keycode = 75
 [sub_resource type="Shortcut" id="Shortcut_t2106"]
 events = [SubResource("InputEventKey_pxr0l")]
 
-[node name="ConsoleUI" type="Control" unique_id=2042940667]
+[node name="LogotUI" type="Control" unique_id=2042940667]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -56,13 +56,13 @@ split_offsets = PackedInt32Array(236)
 dragger_visibility = 1
 split_offset = 236
 
-[node name="ConsoleContainer" type="VBoxContainer" parent="MainContainer" unique_id=1103596063]
+[node name="LogotContainer" type="VBoxContainer" parent="MainContainer" unique_id=1103596063]
 custom_minimum_size = Vector2(800, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="RichTextLabel" type="RichTextLabel" parent="MainContainer/ConsoleContainer" unique_id=1214648749]
+[node name="RichTextLabel" type="RichTextLabel" parent="MainContainer/LogotContainer" unique_id=1214648749]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
@@ -77,10 +77,10 @@ meta_underlined = false
 selection_enabled = true
 deselect_on_focus_loss_enabled = false
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MainContainer/ConsoleContainer" unique_id=2039839535]
+[node name="VBoxContainer" type="VBoxContainer" parent="MainContainer/LogotContainer" unique_id=2039839535]
 layout_mode = 2
 
-[node name="AutocompletePopup" type="ItemList" parent="MainContainer/ConsoleContainer/VBoxContainer" unique_id=1663059663]
+[node name="AutocompletePopup" type="ItemList" parent="MainContainer/LogotContainer/VBoxContainer" unique_id=1663059663]
 unique_name_in_owner = true
 visible = false
 z_index = 100
@@ -98,23 +98,23 @@ auto_height = true
 item_count = 1
 item_0/text = "Item"
 
-[node name="InputRow" type="HBoxContainer" parent="MainContainer/ConsoleContainer/VBoxContainer" unique_id=537652556]
+[node name="InputRow" type="HBoxContainer" parent="MainContainer/LogotContainer/VBoxContainer" unique_id=537652556]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="LineEdit" type="LineEdit" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=824690393]
+[node name="LineEdit" type="LineEdit" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=824690393]
 layout_mode = 2
 size_flags_horizontal = 3
 theme = ExtResource("1_theme")
 placeholder_text = "Search logs or type /help for commands"
 
-[node name="ClearButton" type="Button" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=2127237980]
+[node name="ClearButton" type="Button" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=2127237980]
 layout_mode = 2
 theme = ExtResource("1_theme")
 shortcut = SubResource("Shortcut_t2106")
 text = "Clear"
 
-[node name="SidebarToggleButton" type="Button" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=632641003]
+[node name="SidebarToggleButton" type="Button" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=632641003]
 layout_mode = 2
 theme = ExtResource("1_theme")
 toggle_mode = true
