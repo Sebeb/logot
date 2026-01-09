@@ -127,6 +127,7 @@ signal console_unknown_command
 signal log_entry_added(entry: LogEntry)
 signal logs_cleared
 signal channel_discovered(channel: String)
+signal off_log_tracked(level: int, channel: String)
 
 var control: Control
 var rich_label: RichTextLabel
@@ -334,6 +335,9 @@ func _track_off_log(level: int, channel: String) -> void:
 		_display._ensure_level_exists(level)
 		_display._ensure_channel_exists(channel)
 		_display._update_sidebar_stats()
+
+	# Emit signal for editor panel to update its stats
+	off_log_tracked.emit(level, channel)
 
 
 ## Get rejected log count for a level
@@ -560,6 +564,7 @@ func _ready() -> void:
 	add_command("calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
 
 	add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
+	add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
 
 	# Game-only commands
 	if not Engine.is_editor_hint():
@@ -994,3 +999,47 @@ func _cmd_test_logging() -> void:
 	# Show stats after all tests
 	print_line("[color=cyan]========== LOGGING TEST COMPLETE ==========[/color]")
 	print_line("Run [color=light_green]/log_stats[/color] to see statistics")
+
+
+func _cmd_test_off_tracking() -> void:
+	print_line("[color=cyan]========== OFF TRACKING TEST ==========[/color]")
+	print_line("")
+
+	# Store current visibility
+	var original_debug_vis := get_level_visibility(LogLevel.DEBUG)
+	print_line("Original DEBUG visibility: %d" % original_debug_vis)
+
+	# Get initial off count
+	var initial_off_count := get_rejected_level_count(LogLevel.DEBUG)
+	print_line("Initial DEBUG off count: %d" % initial_off_count)
+
+	# Set DEBUG to OFF
+	set_level_visibility(LogLevel.DEBUG, VisibilityMode.OFF)
+	print_line("Set DEBUG to OFF (mode=%d)" % VisibilityMode.OFF)
+
+	# Verify visibility is OFF
+	print_line("can_log(DEBUG): %s" % str(can_log(LogLevel.DEBUG)))
+
+	# Try to log some DEBUG messages
+	print_line("Calling try_log 3 times with DEBUG level...")
+	try_log(func(): return ["Test OFF message 1"], LogLevel.DEBUG, "")
+	try_log(func(): return ["Test OFF message 2"], LogLevel.DEBUG, "")
+	try_log(func(): return ["Test OFF message 3"], LogLevel.DEBUG, "")
+
+	# Check the off count
+	var new_off_count := get_rejected_level_count(LogLevel.DEBUG)
+	print_line("New DEBUG off count: %d (expected %d)" % [new_off_count, initial_off_count + 3])
+
+	# Check sidebar state (works in both game and editor contexts)
+	if _display and _display._sidebar:
+		var sidebar_stats = _display._sidebar._level_stats.get(LogLevel.DEBUG, {})
+		print_line("Game sidebar DEBUG stats: %s" % str(sidebar_stats))
+	else:
+		print_line("Game display not available (expected in editor)")
+
+	# Restore original visibility
+	set_level_visibility(LogLevel.DEBUG, original_debug_vis)
+	print_line("Restored DEBUG visibility to: %d" % original_debug_vis)
+
+	print_line("")
+	print_line("[color=cyan]========== OFF TRACKING TEST COMPLETE ==========[/color]")

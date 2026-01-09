@@ -160,6 +160,8 @@ func _connect_to_console() -> void:
 				_console.logs_cleared.connect(_on_logs_cleared)
 			if _console.has_signal("channel_discovered") and not _console.channel_discovered.is_connected(_on_channel_discovered):
 				_console.channel_discovered.connect(_on_channel_discovered)
+			if _console.has_signal("off_log_tracked") and not _console.off_log_tracked.is_connected(_on_off_log_tracked):
+				_console.off_log_tracked.connect(_on_off_log_tracked)
 
 			_console_connected = true
 			_sync_existing_entries()
@@ -198,11 +200,30 @@ func _sync_existing_entries() -> void:
 				_display._ensure_channel_exists(channel)
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
+
+		# Before setting up providers, capture the loaded visibility settings from display
+		# These were loaded from config in _init_base() before providers were set
+		var loaded_level_visibility: Dictionary = _display._level_visibility.duplicate()
+		var loaded_channel_visibility: Dictionary = _display._channel_visibility.duplicate()
+
 		# Set up visibility providers to use console's visibility dictionaries
 		if _console.has_method("get_level_visibility") and _console.has_method("set_level_visibility"):
 			_display.set_level_visibility_provider(_console.get_level_visibility, _console.set_level_visibility)
 		if _console.has_method("get_channel_visibility") and _console.has_method("set_channel_visibility"):
 			_display.set_channel_visibility_provider(_console.get_channel_visibility, _console.set_channel_visibility)
+
+		# Apply the loaded visibility settings to the Console
+		# This ensures filter state from config is applied at startup
+		for level in loaded_level_visibility:
+			_console.set_level_visibility(level, loaded_level_visibility[level])
+		for channel in loaded_channel_visibility:
+			_console.set_channel_visibility(channel, loaded_channel_visibility[channel])
+
+		# Set up rejected count providers for OFF stats
+		if _console.has_method("get_rejected_level_count"):
+			_display.set_rejected_level_count_provider(_console.get_rejected_level_count)
+		if _console.has_method("get_rejected_channel_count"):
+			_display.set_rejected_channel_count_provider(_console.get_rejected_channel_count)
 		_display._rebuild_display()
 
 
@@ -241,6 +262,13 @@ func _on_logs_cleared() -> void:
 func _on_channel_discovered(channel: String) -> void:
 	if _display:
 		_display._ensure_channel_exists(channel)
+
+
+func _on_off_log_tracked(level: int, channel: String) -> void:
+	if _display:
+		_display._ensure_level_exists(level)
+		_display._ensure_channel_exists(channel)
+		_display._update_sidebar_stats()
 
 
 func _on_level_visibility_changed(level: int, mode: int) -> void:
