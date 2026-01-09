@@ -3,8 +3,8 @@
 [ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/logot/logot_theme.tres" id="1_theme"]
 [ext_resource type="FontFile" uid="uid://de7gvc2jems6t" path="res://addons/logot/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
 [ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/logot/logot_sidebar.tscn" id="2_sidebar"]
-[ext_resource type="Texture2D" uid="uid://b54mksr3y2lsi" path="res://addons/assets/Clear.svg" id="3_exnc7"]
-[ext_resource type="Texture2D" uid="uid://doh41uo4aivs5" path="res://addons/assets/AnimationFilter.svg" id="4_qnuwq"]
+[ext_resource type="Texture2D" uid="uid://b54mksr3y2lsi" path="res://addons/logot/assets/Clear.svg" id="3_exnc7"]
+[ext_resource type="Texture2D" uid="uid://doh41uo4aivs5" path="res://addons/logot/assets/AnimationFilter.svg" id="4_qnuwq"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
 bg_color = Color(0, 0, 0, 0.843137)

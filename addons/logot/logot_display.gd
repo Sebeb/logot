@@ -14,6 +14,7 @@ signal custom_setting_changed(setting_name: String, value: bool)
 signal cleared()
 signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
+signal channel_deleted(channel: String)
 signal display_rebuilt()  # Emitted after display is rebuilt, for external stats updates
 
 # =============================================================================
@@ -405,6 +406,7 @@ func _setup_sidebar() -> void:
 	_sidebar.configure_settings(settings)
 	_sidebar.level_visibility_changed.connect(_on_level_visibility_changed)
 	_sidebar.channel_visibility_changed.connect(_on_channel_visibility_changed)
+	_sidebar.channel_deleted.connect(_on_channel_deleted)
 	_sidebar.setting_changed.connect(_on_setting_changed)
 
 	_sync_sidebar_state()
@@ -794,6 +796,19 @@ func _on_channel_visibility_changed(channel: String, mode: int) -> void:
 	_rebuild_display()
 
 	channel_visibility_changed.emit(channel, mode)
+
+
+func _on_channel_deleted(channel: String) -> void:
+	# Remove from local tracking if using local visibility
+	if not _channel_visibility_getter.is_valid():
+		_channel_visibility.erase(channel)
+	_known_channels.erase(channel)
+	_channel_stats.erase(channel)
+	_save_filter_settings()
+	_rebuild_display()
+
+	channel_deleted.emit(channel)
+
 
 func _on_setting_changed(setting_name: String, value: bool) -> void:
 	match setting_name:

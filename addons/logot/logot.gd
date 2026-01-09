@@ -313,6 +313,18 @@ func get_known_channels() -> Array[String]:
 
 func _ensure_channel_exists(channel: String) -> void:
 	if channel not in _known_channels:
+		# For hierarchical channels (e.g., "navigation/nav mesh"), ensure parent channels exist first
+		if "/" in channel:
+			var parts := channel.split("/")
+			var parent_path := ""
+			for i in range(parts.size() - 1):
+				if parent_path == "":
+					parent_path = parts[i]
+				else:
+					parent_path += "/" + parts[i]
+				# Recursively ensure parent exists
+				_ensure_channel_exists(parent_path)
+
 		_known_channels.append(channel)
 		if channel not in _channel_visibility:
 			_channel_visibility[channel] = VisibilityMode.SHOWN
@@ -574,6 +586,7 @@ func _setup_game_ui() -> void:
 	# Connect signals for visibility changes
 	_display.custom_setting_changed.connect(_on_display_setting_changed)
 	_display.cleared.connect(_on_display_cleared)
+	_display.channel_deleted.connect(_on_channel_deleted)
 
 	# Initialize the display
 	_display._init_base()
@@ -616,6 +629,13 @@ func _on_display_cleared() -> void:
 	logs_cleared.emit()
 
 
+func _on_channel_deleted(channel: String) -> void:
+	# Remove channel from our tracking
+	_known_channels.erase(channel)
+	_channel_visibility.erase(channel)
+	_off_channel_counts.erase(channel)
+
+
 func _exit_tree() -> void:
 	# Remove engine logger
 	if _engine_logger != null:
@@ -645,6 +665,7 @@ func _ready() -> void:
 
 	add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
 	add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
+	add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
 
 	# Game-only commands
 	if not Engine.is_editor_hint():
@@ -1123,3 +1144,89 @@ func _cmd_test_off_tracking() -> void:
 
 	print_line("")
 	print_line("[color=cyan]========== OFF TRACKING TEST COMPLETE ==========[/color]")
+
+
+func _cmd_test_nested_channels() -> void:
+	print_line("[color=cyan]========== NESTED CHANNELS TEST ==========[/color]")
+	print_line("")
+
+	# Test 1: Create hierarchical channels
+	print_line("[color=light_green]Test 1: Creating Hierarchical Channels[/color]")
+	log_msg(["Message in navigation channel"], LogLevel.INFO, "navigation")
+	log_msg(["Message in navigation/pathfinding"], LogLevel.INFO, "navigation/pathfinding")
+	log_msg(["Message in navigation/nav mesh"], LogLevel.INFO, "navigation/nav mesh")
+	log_msg(["Message in navigation/nav mesh/generation"], LogLevel.DEBUG, "navigation/nav mesh/generation")
+	print_line("")
+
+	# Test 2: Verify parent channels were created
+	print_line("[color=light_green]Test 2: Verifying Parent Channels Exist[/color]")
+	var channels := get_known_channels()
+	print_line("Known channels: %s" % str(channels))
+
+	var expected_channels := ["navigation", "navigation/pathfinding", "navigation/nav mesh", "navigation/nav mesh/generation"]
+	for expected in expected_channels:
+		if expected in channels:
+			print_line("  [OK] Channel '%s' exists" % expected)
+		else:
+			print_line("  [FAIL] Channel '%s' NOT found" % expected)
+	print_line("")
+
+	# Test 3: Test visibility on nested channels
+	print_line("[color=light_green]Test 3: Testing Visibility on Nested Channels[/color]")
+	print_line("Setting 'navigation/nav mesh' to HIDDEN...")
+	set_channel_visibility("navigation/nav mesh", VisibilityMode.HIDDEN)
+	print_line("  navigation visibility: %d" % get_channel_visibility("navigation"))
+	print_line("  navigation/nav mesh visibility: %d (should be 1=HIDDEN)" % get_channel_visibility("navigation/nav mesh"))
+	print_line("  navigation/nav mesh/generation visibility: %d" % get_channel_visibility("navigation/nav mesh/generation"))
+	print_line("")
+
+	# Test 4: Log more messages to different nested channels
+	print_line("[color=light_green]Test 4: Logging to Multiple Nested Channels[/color]")
+	log_msg(["Physics root message"], LogLevel.MESSAGE, "physics")
+	log_msg(["Physics collision message"], LogLevel.MESSAGE, "physics/collision")
+	log_msg(["Physics collision/broad phase"], LogLevel.DEBUG, "physics/collision/broad phase")
+	log_msg(["Physics collision/narrow phase"], LogLevel.DEBUG, "physics/collision/narrow phase")
+	log_msg(["Physics rigidbody message"], LogLevel.INFO, "physics/rigidbody")
+	print_line("")
+
+	# Test 5: Deep nesting test
+	print_line("[color=light_green]Test 5: Deep Nesting Test[/color]")
+	log_msg(["Level 1"], LogLevel.INFO, "a")
+	log_msg(["Level 2"], LogLevel.INFO, "a/b")
+	log_msg(["Level 3"], LogLevel.INFO, "a/b/c")
+	log_msg(["Level 4"], LogLevel.INFO, "a/b/c/d")
+	log_msg(["Level 5"], LogLevel.INFO, "a/b/c/d/e")
+	print_line("Created 5-level deep channel hierarchy")
+	print_line("")
+
+	# Test 6: Test OFF visibility cascading (simulating what sidebar does)
+	print_line("[color=light_green]Test 6: Testing OFF Visibility[/color]")
+	set_channel_visibility("physics", VisibilityMode.OFF)
+	print_line("Set 'physics' to OFF")
+	print_line("  can_log to physics: %s (should be false)" % str(can_log(LogLevel.MESSAGE, "physics")))
+	print_line("  can_log to physics/collision: %s (should be true - children independent)" % str(can_log(LogLevel.MESSAGE, "physics/collision")))
+	print_line("")
+
+	# Reset visibility
+	set_channel_visibility("navigation/nav mesh", VisibilityMode.SHOWN)
+	set_channel_visibility("physics", VisibilityMode.SHOWN)
+
+	# Show sidebar info if available
+	if _display and _display._sidebar:
+		print_line("[color=light_green]Sidebar Channel Hierarchy Info:[/color]")
+		var sidebar = _display._sidebar
+		if sidebar._channel_children.size() > 0:
+			print_line("  Channel children mapping:")
+			for parent in sidebar._channel_children:
+				print_line("    '%s' -> %s" % [parent, str(sidebar._channel_children[parent])])
+		if sidebar._channel_parent.size() > 0:
+			print_line("  Channel parent mapping:")
+			for child in sidebar._channel_parent:
+				print_line("    '%s' <- '%s'" % [child, sidebar._channel_parent[child]])
+	else:
+		print_line("Sidebar not available (expected in editor mode)")
+
+	print_line("")
+	print_line("[color=cyan]========== NESTED CHANNELS TEST COMPLETE ==========[/color]")
+	print_line("Check the sidebar to see the hierarchical channel structure.")
+	print_line("Try collapsing/expanding parent channels to see aggregated stats and mixed icons.")
