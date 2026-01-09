@@ -1,10 +1,10 @@
 @tool
-class_name ConsoleDisplay
+class_name LogotDisplay
 extends Control
 
-## Console display functionality.
+## Logot display functionality.
 ## Provides all filtering, display, sidebar, and settings logic.
-## Used via composition by console_ingame.gd and console_editor_panel.gd.
+## Used via composition by logot.gd and logot_editor_panel.gd.
 
 # =============================================================================
 # SIGNALS
@@ -63,7 +63,7 @@ class LogEntry:
 		return extra_line_count > 0 or stack_trace != ""
 
 
-class ConsoleCommand:
+class LogotCommand:
 	var function: Callable
 	var arguments: PackedStringArray
 	var required: int
@@ -99,11 +99,11 @@ const LEVEL_COLORS := {
 
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var _sidebar  # ConsoleSidebar - type removed to avoid circular dependency
+var _sidebar  # LogotSidebar - type removed to avoid circular dependency
 var _sidebar_toggle_btn: Button
 var _clear_btn: Button
 var _main_container: Control
-var _console_container: VBoxContainer
+var _logot_container: VBoxContainer
 var _input_row: HBoxContainer
 
 
@@ -129,7 +129,7 @@ var _bbcode_before_last_entry: String = ""  # Stores BBCode content before the l
 
 # Composition support - providers set by owner
 var _settings_file: String = ""
-var _welcome_message: String = "Console\n"
+var _welcome_message: String = "Logot\n"
 var _log_entries_provider: Callable
 var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
@@ -292,7 +292,7 @@ func _get_sidebar_settings() -> Array:
 	return []
 
 
-## Return console commands dictionary
+## Return logot commands dictionary
 func _get_commands() -> Dictionary:
 	if _commands_provider.is_valid():
 		return _commands_provider.call()
@@ -328,22 +328,22 @@ func _init_base() -> void:
 
 
 func _setup_ui_nodes() -> void:
-	# Find the UI root - either direct child ConsoleUI or self
+	# Find the UI root - either direct child LogotUI or self
 	var ui_root: Node = self
-	if has_node("ConsoleUI"):
-		ui_root = get_node("ConsoleUI")
+	if has_node("LogotUI"):
+		ui_root = get_node("LogotUI")
 
 	# Get nodes from UI root
 	if ui_root.has_node("MainContainer"):
 		_main_container = ui_root.get_node("MainContainer")
-	if _main_container and _main_container.has_node("ConsoleContainer"):
-		_console_container = _main_container.get_node("ConsoleContainer")
-	if _console_container and _console_container.has_node("RichTextLabel"):
-		rich_label = _console_container.get_node("RichTextLabel")
-	if _console_container and _console_container.has_node("InputRow"):
-		_input_row = _console_container.get_node("InputRow")
-	elif _console_container and _console_container.has_node("VBoxContainer/InputRow"):
-		_input_row = _console_container.get_node("VBoxContainer/InputRow")
+	if _main_container and _main_container.has_node("LogotContainer"):
+		_logot_container = _main_container.get_node("LogotContainer")
+	if _logot_container and _logot_container.has_node("RichTextLabel"):
+		rich_label = _logot_container.get_node("RichTextLabel")
+	if _logot_container and _logot_container.has_node("InputRow"):
+		_input_row = _logot_container.get_node("InputRow")
+	elif _logot_container and _logot_container.has_node("VBoxContainer/InputRow"):
+		_input_row = _logot_container.get_node("VBoxContainer/InputRow")
 	if _input_row:
 		if _input_row.has_node("LineEdit"):
 			line_edit = _input_row.get_node("LineEdit")
@@ -479,7 +479,7 @@ static func _get_level_color_hex(level: int) -> String:
 ##   - collapse_count: Number of collapsed duplicates (badge shown after channel)
 ##   - formatted_stack_trace: Pre-formatted stack trace BBCode (for expanded view)
 static func format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "") -> String:
-	var color: String = ConsoleDisplay._get_level_color_hex(level)
+	var color: String = LogotDisplay._get_level_color_hex(level)
 
 	# Build extra lines indicator for collapsed view
 	var extra_indicator := ""

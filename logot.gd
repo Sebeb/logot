@@ -99,15 +99,15 @@ const SETTINGS_FILE := "user://console_filters.cfg"
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
-const ConsoleDisplay = preload("res://addons/logot/console_display.gd")
-const CONSOLE_UI_SCENE := preload("res://addons/logot/console.tscn")
+const LogotDisplay = preload("res://addons/logot/logot_display.gd")
+const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
 
 # =============================================================================
-# TYPE ALIASES - Use classes from ConsoleDisplay
+# TYPE ALIASES - Use classes from LogotDisplay
 # =============================================================================
-const VisibilityMode = ConsoleDisplay.VisibilityMode
-const LogEntry = ConsoleDisplay.LogEntry
-const ConsoleCommand = ConsoleDisplay.ConsoleCommand
+const VisibilityMode = LogotDisplay.VisibilityMode
+const LogEntry = LogotDisplay.LogEntry
+const LogotCommand = LogotDisplay.LogotCommand
 
 
 # =============================================================================
@@ -132,7 +132,7 @@ signal off_log_tracked(level: int, channel: String)
 var control: Control
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var theme: Theme = preload("res://addons/logot/console_theme.tres")
+var theme: Theme = preload("res://addons/logot/logot_theme.tres")
 
 var console_commands := {}
 var console_history := []
@@ -159,8 +159,8 @@ var _off_channel_counts: Dictionary = {}  # {channel: int}
 # =============================================================================
 # UI COMPONENTS - Display base handles most UI logic
 # =============================================================================
-var _console_ui: Control  # Root of the instantiated console UI scene
-var _display: ConsoleDisplay  # Handles filtering, display, sidebar, autocomplete
+var _logot_ui: Control  # Root of the instantiated logot UI scene
+var _display: LogotDisplay  # Handles filtering, display, sidebar, autocomplete
 var _is_sidebar_layout := true
 
 # Settings toggles (synced with display)
@@ -253,8 +253,8 @@ func _create_log_entry(objects: Array, level: int, channel: String, stack_trace:
 	var has_expandable := extra_line_count > 0 or stack_trace != ""
 
 	# Format first line only (collapsed view) and full text (expanded view)
-	var formatted_first = ConsoleDisplay.format_display_text(first_line, level, channel, timestamp, entry_id, true, extra_line_count, stack_trace)
-	var formatted_full = ConsoleDisplay.format_display_text(text, level, channel, timestamp, entry_id, false, 0, stack_trace)
+	var formatted_first = LogotDisplay.format_display_text(first_line, level, channel, timestamp, entry_id, true, extra_line_count, stack_trace)
+	var formatted_full = LogotDisplay.format_display_text(text, level, channel, timestamp, entry_id, false, 0, stack_trace)
 
 	var entry := LogEntry.new(entry_id, level, channel, objects, formatted_first, formatted_full, stack_trace, extra_line_count, timestamp)
 	_next_log_id += 1
@@ -280,7 +280,7 @@ func get_collapsed_display_text(entry: LogEntry, truncate_multiline := _truncate
 		display_text = _format_objects(entry.objects)
 
 	var extra_lines := entry.extra_line_count if truncate_multiline else 0
-	return ConsoleDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
+	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
 
 
 func _trim_old_entries() -> void:
@@ -420,12 +420,12 @@ func add_command(command_name : String, function : Callable, arguments = [], req
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = ConsoleCommand.new(function, param_array, required, description)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = ConsoleCommand.new(function, str_args, required, description)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description)
 
 
 func remove_command(command_name : String) -> void:
@@ -469,16 +469,16 @@ func _setup_game_ui() -> void:
 	add_child(canvas_layer)
 
 	# Create the display base
-	_display = ConsoleDisplay.new()
+	_display = LogotDisplay.new()
 	_display.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_display.visible = false
 	canvas_layer.add_child(_display)
 
-	# Instantiate the console UI scene as a child of display
-	_console_ui = CONSOLE_UI_SCENE.instantiate()
-	_console_ui.name = "ConsoleUI"
-	_console_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_display.add_child(_console_ui)
+	# Instantiate the logot UI scene as a child of display
+	_logot_ui = LOGOT_UI_SCENE.instantiate()
+	_logot_ui.name = "LogotUI"
+	_logot_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_display.add_child(_logot_ui)
 
 	# Configure the display base
 	_display.set_settings_file(SETTINGS_FILE)
@@ -508,7 +508,7 @@ func _setup_game_ui() -> void:
 	line_edit = _display.line_edit
 
 	# Set up autocomplete popup
-	var autocomplete_popup = _console_ui.get_node_or_null("%AutocompletePopup")
+	var autocomplete_popup = _logot_ui.get_node_or_null("%AutocompletePopup")
 	if autocomplete_popup:
 		_display.set_autocomplete_popup(autocomplete_popup)
 

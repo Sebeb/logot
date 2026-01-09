@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c8vntvjl577ft"]
 
-[ext_resource type="Script" uid="uid://c8nw4o33dqa56" path="res://addons/logot/console_sidebar.gd" id="1_sidebar"]
+[ext_resource type="Script" uid="uid://c8nw4o33dqa56" path="res://addons/logot/logot_sidebar.gd" id="1_sidebar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 8.0
@@ -9,7 +9,7 @@ content_margin_right = 8.0
 content_margin_bottom = 8.0
 bg_color = Color(0, 0, 0, 0.752941)
 
-[node name="ConsoleSidebar" type="PanelContainer" unique_id=1902649462]
+[node name="LogotSidebar" type="PanelContainer" unique_id=1902649462]
 custom_minimum_size = Vector2(150, 0)
 anchors_preset = 15
 anchor_right = 1.0

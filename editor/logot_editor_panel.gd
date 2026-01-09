@@ -1,13 +1,13 @@
 @tool
 extends Control
 
-## Editor panel for displaying console logs.
-## Creates a ConsoleDisplay and adds console.tscn as its child.
+## Editor panel for displaying logot logs.
+## Creates a LogotDisplay and adds logot.tscn as its child.
 ## Configures it for editor use.
 
-const ConsoleDisplay = preload("res://addons/logot/console_display.gd")
-const CONSOLE_UI_SCENE := preload("res://addons/logot/console.tscn")
-const SETTINGS_FILE := "user://console_editor_filters.cfg"
+const LogotDisplay = preload("res://addons/logot/logot_display.gd")
+const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const SETTINGS_FILE := "user://logot_editor_filters.cfg"
 
 # UI reference - the actual display component
 var _display
@@ -18,9 +18,9 @@ var _clear_on_play := true
 # Guard against recursive clear
 var _clearing := false
 
-# Console connection
-var _console = null
-var _console_connected := false
+# Logot connection
+var _logot = null
+var _logot_connected := false
 var _connect_in_progress := false
 var _connect_attempts := 0
 
@@ -34,19 +34,19 @@ const CONNECT_RETRY_DELAY_SEC := 0.25
 
 func _ready() -> void:
 	# Create the display base as a child
-	_display = ConsoleDisplay.new()
+	_display = LogotDisplay.new()
 	_display.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_display)
 
-	# Add the console UI as a child of the display
-	var console_ui := CONSOLE_UI_SCENE.instantiate()
-	console_ui.name = "ConsoleUI"
-	console_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_display.add_child(console_ui)
+	# Add the logot UI as a child of the display
+	var logot_ui := LOGOT_UI_SCENE.instantiate()
+	logot_ui.name = "LogotUI"
+	logot_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_display.add_child(logot_ui)
 
 	# Configure for editor use
 	_display.set_settings_file(SETTINGS_FILE)
-	_display.set_welcome_message("Editor Console\n")
+	_display.set_welcome_message("Editor Logot\n")
 	_display.set_log_entries_provider(_get_log_entries)
 	_display.set_entry_text_provider(_get_entry_display_text)
 
@@ -75,17 +75,17 @@ func _ready() -> void:
 
 	# Set up autocomplete popup reference on the display base
 	# Use explicit path since unique name lookup may not work reliably in @tool context
-	var autocomplete_popup = console_ui.get_node_or_null("MainContainer/ConsoleContainer/VBoxContainer/AutocompletePopup")
+	var autocomplete_popup = logot_ui.get_node_or_null("MainContainer/LogotContainer/VBoxContainer/AutocompletePopup")
 	if autocomplete_popup:
 		_display.set_autocomplete_popup(autocomplete_popup)
 
-	# Connect to Console autoload
-	call_deferred("_connect_to_console")
+	# Connect to Logot autoload
+	call_deferred("_connect_to_logot")
 
 
 func _get_log_entries() -> Array:
-	if _console and _console.has_method("get_log_entries"):
-		return _console.get_log_entries()
+	if _logot and _logot.has_method("get_log_entries"):
+		return _logot.get_log_entries()
 	return []
 
 
@@ -96,7 +96,7 @@ func _get_entry_display_text(entry, truncate: bool) -> String:
 		var formatted_trace := ""
 		if _display and entry.stack_trace != "":
 			formatted_trace = _display._format_stack_trace(entry.stack_trace)
-		return ConsoleDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace)
+		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace)
 
 	# Collapsed view
 	var display_text: String
@@ -105,7 +105,7 @@ func _get_entry_display_text(entry, truncate: bool) -> String:
 	else:
 		display_text = full_text
 	var extra_lines = entry.extra_line_count if truncate else 0
-	return ConsoleDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
+	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
 
 
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
@@ -115,12 +115,12 @@ func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
 
 
 func _on_cleared() -> void:
-	# Also clear the main Console's log entries (with guard to prevent recursion)
+	# Also clear the main Logot's log entries (with guard to prevent recursion)
 	if _clearing:
 		return
 	_clearing = true
-	if _console and _console.has_method("_clear_logs"):
-		_console._clear_logs()
+	if _logot and _logot.has_method("_clear_logs"):
+		_logot._clear_logs()
 	_clearing = false
 
 
@@ -142,35 +142,35 @@ func _save_settings() -> void:
 
 
 # =============================================================================
-# CONSOLE CONNECTION
+# LOGOT CONNECTION
 # =============================================================================
 
-func _connect_to_console() -> void:
-	if _console_connected or _connect_in_progress:
+func _connect_to_logot() -> void:
+	if _logot_connected or _connect_in_progress:
 		return
 
 	_connect_in_progress = true
-	while not _console_connected and _connect_attempts < MAX_CONNECT_ATTEMPTS:
-		_console = _get_console()
-		if _console:
+	while not _logot_connected and _connect_attempts < MAX_CONNECT_ATTEMPTS:
+		_logot = _get_logot()
+		if _logot:
 			# Connect signals
-			if _console.has_signal("log_entry_added") and not _console.log_entry_added.is_connected(_on_log_entry_added):
-				_console.log_entry_added.connect(_on_log_entry_added)
-			if _console.has_signal("logs_cleared") and not _console.logs_cleared.is_connected(_on_logs_cleared):
-				_console.logs_cleared.connect(_on_logs_cleared)
-			if _console.has_signal("channel_discovered") and not _console.channel_discovered.is_connected(_on_channel_discovered):
-				_console.channel_discovered.connect(_on_channel_discovered)
-			if _console.has_signal("off_log_tracked") and not _console.off_log_tracked.is_connected(_on_off_log_tracked):
-				_console.off_log_tracked.connect(_on_off_log_tracked)
+			if _logot.has_signal("log_entry_added") and not _logot.log_entry_added.is_connected(_on_log_entry_added):
+				_logot.log_entry_added.connect(_on_log_entry_added)
+			if _logot.has_signal("logs_cleared") and not _logot.logs_cleared.is_connected(_on_logs_cleared):
+				_logot.logs_cleared.connect(_on_logs_cleared)
+			if _logot.has_signal("channel_discovered") and not _logot.channel_discovered.is_connected(_on_channel_discovered):
+				_logot.channel_discovered.connect(_on_channel_discovered)
+			if _logot.has_signal("off_log_tracked") and not _logot.off_log_tracked.is_connected(_on_off_log_tracked):
+				_logot.off_log_tracked.connect(_on_off_log_tracked)
 
-			_console_connected = true
+			_logot_connected = true
 			_sync_existing_entries()
 			break
 
 		_connect_attempts += 1
 		if _connect_attempts >= MAX_CONNECT_ATTEMPTS:
 			if _display and _display.rich_label:
-				_display.rich_label.append_text("Console autoload not available.\n")
+				_display.rich_label.append_text("Logot autoload not available.\n")
 			_connect_in_progress = false
 			return
 
@@ -182,21 +182,21 @@ func _connect_to_console() -> void:
 	_connect_in_progress = false
 
 
-func _get_console():
-	if Engine.has_singleton("Console"):
-		return Engine.get_singleton("Console")
+func _get_logot():
+	if Engine.has_singleton("Logot"):
+		return Engine.get_singleton("Logot")
 
 	var root = get_tree().root if get_tree() else null
-	if root and root.has_node("Console"):
-		return root.get_node("Console")
+	if root and root.has_node("Logot"):
+		return root.get_node("Logot")
 
 	return null
 
 
 func _sync_existing_entries() -> void:
-	if _console and _display:
-		if _console.has_method("get_known_channels"):
-			for channel in _console.get_known_channels():
+	if _logot and _display:
+		if _logot.has_method("get_known_channels"):
+			for channel in _logot.get_known_channels():
 				_display._ensure_channel_exists(channel)
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
@@ -206,35 +206,35 @@ func _sync_existing_entries() -> void:
 		var loaded_level_visibility: Dictionary = _display._level_visibility.duplicate()
 		var loaded_channel_visibility: Dictionary = _display._channel_visibility.duplicate()
 
-		# Set up visibility providers to use console's visibility dictionaries
-		if _console.has_method("get_level_visibility") and _console.has_method("set_level_visibility"):
-			_display.set_level_visibility_provider(_console.get_level_visibility, _console.set_level_visibility)
-		if _console.has_method("get_channel_visibility") and _console.has_method("set_channel_visibility"):
-			_display.set_channel_visibility_provider(_console.get_channel_visibility, _console.set_channel_visibility)
+		# Set up visibility providers to use logot's visibility dictionaries
+		if _logot.has_method("get_level_visibility") and _logot.has_method("set_level_visibility"):
+			_display.set_level_visibility_provider(_logot.get_level_visibility, _logot.set_level_visibility)
+		if _logot.has_method("get_channel_visibility") and _logot.has_method("set_channel_visibility"):
+			_display.set_channel_visibility_provider(_logot.get_channel_visibility, _logot.set_channel_visibility)
 
-		# Apply the loaded visibility settings to the Console
+		# Apply the loaded visibility settings to the Logot
 		# This ensures filter state from config is applied at startup
 		for level in loaded_level_visibility:
-			_console.set_level_visibility(level, loaded_level_visibility[level])
+			_logot.set_level_visibility(level, loaded_level_visibility[level])
 		for channel in loaded_channel_visibility:
-			_console.set_channel_visibility(channel, loaded_channel_visibility[channel])
+			_logot.set_channel_visibility(channel, loaded_channel_visibility[channel])
 
 		# Set up rejected count providers for OFF stats
-		if _console.has_method("get_rejected_level_count"):
-			_display.set_rejected_level_count_provider(_console.get_rejected_level_count)
-		if _console.has_method("get_rejected_channel_count"):
-			_display.set_rejected_channel_count_provider(_console.get_rejected_channel_count)
+		if _logot.has_method("get_rejected_level_count"):
+			_display.set_rejected_level_count_provider(_logot.get_rejected_level_count)
+		if _logot.has_method("get_rejected_channel_count"):
+			_display.set_rejected_channel_count_provider(_logot.get_rejected_channel_count)
 		_display._rebuild_display()
 
 
 func _get_commands() -> Dictionary:
-	if _console and "console_commands" in _console:
-		return _console.console_commands
+	if _logot and "console_commands" in _logot:
+		return _logot.console_commands
 	return {}
 
 
 # =============================================================================
-# CONSOLE SIGNAL HANDLERS
+# LOGOT SIGNAL HANDLERS
 # =============================================================================
 
 func _on_log_entry_added(entry) -> void:
@@ -272,19 +272,19 @@ func _on_off_log_tracked(level: int, channel: String) -> void:
 
 
 func _on_level_visibility_changed(level: int, mode: int) -> void:
-	if _console and _console.has_method("set_level_visibility"):
-		_console.set_level_visibility(level, mode)
+	if _logot and _logot.has_method("set_level_visibility"):
+		_logot.set_level_visibility(level, mode)
 		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
-		if "_display" in _console and _console._display:
-			_console._display._rebuild_display()
+		if "_display" in _logot and _logot._display:
+			_logot._display._rebuild_display()
 
 
 func _on_channel_visibility_changed(channel: String, mode: int) -> void:
-	if _console and _console.has_method("set_channel_visibility"):
-		_console.set_channel_visibility(channel, mode)
+	if _logot and _logot.has_method("set_channel_visibility"):
+		_logot.set_channel_visibility(channel, mode)
 		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
-		if "_display" in _console and _console._display:
-			_console._display._rebuild_display()
+		if "_display" in _logot and _logot._display:
+			_logot._display._rebuild_display()
 
 # =============================================================================
 # INPUT HANDLING
@@ -298,7 +298,6 @@ func _on_text_entered(text: String) -> void:
 		_display.line_edit.clear()
 		# Ensure focus remains in the input box after submitting
 		_display.line_edit.grab_focus()
-		_display.line_edit.set
 
 	if _display:
 		_display._search_filter = ""
@@ -313,8 +312,8 @@ func _on_text_entered(text: String) -> void:
 
 	# Commands start with /
 	if text.begins_with("/"):
-		if _console and _console.has_method("on_text_entered"):
-			_console.on_text_entered(text)
+		if _logot and _logot.has_method("on_text_entered"):
+			_logot.on_text_entered(text)
 
 
 func _on_text_changed(new_text: String) -> void:
