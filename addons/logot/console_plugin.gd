@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const EditorPanelScript = preload("res://addons/console/editor/console_editor_panel.gd")
+const EditorPanelScript = preload("res://addons/logot/editor/console_editor_panel.gd")
 
 var _editor_panel: Control
 var _scroll_container: ScrollContainer
@@ -9,7 +9,7 @@ var _scroll_container: ScrollContainer
 
 func _enter_tree() -> void:
 	print("Console plugin activated.")
-	add_autoload_singleton("Console", "res://addons/console/console_ingame.gd")
+	add_autoload_singleton("Console", "res://addons/logot/console_ingame.gd")
 
 	# Create editor panel - it instantiates console_display.tscn internally
 	# No inheritance issues since console_editor_panel.gd extends Control directly

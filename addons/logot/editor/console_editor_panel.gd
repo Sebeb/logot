@@ -5,11 +5,12 @@ extends Control
 ## Creates a ConsoleDisplay and adds console.tscn as its child.
 ## Configures it for editor use.
 
-const CONSOLE_UI_SCENE := preload("res://addons/console/console.tscn")
+const ConsoleDisplay = preload("res://addons/logot/console_display.gd")
+const CONSOLE_UI_SCENE := preload("res://addons/logot/console.tscn")
 const SETTINGS_FILE := "user://console_editor_filters.cfg"
 
 # UI reference - the actual display component
-var _display: ConsoleDisplay
+var _display
 
 # Editor-specific settings
 var _clear_on_play := true
@@ -53,6 +54,8 @@ func _ready() -> void:
 	_display.add_custom_setting("clear_on_play", "Clear on play", true)
 	_display.custom_setting_changed.connect(_on_custom_setting_changed)
 	_display.cleared.connect(_on_cleared)
+	_display.level_visibility_changed.connect(_on_level_visibility_changed)
+	_display.channel_visibility_changed.connect(_on_channel_visibility_changed)
 
 	# Initialize the display
 	_display._init_base()
@@ -71,7 +74,8 @@ func _ready() -> void:
 		_display.line_edit.gui_input.connect(_on_line_edit_gui_input)
 
 	# Set up autocomplete popup reference on the display base
-	var autocomplete_popup = console_ui.get_node_or_null("%AutocompletePopup")
+	# Use explicit path since unique name lookup may not work reliably in @tool context
+	var autocomplete_popup = console_ui.get_node_or_null("MainContainer/ConsoleContainer/VBoxContainer/AutocompletePopup")
 	if autocomplete_popup:
 		_display.set_autocomplete_popup(autocomplete_popup)
 
@@ -86,13 +90,22 @@ func _get_log_entries() -> Array:
 
 
 func _get_entry_display_text(entry, truncate: bool) -> String:
+	var full_text = _display._format_objects(entry.objects) if _display else str(entry.objects)
+
 	if entry.expanded:
-		if _display:
-			return _display._format_expanded_entry(entry)
-		return entry.formatted
-	if _console and _console.has_method("get_collapsed_display_text"):
-		return _console.get_collapsed_display_text(entry, truncate)
-	return entry.formatted
+		var formatted_trace := ""
+		if _display and entry.stack_trace != "":
+			formatted_trace = _display._format_stack_trace(entry.stack_trace)
+		return ConsoleDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace)
+
+	# Collapsed view
+	var display_text: String
+	if truncate and entry.extra_line_count > 0:
+		display_text = full_text.split("\n")[0] if "\n" in full_text else full_text
+	else:
+		display_text = full_text
+	var extra_lines = entry.extra_line_count if truncate else 0
+	return ConsoleDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
 
 
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
@@ -185,6 +198,11 @@ func _sync_existing_entries() -> void:
 				_display._ensure_channel_exists(channel)
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
+		# Set up visibility providers to use console's visibility dictionaries
+		if _console.has_method("get_level_visibility") and _console.has_method("set_level_visibility"):
+			_display.set_level_visibility_provider(_console.get_level_visibility, _console.set_level_visibility)
+		if _console.has_method("get_channel_visibility") and _console.has_method("set_channel_visibility"):
+			_display.set_channel_visibility_provider(_console.get_channel_visibility, _console.set_channel_visibility)
 		_display._rebuild_display()
 
 
@@ -224,6 +242,21 @@ func _on_channel_discovered(channel: String) -> void:
 	if _display:
 		_display._ensure_channel_exists(channel)
 
+
+func _on_level_visibility_changed(level: int, mode: int) -> void:
+	if _console and _console.has_method("set_level_visibility"):
+		_console.set_level_visibility(level, mode)
+		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
+		if "_display" in _console and _console._display:
+			_console._display._rebuild_display()
+
+
+func _on_channel_visibility_changed(channel: String, mode: int) -> void:
+	if _console and _console.has_method("set_channel_visibility"):
+		_console.set_channel_visibility(channel, mode)
+		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
+		if "_display" in _console and _console._display:
+			_console._display._rebuild_display()
 
 # =============================================================================
 # INPUT HANDLING

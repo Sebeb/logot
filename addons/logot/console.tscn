@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://4c1jkrksvemx"]
 
-[ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/console/console_theme.tres" id="1_theme"]
-[ext_resource type="FontFile" uid="uid://mduarxacu6jr" path="res://addons/console/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
-[ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/console/console_sidebar.tscn" id="2_sidebar"]
+[ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/logot/console_theme.tres" id="1_theme"]
+[ext_resource type="FontFile" uid="uid://mduarxacu6jr" path="res://addons/logot/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
+[ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/logot/console_sidebar.tscn" id="2_sidebar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
 bg_color = Color(0, 0, 0, 0.843137)

@@ -97,8 +97,10 @@ const SIDEBAR_BREAKPOINT := 800
 const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
 const SETTINGS_FILE := "user://console_filters.cfg"
 
-# Preload scenes
-const CONSOLE_UI_SCENE := preload("res://addons/console/console.tscn")
+# Preload scenes and scripts
+const LogLevel = preload("res://addons/logot/log_level.gd")
+const ConsoleDisplay = preload("res://addons/logot/console_display.gd")
+const CONSOLE_UI_SCENE := preload("res://addons/logot/console.tscn")
 
 # =============================================================================
 # TYPE ALIASES - Use classes from ConsoleDisplay
@@ -129,7 +131,7 @@ signal channel_discovered(channel: String)
 var control: Control
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var theme: Theme = preload("res://addons/console/console_theme.tres")
+var theme: Theme = preload("res://addons/logot/console_theme.tres")
 
 var console_commands := {}
 var console_history := []
@@ -150,8 +152,8 @@ var _channel_visibility: Dictionary = {}
 var _known_channels: Array[String] = []
 
 # Track logs rejected by can_log (level/channel was OFF)
-var _rejected_level_counts: Dictionary = {}  # {level: int}
-var _rejected_channel_counts: Dictionary = {}  # {channel: int}
+var _off_level_counts: Dictionary = {}  # {level: int}
+var _off_channel_counts: Dictionary = {}  # {channel: int}
 
 # =============================================================================
 # UI COMPONENTS - Display base handles most UI logic
@@ -191,7 +193,7 @@ func log_msg(objects: Array, level: int = LogLevel.MESSAGE, channel: String = ""
 		if stack.size() > 0:
 			var lines: PackedStringArray = []
 			lines.append("GDScript backtrace (most recent call first):")
-			for i in range(stack.size()):
+			for i in range(1, stack.size() -1):
 				var frame: Dictionary = stack[i]
 				lines.append("    [%d] %s (%s:%d)" % [i, frame.get("function", "?"), frame.get("source", "?"), frame.get("line", 0)])
 			stack_trace = "\n".join(lines)
@@ -225,7 +227,7 @@ func try_log(objects_fn: Callable, level: int = LogLevel.MESSAGE, channel: Strin
 		log_msg(objects, level, channel)
 	else:
 		# Track this rejected log
-		_track_rejected_log(level, channel)
+		_track_off_log(level, channel)
 
 
 # =============================================================================
@@ -249,18 +251,9 @@ func _create_log_entry(objects: Array, level: int, channel: String, stack_trace:
 	# Determine if this entry has expandable content
 	var has_expandable := extra_line_count > 0 or stack_trace != ""
 
-	# Format first line only (collapsed view) - use display's method if available
-	var formatted_first: String
-	var formatted_full: String
-	if _display:
-		formatted_first = _display._format_with_level_and_channel(first_line, level, channel, timestamp, true, extra_line_count, stack_trace)
-		formatted_full = _display._format_with_level_and_channel(text, level, channel, timestamp, false, 0, stack_trace)
-	else:
-		# Fallback for when display isn't set up yet
-		formatted_first = _format_with_level_and_channel(first_line, level, channel, timestamp, true, extra_line_count, stack_trace)
-		formatted_full = _format_with_level_and_channel(text, level, channel, timestamp, false, 0, stack_trace)
-	formatted_first = formatted_first.replace("{entry_id}", str(entry_id))
-	formatted_full = formatted_full.replace("{entry_id}", str(entry_id))
+	# Format first line only (collapsed view) and full text (expanded view)
+	var formatted_first = ConsoleDisplay.format_display_text(first_line, level, channel, timestamp, entry_id, true, extra_line_count, stack_trace)
+	var formatted_full = ConsoleDisplay.format_display_text(text, level, channel, timestamp, entry_id, false, 0, stack_trace)
 
 	var entry := LogEntry.new(entry_id, level, channel, objects, formatted_first, formatted_full, stack_trace, extra_line_count, timestamp)
 	_next_log_id += 1
@@ -277,61 +270,16 @@ func _format_objects(objects: Array) -> String:
 	return " ".join(parts)
 
 
-## Format with level and channel (delegates to display if available, fallback for early logging)
-func _format_with_level_and_channel(text: String, level: int, channel: String, timestamp: String, is_collapsed: bool = false, extra_lines: int = 0, stack_trace: String = "") -> String:
-	if _display:
-		return _display._format_with_level_and_channel(text, level, channel, timestamp, is_collapsed, extra_lines, stack_trace)
-
-	# Fallback implementation for when display isn't available
-	var level_color: Color = ConsoleDisplay.LEVEL_COLORS.get(level, Color.WHITE)
-	var color: String = "#" + level_color.to_html(false)
-
-	# Build extra lines indicator for collapsed view
-	var extra_indicator := ""
-	if is_collapsed and extra_lines > 0:
-		extra_indicator = " [i][color=dim_gray]+%d[/color][/i]" % extra_lines
-
-	# Determine the toggle action for clicking on the message text
-	var has_expandable := extra_lines > 0 or stack_trace != ""
-	var toggle_action := "expand" if is_collapsed else "collapse"
-
-	# Build the message content
-	var message: String
-	if has_expandable:
-		message = "[url=%s:{entry_id}][color=%s]%s[/color][/url]%s" % [toggle_action, color, text, extra_indicator]
-	else:
-		message = "[color=%s]%s[/color]%s" % [color, text, extra_indicator]
-
-	# Build single row: [timestamp]   [channel] [message]
-	# Add extra spacing after timestamp for visual separation
-	var timestamp_cell := "[color=dim_gray]%s[/color] " % timestamp
-	var channel_cell := ""
-	if channel != "":
-		# Use same color as log level for channel
-		channel_cell = "[color=%s][%s][/color] " % [color, channel]
-
-	return "[table=3][cell]%s[/cell][cell]%s[/cell][cell]%s[/cell][/table]" % [timestamp_cell, channel_cell, message]
-
-
 func get_collapsed_display_text(entry: LogEntry, truncate_multiline := _truncate_multiline) -> String:
-	if _display:
-		return _display.get_collapsed_display_text(entry, truncate_multiline)
-
-	# Fallback if display isn't available
-	# Determine which text to display
 	var display_text: String
 	if truncate_multiline and entry.extra_line_count > 0:
-		# Show only first line
 		var full_text := _format_objects(entry.objects)
-		var first_line := full_text.split("\n")[0] if "\n" in full_text else full_text
-		display_text = first_line
+		display_text = full_text.split("\n")[0] if "\n" in full_text else full_text
 	else:
-		# Show full text
 		display_text = _format_objects(entry.objects)
 
-	# Always regenerate formatting dynamically
-	var formatted := _format_with_level_and_channel(display_text, entry.level, entry.channel, entry.timestamp, true, entry.extra_line_count if truncate_multiline else 0, entry.stack_trace)
-	return formatted.replace("{entry_id}", str(entry.id))
+	var extra_lines := entry.extra_line_count if truncate_multiline else 0
+	return ConsoleDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
 
 
 func _trim_old_entries() -> void:
@@ -369,30 +317,53 @@ func _ensure_level_exists(level: int) -> void:
 
 
 ## Track a log that was rejected by can_log (level or channel was OFF)
-func _track_rejected_log(level: int, channel: String) -> void:
+func _track_off_log(level: int, channel: String) -> void:
 	# Increment rejected count for level
-	if level not in _rejected_level_counts:
-		_rejected_level_counts[level] = 0
-	_rejected_level_counts[level] += 1
+	if level not in _off_level_counts:
+		_off_level_counts[level] = 0
+	_off_level_counts[level] += 1
 
 	# Increment rejected count for channel
-	if channel not in _rejected_channel_counts:
-		_rejected_channel_counts[channel] = 0
-	_rejected_channel_counts[channel] += 1
+	if channel not in _off_channel_counts:
+		_off_channel_counts[channel] = 0
+	_off_channel_counts[channel] += 1
 
 	# Update sidebar stats if display is available
 	if _display:
+		# Ensure the display knows about this level/channel so stats are shown
+		_display._ensure_level_exists(level)
+		_display._ensure_channel_exists(channel)
 		_display._update_sidebar_stats()
 
 
 ## Get rejected log count for a level
 func get_rejected_level_count(level: int) -> int:
-	return _rejected_level_counts.get(level, 0)
+	return _off_level_counts.get(level, 0)
 
 
 ## Get rejected log count for a channel
 func get_rejected_channel_count(channel: String) -> int:
-	return _rejected_channel_counts.get(channel, 0)
+	return _off_channel_counts.get(channel, 0)
+
+
+## Get level visibility mode
+func get_level_visibility(level: int) -> int:
+	return _level_visibility.get(level, VisibilityMode.SHOWN)
+
+
+## Set level visibility mode
+func set_level_visibility(level: int, mode: int) -> void:
+	_level_visibility[level] = mode
+
+
+## Get channel visibility mode
+func get_channel_visibility(channel: String) -> int:
+	return _channel_visibility.get(channel, VisibilityMode.SHOWN)
+
+
+## Set channel visibility mode
+func set_channel_visibility(channel: String, mode: int) -> void:
+	_channel_visibility[channel] = mode
 
 
 func _init_default_levels() -> void:
@@ -429,8 +400,8 @@ func print_line(text: String, print_godot := false) -> void:
 func _clear_logs() -> void:
 	_log_entries.clear()
 	_next_log_id = 0
-	_rejected_level_counts.clear()
-	_rejected_channel_counts.clear()
+	_off_level_counts.clear()
+	_off_channel_counts.clear()
 	if _display:
 		_display._clear_logs()
 	logs_cleared.emit()
@@ -513,6 +484,8 @@ func _setup_game_ui() -> void:
 	_display.set_commands_provider(func(): return console_commands)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))
 	_display.set_rejected_channel_count_provider(func(channel): return get_rejected_channel_count(channel))
+	_display.set_level_visibility_provider(get_level_visibility, set_level_visibility)
+	_display.set_channel_visibility_provider(get_channel_visibility, set_channel_visibility)
 
 	# Connect signals for visibility changes
 	_display.custom_setting_changed.connect(_on_display_setting_changed)
