@@ -1,0 +1,126 @@
+[gd_scene format=3 uid="uid://4c1jkrksvemx"]
+
+[ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/console/console_theme.tres" id="1_theme"]
+[ext_resource type="FontFile" uid="uid://mduarxacu6jr" path="res://addons/console/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
+[ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/console/console_sidebar.tscn" id="2_sidebar"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
+bg_color = Color(0, 0, 0, 0.843137)
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ddh01"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_autocomplete"]
+bg_color = Color(0.1, 0.1, 0.12, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.3, 0.3, 0.35, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_autocomplete_selected"]
+bg_color = Color(0.2, 0.4, 0.6, 0.8)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="InputEventKey" id="InputEventKey_pxr0l"]
+device = -1
+alt_pressed = true
+meta_pressed = true
+keycode = 75
+
+[sub_resource type="Shortcut" id="Shortcut_t2106"]
+events = [SubResource("InputEventKey_pxr0l")]
+
+[node name="ConsoleUI" type="Control" unique_id=2042940667]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MainContainer" type="HSplitContainer" parent="." unique_id=1731410658]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+split_offsets = PackedInt32Array(236)
+dragger_visibility = 1
+split_offset = 236
+
+[node name="ConsoleContainer" type="VBoxContainer" parent="MainContainer" unique_id=1103596063]
+custom_minimum_size = Vector2(800, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="RichTextLabel" type="RichTextLabel" parent="MainContainer/ConsoleContainer" unique_id=1214648749]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+focus_mode = 2
+theme = ExtResource("1_theme")
+theme_override_fonts/normal_font = ExtResource("2_pxr0l")
+theme_override_styles/normal = SubResource("StyleBoxFlat_rich_label")
+theme_override_styles/background = SubResource("StyleBoxEmpty_ddh01")
+bbcode_enabled = true
+tab_size = 2
+meta_underlined = false
+selection_enabled = true
+deselect_on_focus_loss_enabled = false
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MainContainer/ConsoleContainer" unique_id=2039839535]
+layout_mode = 2
+
+[node name="AutocompletePopup" type="ItemList" parent="MainContainer/ConsoleContainer/VBoxContainer" unique_id=1663059663]
+unique_name_in_owner = true
+visible = false
+z_index = 100
+layout_mode = 2
+size_flags_vertical = 3
+theme = ExtResource("1_theme")
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hovered_color = Color(1, 1, 1, 1)
+theme_override_colors/font_selected_color = Color(1, 1, 1, 1)
+theme_override_styles/panel = SubResource("StyleBoxFlat_autocomplete")
+theme_override_styles/selected = SubResource("StyleBoxFlat_autocomplete_selected")
+theme_override_styles/selected_focus = SubResource("StyleBoxFlat_autocomplete_selected")
+allow_reselect = true
+auto_height = true
+item_count = 1
+item_0/text = "Item"
+
+[node name="InputRow" type="HBoxContainer" parent="MainContainer/ConsoleContainer/VBoxContainer" unique_id=537652556]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="LineEdit" type="LineEdit" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=824690393]
+layout_mode = 2
+size_flags_horizontal = 3
+theme = ExtResource("1_theme")
+placeholder_text = "Search logs or type /help for commands"
+
+[node name="ClearButton" type="Button" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=2127237980]
+layout_mode = 2
+theme = ExtResource("1_theme")
+shortcut = SubResource("Shortcut_t2106")
+text = "Clear"
+
+[node name="SidebarToggleButton" type="Button" parent="MainContainer/ConsoleContainer/VBoxContainer/InputRow" unique_id=632641003]
+layout_mode = 2
+theme = ExtResource("1_theme")
+toggle_mode = true
+text = "Filter"
+
+[node name="Sidebar" parent="MainContainer" unique_id=254015495 instance=ExtResource("2_sidebar")]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+size_flags_horizontal = 3
