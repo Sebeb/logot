@@ -48,6 +48,7 @@ enum VisibilityMode { SHOWN, HIDDEN, OFF }
 # =============================================================================
 signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
+signal instance_visibility_changed(instance_id: int, mode: int)
 signal setting_changed(setting_name: String, value: bool)
 
 # =============================================================================
@@ -58,10 +59,12 @@ signal setting_changed(setting_name: String, value: bool)
 # Tree item references
 var _levels_root: TreeItem
 var _channels_root: TreeItem
+var _instances_root: TreeItem
 var _settings_root: TreeItem
 
 var _level_items: Dictionary = {}    # {LogLevel.X: TreeItem}
 var _channel_items: Dictionary = {}  # {"channel": TreeItem}
+var _instance_items: Dictionary = {}  # {instance_id: TreeItem}
 var _settings_items: Dictionary = {}  # {"setting_name": TreeItem}
 
 # =============================================================================
@@ -69,12 +72,16 @@ var _settings_items: Dictionary = {}  # {"setting_name": TreeItem}
 # =============================================================================
 var _level_visibility: Dictionary = {}
 var _channel_visibility: Dictionary = {}
+var _instance_visibility: Dictionary = {}  # {instance_id: VisibilityMode}
 var _known_channels: Array[String] = []
+var _known_instances: Dictionary = {}  # {instance_id: {name: String, active: bool}}
 
 # Level statistics: {LogLevel.X: {shown: int, hidden: int, off: int}}
 var _level_stats: Dictionary = {}
 # Channel statistics: {"channel": {shown: int, hidden: int, off: int}}
 var _channel_stats: Dictionary = {}
+# Instance statistics: {instance_id: {shown: int, hidden: int, off: int}}
+var _instance_stats: Dictionary = {}
 
 # Settings state
 var _settings: Dictionary = {}
@@ -125,6 +132,11 @@ func _setup_tree() -> void:
 	_channels_root = _tree.create_item(root)
 	_channels_root.set_text(COL_NAME, "Channels")
 	_set_item_not_selectable(_channels_root)
+
+	_instances_root = _tree.create_item(root)
+	_instances_root.set_text(COL_NAME, "Instances")
+	_set_item_not_selectable(_instances_root)
+	_instances_root.visible = false  # Hidden until instances are detected
 
 	_settings_root = _tree.create_item(root)
 	_settings_root.set_text(COL_NAME, "Settings")
@@ -195,6 +207,48 @@ func add_channel(channel: String) -> void:
 		_rebuild_ui()
 
 
+## Add a running instance
+func add_instance(instance_id: int, instance_name: String) -> void:
+	var needs_rebuild := false
+
+	if instance_id not in _known_instances:
+		_known_instances[instance_id] = {"name": instance_name, "active": true}
+		needs_rebuild = true
+	else:
+		# Update existing instance
+		_known_instances[instance_id].name = instance_name
+		_known_instances[instance_id].active = true
+
+	if instance_id not in _instance_visibility:
+		_instance_visibility[instance_id] = VisibilityMode.SHOWN
+	if instance_id not in _instance_stats:
+		_instance_stats[instance_id] = {"shown": 0, "hidden": 0, "off": 0}
+
+	# Show the instances section
+	if _instances_root:
+		_instances_root.visible = true
+
+	if needs_rebuild:
+		_rebuild_ui()
+	else:
+		_update_ui()
+
+
+## Remove/deactivate a running instance
+func remove_instance(instance_id: int) -> void:
+	if instance_id in _known_instances:
+		_known_instances[instance_id].active = false
+		_update_ui()
+		# Hide instances section if no active instances
+		var has_active := false
+		for id in _known_instances:
+			if _known_instances[id].active:
+				has_active = true
+				break
+		if not has_active and _instances_root:
+			_instances_root.visible = false
+
+
 ## Get level visibility mode
 func get_level_visibility(level: int) -> int:
 	return _level_visibility.get(level, VisibilityMode.SHOWN)
@@ -217,6 +271,17 @@ func set_channel_visibility(channel: String, mode: int) -> void:
 	_update_ui()
 
 
+## Get instance visibility mode
+func get_instance_visibility(instance_id: int) -> int:
+	return _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
+
+
+## Set instance visibility mode
+func set_instance_visibility(instance_id: int, mode: int) -> void:
+	_instance_visibility[instance_id] = mode
+	_update_ui()
+
+
 ## Update statistics for a level
 func set_level_stats(level: int, shown: int, hidden: int, off: int) -> void:
 	_level_stats[level] = {"shown": shown, "hidden": hidden, "off": off}
@@ -229,12 +294,20 @@ func set_channel_stats(channel: String, shown: int, hidden: int, off: int) -> vo
 	_update_stats_display()
 
 
+## Update statistics for an instance
+func set_instance_stats(instance_id: int, shown: int, hidden: int, off: int) -> void:
+	_instance_stats[instance_id] = {"shown": shown, "hidden": hidden, "off": off}
+	_update_stats_display()
+
+
 ## Reset all statistics to zero
 func reset_stats() -> void:
 	for level in _level_stats:
 		_level_stats[level] = {"shown": 0, "hidden": 0, "off": 0}
 	for channel in _channel_stats:
 		_channel_stats[channel] = {"shown": 0, "hidden": 0, "off": 0}
+	for instance_id in _instance_stats:
+		_instance_stats[instance_id] = {"shown": 0, "hidden": 0, "off": 0}
 	_update_stats_display()
 
 
@@ -313,8 +386,18 @@ func _rebuild_ui() -> void:
 		channel_child.free()
 		channel_child = next
 
+	# Clear existing instance items
+	if _instances_root:
+		var instance_child := _instances_root.get_first_child()
+		while instance_child:
+			var next := instance_child.get_next()
+			_instances_root.remove_child(instance_child)
+			instance_child.free()
+			instance_child = next
+
 	_level_items.clear()
 	_channel_items.clear()
+	_instance_items.clear()
 
 	# Build level items
 	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
@@ -325,6 +408,17 @@ func _rebuild_ui() -> void:
 	# Build channel items
 	for channel in _known_channels:
 		_add_channel_tree_item(channel)
+
+	# Build instance items (only active ones)
+	var has_active_instances := false
+	for instance_id in _known_instances:
+		if _known_instances[instance_id].active:
+			_add_instance_tree_item(instance_id)
+			has_active_instances = true
+
+	# Show/hide instances section based on whether there are active instances
+	if _instances_root:
+		_instances_root.visible = has_active_instances
 
 	_update_ui()
 
@@ -398,6 +492,27 @@ func _add_channel_tree_item(channel: String) -> void:
 	_channel_items[channel] = item
 
 
+func _add_instance_tree_item(instance_id: int) -> void:
+	var item := _tree.create_item(_instances_root)
+	var instance_data: Dictionary = _known_instances.get(instance_id, {})
+	var display_name: String = instance_data.get("name", "Instance %d" % instance_id)
+
+	item.set_text(COL_NAME, display_name)
+	_set_item_not_selectable(item)
+
+	# Store instance_id in metadata for callback
+	item.set_metadata(COL_NAME, {"type": "instance", "value": instance_id})
+
+	# Stats columns setup
+	_setup_stats_columns(item)
+
+	# Add visibility icon button in icon column (far right)
+	var mode = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
+	item.add_button(COL_ICON, _get_icon_for_mode(mode), 0)
+
+	_instance_items[instance_id] = item
+
+
 ## Helper to set up stats columns with proper alignment and colors
 func _setup_stats_columns(item: TreeItem) -> void:
 	for col in [COL_SHOWN, COL_HIDDEN, COL_OFF]:
@@ -441,6 +556,16 @@ func _update_ui() -> void:
 		_update_tree_item_icon(item, mode)
 		_update_tree_item_style(item, mode, Color.WHITE)
 
+	# Update instance items
+	for instance_id in _instance_items:
+		var item: TreeItem = _instance_items[instance_id]
+		var mode = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
+		_update_tree_item_icon(item, mode)
+		# Gray out inactive instances
+		var is_active: bool = _known_instances.get(instance_id, {}).get("active", false)
+		var base_color := Color.WHITE if is_active else COLOR_HIDDEN
+		_update_tree_item_style(item, mode, base_color)
+
 	# Update settings items (checkbox in name column)
 	for setting_name in _settings_items:
 		_settings_items[setting_name].set_checked(COL_NAME, _settings.get(setting_name, false))
@@ -474,6 +599,13 @@ func _update_stats_display() -> void:
 		var item: TreeItem = _channel_items[channel]
 		var stats = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
+		_set_item_stats(item, stats, mode)
+
+	# Update instance stats
+	for instance_id in _instance_items:
+		var item: TreeItem = _instance_items[instance_id]
+		var stats = _instance_stats.get(instance_id, {"shown": 0, "hidden": 0, "off": 0})
+		var mode = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
 		_set_item_stats(item, stats, mode)
 
 
@@ -538,6 +670,9 @@ func _on_tree_button_clicked(item: TreeItem, _column: int, _id: int, mouse_butto
 				"channel":
 					var channel: String = metadata.get("value", "")
 					_cycle_channel_visibility(channel)
+				"instance":
+					var instance_id: int = metadata.get("value", 0)
+					_cycle_instance_visibility(instance_id)
 
 		MOUSE_BUTTON_RIGHT:
 			# Right-click toggles OFF
@@ -548,6 +683,9 @@ func _on_tree_button_clicked(item: TreeItem, _column: int, _id: int, mouse_butto
 				"channel":
 					var channel: String = metadata.get("value", "")
 					_toggle_channel_off(channel)
+				"instance":
+					var instance_id: int = metadata.get("value", 0)
+					_toggle_instance_off(instance_id)
 
 
 ## Handle clicks on the tree rows
@@ -567,8 +705,8 @@ func _on_tree_gui_input(event: InputEvent) -> void:
 
 	var item_type: String = metadata.get("type", "")
 
-	# Only handle level and channel items (not settings)
-	if item_type != "level" and item_type != "channel":
+	# Only handle level, channel, and instance items (not settings)
+	if item_type != "level" and item_type != "channel" and item_type != "instance":
 		return
 
 	match event.button_index:
@@ -583,6 +721,10 @@ func _on_tree_gui_input(event: InputEvent) -> void:
 					var channel: String = metadata.get("value", "")
 					_cycle_channel_visibility(channel)
 					_tree.accept_event()
+				"instance":
+					var instance_id: int = metadata.get("value", 0)
+					_cycle_instance_visibility(instance_id)
+					_tree.accept_event()
 
 		MOUSE_BUTTON_RIGHT:
 			# Right-click toggles OFF
@@ -594,6 +736,10 @@ func _on_tree_gui_input(event: InputEvent) -> void:
 				"channel":
 					var channel: String = metadata.get("value", "")
 					_toggle_channel_off(channel)
+					_tree.accept_event()
+				"instance":
+					var instance_id: int = metadata.get("value", 0)
+					_toggle_instance_off(instance_id)
 					_tree.accept_event()
 
 
@@ -651,3 +797,31 @@ func _toggle_channel_off(channel: String) -> void:
 	_channel_visibility[channel] = next_mode
 	_update_ui()
 	channel_visibility_changed.emit(channel, next_mode)
+
+
+## Left-click cycles between SHOWN and HIDDEN only for instances
+func _cycle_instance_visibility(instance_id: int) -> void:
+	var current = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		# If currently OFF, clicking enables it as SHOWN
+		next_mode = VisibilityMode.SHOWN
+	else:
+		# Toggle between SHOWN and HIDDEN
+		next_mode = VisibilityMode.HIDDEN if current == VisibilityMode.SHOWN else VisibilityMode.SHOWN
+	_instance_visibility[instance_id] = next_mode
+	_update_ui()
+	instance_visibility_changed.emit(instance_id, next_mode)
+
+
+## Right-click toggles OFF state for instances
+func _toggle_instance_off(instance_id: int) -> void:
+	var current = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
+	var next_mode: int
+	if current == VisibilityMode.OFF:
+		next_mode = VisibilityMode.SHOWN
+	else:
+		next_mode = VisibilityMode.OFF
+	_instance_visibility[instance_id] = next_mode
+	_update_ui()
+	instance_visibility_changed.emit(instance_id, next_mode)

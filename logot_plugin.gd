@@ -2,19 +2,28 @@
 extends EditorPlugin
 
 const EditorPanelScript = preload("res://addons/logot/editor/logot_editor_panel.gd")
+const LogotDebuggerPlugin = preload("res://addons/logot/editor/logot_debugger_plugin.gd")
 
 var _editor_panel: Control
 var _scroll_container: ScrollContainer
+var _debugger_plugin: EditorDebuggerPlugin
 
 
 func _enter_tree() -> void:
 	print("Logot plugin activated.")
 	add_autoload_singleton("Logot", "res://addons/logot/logot.gd")
 
+	# Create and register the debugger plugin for game instance communication
+	_debugger_plugin = LogotDebuggerPlugin.new()
+	add_debugger_plugin(_debugger_plugin)
+
 	# Create editor panel - it instantiates logot.tscn internally
 	# No inheritance issues since logot_editor_panel.gd extends Control directly
 	_editor_panel = Control.new()
 	_editor_panel.set_script(EditorPanelScript)
+
+	# Pass the debugger plugin reference to the editor panel
+	_editor_panel.set_debugger_plugin(_debugger_plugin)
 
 	_scroll_container = ScrollContainer.new()
 	_scroll_container.name = "LogotPanel"
@@ -39,6 +48,10 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	remove_autoload_singleton("Logot")
+
+	if _debugger_plugin:
+		remove_debugger_plugin(_debugger_plugin)
+		_debugger_plugin = null
 
 	if _scroll_container:
 		remove_control_from_bottom_panel(_scroll_container)
