@@ -26,10 +26,10 @@ const COLOR_HIDDEN := Color(1, 1, 1, 0.65)  # Semi-transparent white
 const COLOR_OFF := Color(1, 1, 1, 0.3)     # Semi-transparent white
 
 # Visibility icons
-const ICON_VISIBLE := preload("res://addons/assets/channel_visible.svg")
-const ICON_HIDDEN := preload("res://addons/assets/channel_hidden.svg")
-const ICON_OFF := preload("res://addons/assets/channel_off.svg")
-const ICON_MIXED := preload("res://addons/assets/channel_mixed.svg")
+const ICON_VISIBLE := preload("res://addons/logot/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://addons/logot/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://addons/logot/assets/channel_off.svg")
+const ICON_MIXED := preload("res://addons/logot/assets/channel_mixed.svg")
 
 const LEVEL_COLORS := {
 	LogLevel.ERROR: Color8(204, 101, 102),
