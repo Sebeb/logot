@@ -48,7 +48,7 @@ class EngineLogger extends Logger:
 				backtrace_str = str(script_backtraces[gdscript_idx])
 
 		var full_message := message + source_info
-		console.log_msg([full_message], level, "Godot", backtrace_str)
+		console.log([full_message], level, "Godot", backtrace_str)
 		_in_logger_callback = false
 
 	## Intercepts engine messages (print, print_rich, etc.)
@@ -85,7 +85,7 @@ class EngineLogger extends Logger:
 			backtrace_str = "\n".join(lines)
 
 		var level := LogLevel.ERROR if error else LogLevel.INFO
-		console.log_msg([message], level, "Godot", backtrace_str)
+		console.log([message], level, "Godot", backtrace_str)
 		_in_logger_callback = false
 
 
@@ -190,7 +190,7 @@ func can_log(level: int = LogLevel.MESSAGE, channel: String = "") -> bool:
 
 ## Log with objects array. Always evaluates objects.
 ## stack_trace is optional and will be hidden by default (shown when expanded)
-func log_msg(objects: Array, level: int = LogLevel.MESSAGE, channel: String = "", stack_trace: String = "") -> void:
+func log(objects: Array, level: int = LogLevel.MESSAGE, channel: String = "", stack_trace: String = "") -> void:
 	_ensure_channel_exists(channel)
 	_ensure_level_exists(level)
 
@@ -234,7 +234,7 @@ func try_log(objects_fn: Callable, level: int = LogLevel.MESSAGE, channel: Strin
 
 	if can_log(level, channel):
 		var objects: Array = objects_fn.call()
-		log_msg(objects, level, channel)
+		self.log(objects, level, channel)
 	else:
 		# Track this rejected log
 		_track_off_log(level, channel)
@@ -409,13 +409,13 @@ func _init_default_levels() -> void:
 # =============================================================================
 
 func print_error(text: String, print_godot := false) -> void:
-	log_msg([text], LogLevel.ERROR, "")
+	self.log([text], LogLevel.ERROR, "")
 	if print_godot:
 		push_error(text)
 
 
 func print_line(text: String, print_godot := false) -> void:
-	log_msg([text], LogLevel.MESSAGE, "")
+	self.log([text], LogLevel.MESSAGE, "")
 	if print_godot:
 		print(text)
 
@@ -871,7 +871,7 @@ func _execute_command(command_input: String) -> void:
 	add_input_history(command_input)
 	if _display:
 		_display.add_to_command_history(command_input)
-	log_msg(["[i]> " + command_input + "[/i]"], LogLevel.COMMAND, "")
+	self.log(["[i]> " + command_input + "[/i]"], LogLevel.COMMAND, "")
 	var text_split := parse_line_input(command_text)
 	var text_command := text_split[0]
 
@@ -925,7 +925,7 @@ func delete_history() -> void:
 
 
 func help() -> void:
-	log_msg(["[color=cyan]Help:[/color]
+	self.log(["[color=cyan]Help:[/color]
 	[color=cyan]Search:[/color]
 		Type text to filter logs in real-time
 		Press Enter to confirm and clear the search
@@ -966,7 +966,7 @@ func commands() -> void:
 	for command in console_commands:
 		cmds.append(str(command))
 	cmds.sort()
-	log_msg([str(cmds)])
+	self.log([str(cmds)])
 
 
 func commands_list() -> void:
@@ -985,7 +985,7 @@ func commands_list() -> void:
 			else:
 				arguments_string += "  <" + console_commands[command].arguments[i] + ">"
 		output += "[color=light_green]%s[/color][color=gray]%s[/color]:   %s\n" % [command, arguments_string, description]
-	log_msg([output])
+	self.log([output])
 
 
 func add_input_history(text : String) -> void:
@@ -1012,34 +1012,34 @@ func _cmd_test_logging() -> void:
 
 	# Test 1: All log levels
 	print_line("[color=light_green]Test 1: All Log Levels[/color]")
-	log_msg(["This is an ERROR message"], LogLevel.ERROR, "")
-	log_msg(["This is a WARN message"], LogLevel.WARN, "")
-	log_msg(["This is a COMMAND message"], LogLevel.COMMAND, "")
-	log_msg(["This is a MESSAGE (default level)"], LogLevel.MESSAGE, "")
-	log_msg(["This is an INFO message"], LogLevel.INFO, "")
-	log_msg(["This is a VERBOSE message"], LogLevel.VERBOSE, "")
-	log_msg(["This is a DEBUG message"], LogLevel.DEBUG, "")
+	self.log(["This is an ERROR message"], LogLevel.ERROR, "")
+	self.log(["This is a WARN message"], LogLevel.WARN, "")
+	self.log(["This is a COMMAND message"], LogLevel.COMMAND, "")
+	self.log(["This is a MESSAGE (default level)"], LogLevel.MESSAGE, "")
+	self.log(["This is an INFO message"], LogLevel.INFO, "")
+	self.log(["This is a VERBOSE message"], LogLevel.VERBOSE, "")
+	self.log(["This is a DEBUG message"], LogLevel.DEBUG, "")
 	print_line("")
 
 	# Test 2: Multiple objects in a single log
 	print_line("[color=light_green]Test 2: Multiple Objects[/color]")
-	log_msg(["Player health:", 100, "Mana:", 50, {"status": "alive"}], LogLevel.MESSAGE, "")
-	log_msg([Vector2(10, 20), Vector3(1, 2, 3), Color.RED], LogLevel.INFO, "")
+	self.log(["Player health:", 100, "Mana:", 50, {"status": "alive"}], LogLevel.MESSAGE, "")
+	self.log([Vector2(10, 20), Vector3(1, 2, 3), Color.RED], LogLevel.INFO, "")
 	print_line("")
 
 	# Test 3: Channels
 	print_line("[color=light_green]Test 3: Channels[/color]")
-	log_msg(["Message in General channel"], LogLevel.MESSAGE, "")
-	log_msg(["Message in Player channel"], LogLevel.MESSAGE, "Player")
-	log_msg(["Message in Combat channel"], LogLevel.MESSAGE, "Combat")
-	log_msg(["Message in Network channel"], LogLevel.MESSAGE, "Network")
-	log_msg(["Error in Audio channel"], LogLevel.ERROR, "Audio")
+	self.log(["Message in General channel"], LogLevel.MESSAGE, "")
+	self.log(["Message in Player channel"], LogLevel.MESSAGE, "Player")
+	self.log(["Message in Combat channel"], LogLevel.MESSAGE, "Combat")
+	self.log(["Message in Network channel"], LogLevel.MESSAGE, "Network")
+	self.log(["Error in Audio channel"], LogLevel.ERROR, "Audio")
 	print_line("")
 
 	# Test 4: Multi-line messages
 	print_line("[color=light_green]Test 4: Multi-line Messages[/color]")
-	log_msg(["Line 1\nLine 2\nLine 3\nLine 4"], LogLevel.MESSAGE, "")
-	log_msg(["A multi-line\nerror message\nwith details"], LogLevel.ERROR, "Test")
+	self.log(["Line 1\nLine 2\nLine 3\nLine 4"], LogLevel.MESSAGE, "")
+	self.log(["A multi-line\nerror message\nwith details"], LogLevel.ERROR, "Test")
 	print_line("")
 
 	# Test 5: try_log (lazy evaluation)
@@ -1068,25 +1068,25 @@ func _cmd_test_logging() -> void:
 
 	# Test 8: Special characters and BBCode
 	print_line("[color=light_green]Test 8: Special Characters[/color]")
-	log_msg(["Message with [brackets] and <angle brackets>"], LogLevel.MESSAGE, "")
-	log_msg(["Tab\there and\tthere"], LogLevel.INFO, "")
-	log_msg(["Unicode: émoji → αβγ 日本語"], LogLevel.MESSAGE, "")
+	self.log(["Message with [brackets] and <angle brackets>"], LogLevel.MESSAGE, "")
+	self.log(["Tab\there and\tthere"], LogLevel.INFO, "")
+	self.log(["Unicode: émoji → αβγ 日本語"], LogLevel.MESSAGE, "")
 	print_line("")
 
 	# Test 9: Empty and edge cases
 	print_line("[color=light_green]Test 9: Edge Cases[/color]")
-	log_msg([""], LogLevel.MESSAGE, "")  # Empty string
-	log_msg([null], LogLevel.INFO, "")  # Null value
-	log_msg([0, 0.0, false, []], LogLevel.DEBUG, "")  # Falsy values
+	self.log([""], LogLevel.MESSAGE, "")  # Empty string
+	self.log([null], LogLevel.INFO, "")  # Null value
+	self.log([0, 0.0, false, []], LogLevel.DEBUG, "")  # Falsy values
 	print_line("")
 
 	# Test 10: Duplicate messages (for collapse testing)
 	print_line("[color=light_green]Test 10: Duplicate Messages (for collapse testing)[/color]")
-	log_msg(["Duplicate message"], LogLevel.MESSAGE, "Test")
-	log_msg(["Duplicate message"], LogLevel.MESSAGE, "Test")
-	log_msg(["Duplicate message"], LogLevel.MESSAGE, "Test")
-	log_msg(["Different message"], LogLevel.MESSAGE, "Test")
-	log_msg(["Duplicate message"], LogLevel.MESSAGE, "Test")
+	self.log(["Duplicate message"], LogLevel.MESSAGE, "Test")
+	self.log(["Duplicate message"], LogLevel.MESSAGE, "Test")
+	self.log(["Duplicate message"], LogLevel.MESSAGE, "Test")
+	self.log(["Different message"], LogLevel.MESSAGE, "Test")
+	self.log(["Duplicate message"], LogLevel.MESSAGE, "Test")
 	print_line("")
 
 	# Test 11: Long message
@@ -1094,7 +1094,7 @@ func _cmd_test_logging() -> void:
 	var long_text := "This is a very long message that tests how the console handles text that might exceed normal display widths. "
 	long_text += "It contains multiple sentences and should test word wrapping functionality. "
 	long_text += "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-	log_msg([long_text], LogLevel.MESSAGE, "Console")
+	self.log([long_text], LogLevel.MESSAGE, "Console")
 	print_line("")
 
 	# Show stats after all tests
@@ -1152,10 +1152,10 @@ func _cmd_test_nested_channels() -> void:
 
 	# Test 1: Create hierarchical channels
 	print_line("[color=light_green]Test 1: Creating Hierarchical Channels[/color]")
-	log_msg(["Message in navigation channel"], LogLevel.INFO, "navigation")
-	log_msg(["Message in navigation/pathfinding"], LogLevel.INFO, "navigation/pathfinding")
-	log_msg(["Message in navigation/nav mesh"], LogLevel.INFO, "navigation/nav mesh")
-	log_msg(["Message in navigation/nav mesh/generation"], LogLevel.DEBUG, "navigation/nav mesh/generation")
+	self.log(["Message in navigation channel"], LogLevel.INFO, "navigation")
+	self.log(["Message in navigation/pathfinding"], LogLevel.INFO, "navigation/pathfinding")
+	self.log(["Message in navigation/nav mesh"], LogLevel.INFO, "navigation/nav mesh")
+	self.log(["Message in navigation/nav mesh/generation"], LogLevel.DEBUG, "navigation/nav mesh/generation")
 	print_line("")
 
 	# Test 2: Verify parent channels were created
@@ -1182,20 +1182,20 @@ func _cmd_test_nested_channels() -> void:
 
 	# Test 4: Log more messages to different nested channels
 	print_line("[color=light_green]Test 4: Logging to Multiple Nested Channels[/color]")
-	log_msg(["Physics root message"], LogLevel.MESSAGE, "physics")
-	log_msg(["Physics collision message"], LogLevel.MESSAGE, "physics/collision")
-	log_msg(["Physics collision/broad phase"], LogLevel.DEBUG, "physics/collision/broad phase")
-	log_msg(["Physics collision/narrow phase"], LogLevel.DEBUG, "physics/collision/narrow phase")
-	log_msg(["Physics rigidbody message"], LogLevel.INFO, "physics/rigidbody")
+	self.log(["Physics root message"], LogLevel.MESSAGE, "physics")
+	self.log(["Physics collision message"], LogLevel.MESSAGE, "physics/collision")
+	self.log(["Physics collision/broad phase"], LogLevel.DEBUG, "physics/collision/broad phase")
+	self.log(["Physics collision/narrow phase"], LogLevel.DEBUG, "physics/collision/narrow phase")
+	self.log(["Physics rigidbody message"], LogLevel.INFO, "physics/rigidbody")
 	print_line("")
 
 	# Test 5: Deep nesting test
 	print_line("[color=light_green]Test 5: Deep Nesting Test[/color]")
-	log_msg(["Level 1"], LogLevel.INFO, "a")
-	log_msg(["Level 2"], LogLevel.INFO, "a/b")
-	log_msg(["Level 3"], LogLevel.INFO, "a/b/c")
-	log_msg(["Level 4"], LogLevel.INFO, "a/b/c/d")
-	log_msg(["Level 5"], LogLevel.INFO, "a/b/c/d/e")
+	self.log(["Level 1"], LogLevel.INFO, "a")
+	self.log(["Level 2"], LogLevel.INFO, "a/b")
+	self.log(["Level 3"], LogLevel.INFO, "a/b/c")
+	self.log(["Level 4"], LogLevel.INFO, "a/b/c/d")
+	self.log(["Level 5"], LogLevel.INFO, "a/b/c/d/e")
 	print_line("Created 5-level deep channel hierarchy")
 	print_line("")
 
