@@ -2,6 +2,8 @@
 class_name ConsoleSidebar
 extends PanelContainer
 
+const LogLevel = preload("res://addons/logot/log_level.gd")
+
 ## Shared sidebar component used by both in-game console and editor panel.
 ## Uses Godot's Tree component with tri-state checkboxes:
 ## - Checked: SHOWN (visible)
@@ -9,6 +11,16 @@ extends PanelContainer
 ## - Unchecked: OFF (not logged at all)
 
 const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
+
+const LEVEL_COLORS := {
+	LogLevel.ERROR: Color8(204, 101, 102),
+	LogLevel.WARN: Color8(240, 198, 116),
+	LogLevel.COMMAND: Color8(133, 255, 98),
+	LogLevel.MESSAGE: Color8(255, 255, 255),
+	LogLevel.INFO: Color8(136, 215, 179),
+	LogLevel.VERBOSE: Color8(210, 180, 162),
+	LogLevel.DEBUG: Color8(128, 128, 128),
+}
 
 # Visibility modes
 enum VisibilityMode { SHOWN, HIDDEN, OFF }
@@ -307,7 +319,7 @@ func _rebuild_settings_items() -> void:
 func _add_level_tree_item(level: int) -> void:
 	var item := _tree.create_item(_levels_root)
 	var level_name: String = LogLevel.names.get(level, "UNKNOWN").capitalize()
-	var color: Color = ConsoleDisplay.LEVEL_COLORS.get(level, Color.WHITE)
+	var color: Color = LEVEL_COLORS.get(level, Color.WHITE)
 
 	item.set_cell_mode(0, TreeItem.CELL_MODE_CHECK)
 	item.set_text(0, level_name)

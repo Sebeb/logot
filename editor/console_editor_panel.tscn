@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cei21648vhlkg"]
 
-[ext_resource type="Script" uid="uid://cstmav2lws5ji" path="res://addons/console/editor/console_editor_panel.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://cstmav2lws5ji" path="res://addons/logot/editor/console_editor_panel.gd" id="1_script"]
 
 [node name="ConsoleEditorPanel" type="Control" unique_id=1653841320]
 layout_mode = 3

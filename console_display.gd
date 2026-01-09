@@ -12,6 +12,8 @@ extends Control
 
 signal custom_setting_changed(setting_name: String, value: bool)
 signal cleared()
+signal level_visibility_changed(level: int, mode: int)
+signal channel_visibility_changed(channel: String, mode: int)
 
 # =============================================================================
 # SHARED CLASSES
@@ -97,7 +99,7 @@ const LEVEL_COLORS := {
 
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var _sidebar: ConsoleSidebar
+var _sidebar  # ConsoleSidebar - type removed to avoid circular dependency
 var _sidebar_toggle_btn: Button
 var _clear_btn: Button
 var _main_container: Control
@@ -133,6 +135,10 @@ var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
 var _rejected_level_count_provider: Callable  # Returns int for a given level
 var _rejected_channel_count_provider: Callable  # Returns int for a given channel
+var _level_visibility_getter: Callable  # Returns int (VisibilityMode) for a given level
+var _level_visibility_setter: Callable  # Sets visibility mode for a given level
+var _channel_visibility_getter: Callable  # Returns int (VisibilityMode) for a given channel
+var _channel_visibility_setter: Callable  # Sets visibility mode for a given channel
 var _custom_settings: Array = []
 
 # Autocomplete state
@@ -179,6 +185,46 @@ func set_rejected_channel_count_provider(provider: Callable) -> void:
 	_rejected_channel_count_provider = provider
 
 
+func set_level_visibility_provider(getter: Callable, setter: Callable) -> void:
+	_level_visibility_getter = getter
+	_level_visibility_setter = setter
+
+
+func set_channel_visibility_provider(getter: Callable, setter: Callable) -> void:
+	_channel_visibility_getter = getter
+	_channel_visibility_setter = setter
+
+
+## Get level visibility mode (uses provider if set, otherwise local dictionary)
+func _get_level_visibility(level: int) -> int:
+	if _level_visibility_getter.is_valid():
+		return _level_visibility_getter.call(level)
+	return _level_visibility.get(level, VisibilityMode.SHOWN)
+
+
+## Set level visibility mode (uses provider if set, otherwise local dictionary)
+func _set_level_visibility(level: int, mode: int) -> void:
+	if _level_visibility_setter.is_valid():
+		_level_visibility_setter.call(level, mode)
+	else:
+		_level_visibility[level] = mode
+
+
+## Get channel visibility mode (uses provider if set, otherwise local dictionary)
+func _get_channel_visibility(channel: String) -> int:
+	if _channel_visibility_getter.is_valid():
+		return _channel_visibility_getter.call(channel)
+	return _channel_visibility.get(channel, VisibilityMode.SHOWN)
+
+
+## Set channel visibility mode (uses provider if set, otherwise local dictionary)
+func _set_channel_visibility(channel: String, mode: int) -> void:
+	if _channel_visibility_setter.is_valid():
+		_channel_visibility_setter.call(channel, mode)
+	else:
+		_channel_visibility[channel] = mode
+
+
 func set_autocomplete_popup(popup: ItemList) -> void:
 	_autocomplete_popup = popup
 
@@ -216,14 +262,29 @@ func _get_log_entries() -> Array:
 
 
 ## Return display text for an entry
-func _get_entry_display_text(entry, truncate: bool) -> String:
+func _get_entry_display_text(entry, truncate: bool, count: int = 1) -> String:
 	if _entry_text_provider.is_valid():
 		var text: String = _entry_text_provider.call(entry, truncate)
 		return text
+
+	var full_text := _format_objects(entry.objects)
+	var display_text: String
+	var extra_lines: int
+
 	if entry.expanded:
-		return _format_expanded_entry(entry)
-	# Regenerate collapsed formatting dynamically
-	return get_collapsed_display_text(entry, truncate)
+		# Expanded: show full text with stack trace
+		display_text = full_text
+		extra_lines = 0
+		var formatted_trace := _format_stack_trace(entry.stack_trace) if entry.stack_trace != "" else ""
+		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, false, extra_lines, entry.stack_trace, count, formatted_trace)
+	else:
+		# Collapsed: show first line only if truncating
+		if truncate and entry.extra_line_count > 0:
+			display_text = full_text.split("\n")[0] if "\n" in full_text else full_text
+		else:
+			display_text = full_text
+		extra_lines = entry.extra_line_count if truncate else 0
+		return format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, count)
 
 
 ## Return additional sidebar settings
@@ -340,7 +401,8 @@ func _init_default_levels() -> void:
 	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
 				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
 	for level in levels:
-		if level not in _level_visibility:
+		# Only initialize local dictionary if no provider is set
+		if not _level_visibility_getter.is_valid() and level not in _level_visibility:
 			_level_visibility[level] = VisibilityMode.SHOWN
 		if level not in _level_stats:
 			_level_stats[level] = FilterStats.new()
@@ -354,7 +416,8 @@ func _init_default_levels() -> void:
 func _ensure_channel_exists(channel: String) -> void:
 	if channel not in _known_channels:
 		_known_channels.append(channel)
-		if channel not in _channel_visibility:
+		# Only initialize local dictionary if no provider is set
+		if not _channel_visibility_getter.is_valid() and channel not in _channel_visibility:
 			_channel_visibility[channel] = VisibilityMode.SHOWN
 		if channel not in _channel_stats:
 			_channel_stats[channel] = FilterStats.new()
@@ -363,7 +426,8 @@ func _ensure_channel_exists(channel: String) -> void:
 
 
 func _ensure_level_exists(level: int) -> void:
-	if level not in _level_visibility:
+	# Only initialize local dictionary if no provider is set
+	if not _level_visibility_getter.is_valid() and level not in _level_visibility:
 		_level_visibility[level] = VisibilityMode.SHOWN
 	if level not in _level_stats:
 		_level_stats[level] = FilterStats.new()
@@ -378,12 +442,8 @@ func get_known_channels() -> Array[String]:
 # =============================================================================
 
 func _should_display(entry) -> bool:
-	var level_mode = _level_visibility.get(entry.level, VisibilityMode.SHOWN)
-	var channel_mode = VisibilityMode.SHOWN
-	if entry.channel != "":
-		channel_mode = _channel_visibility.get(entry.channel, VisibilityMode.SHOWN)
-	else:
-		channel_mode = _channel_visibility.get("", VisibilityMode.SHOWN)
+	var level_mode = _get_level_visibility(entry.level)
+	var channel_mode = _get_channel_visibility(entry.channel)
 
 	if _search_filter != "":
 		var search_text := _format_objects(entry.objects).to_lower()
@@ -400,79 +460,67 @@ func _format_objects(objects: Array) -> String:
 	return " ".join(parts)
 
 
-func _get_level_color_hex(level: int) -> String:
+static func _get_level_color_hex(level: int) -> String:
 	var color: Color = LEVEL_COLORS.get(level, Color.WHITE)
 	return "#" + color.to_html(false)
 
 
-func _format_with_level_and_channel(text: String, level: int, channel: String, timestamp: String, is_collapsed: bool = false, extra_lines: int = 0, stack_trace: String = "") -> String:
-	var color: String = _get_level_color_hex(level)
+## Formats text for display as a BBCode table row with timestamp, channel, and message.
+## This is the core static formatting function for all log entry display.
+## Parameters:
+##   - text: The message text to display
+##   - level: Log level (determines color)
+##   - channel: Channel name (can be empty)
+##   - timestamp: Timestamp string
+##   - entry_id: Entry ID for URL actions (use -1 if not applicable)
+##   - is_collapsed: Whether this is a collapsed view
+##   - extra_lines: Number of hidden lines (for collapsed view indicator)
+##   - stack_trace: Stack trace string (for expanded view, or to determine expandability)
+##   - collapse_count: Number of collapsed duplicates (badge shown after channel)
+##   - formatted_stack_trace: Pre-formatted stack trace BBCode (for expanded view)
+static func format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "") -> String:
+	var color: String = ConsoleDisplay._get_level_color_hex(level)
 
 	# Build extra lines indicator for collapsed view
 	var extra_indicator := ""
 	if is_collapsed and extra_lines > 0:
 		extra_indicator = " [i][color=dim_gray]+%d[/color][/i]" % extra_lines
 
-	# Determine the toggle action for clicking on the message text
+	# Determine if this entry has expandable content and the toggle action
 	var has_expandable := extra_lines > 0 or stack_trace != ""
 	var toggle_action := "expand" if is_collapsed else "collapse"
 
-	# Build the message content
-	var message: String
-	if has_expandable:
-		message = "[url=%s:{entry_id}][color=%s]%s[/color][/url]%s" % [toggle_action, color, text, extra_indicator]
-	else:
-		message = "[color=%s]%s[/color]%s" % [color, text, extra_indicator]
+	# Build message content
+	var message_content := "[color=%s]%s[/color]%s" % [color, text, extra_indicator]
+	# Append formatted stack trace for expanded view
+	if not is_collapsed and formatted_stack_trace != "":
+		message_content += "\n" + formatted_stack_trace
 
-	# Build single row: [timestamp]   [channel] [message]
-	# Add extra spacing after timestamp for visual separation
-	var timestamp_cell := "[color=dim_gray]%s[/color]   " % timestamp
-	var channel_cell := ""
+	# Build cell contents
+	var timestamp_content := "[color=dim_gray]%s[/color]" % timestamp
+
+	# Channel content with optional collapse count badge
+	var channel_content := ""
 	if channel != "":
-		# Use same color as log level for channel
-		channel_cell = "[color=%s][%s][/color] " % [color, channel]
+		channel_content = "[color=%s][%s][/color]" % [color, channel]
 
-	return "[table=3][cell]%s[/cell][cell]%s[/cell][cell]%s[/cell][/table]" % [timestamp_cell, channel_cell, message]
+	var count_content := ""
+	if collapse_count > 0:
+		var space := " " if channel_content != "" else ""
+		count_content = "%s[color=%s][%d][/color]" % [space, color, collapse_count]
 
+	# Wrap contents in URL if expandable (URLs must wrap text, not tables)
+	if has_expandable and entry_id >= 0:
+		var url_action := "%s:%d" % [toggle_action, entry_id]
+		timestamp_content = "[url=%s]%s[/url]" % [url_action, timestamp_content]
+		if channel_content != "":
+			channel_content = "[url=%s]%s[/url]" % [url_action, channel_content]
+		if count_content != "":
+			count_content = "[url=%s]%s[/url]" % [url_action, count_content]
+		message_content = "[url=%s]%s[/url]" % [url_action, message_content]
 
-func get_collapsed_display_text(entry: LogEntry, truncate_multiline: bool = true) -> String:
-	# Determine which text to display
-	var display_text: String
-	if truncate_multiline and entry.extra_line_count > 0:
-		# Show only first line
-		var full_text := _format_objects(entry.objects)
-		var first_line := full_text.split("\n")[0] if "\n" in full_text else full_text
-		display_text = first_line
-	else:
-		# Show full text
-		display_text = _format_objects(entry.objects)
-
-	# Always regenerate formatting dynamically
-	var formatted := _format_with_level_and_channel(display_text, entry.level, entry.channel, entry.timestamp, true, entry.extra_line_count if truncate_multiline else 0, entry.stack_trace)
-	return formatted.replace("{entry_id}", str(entry.id))
-
-
-func _format_with_count(formatted: String, count: int, level: int) -> String:
-	var count_color := _get_level_color_hex(level)
-	# Handle table-wrapped content: insert count after first [/color] inside the first cell
-	var first_cell_end := formatted.find("[/cell]")
-	if first_cell_end != -1:
-		var cell_content := formatted.substr(0, first_cell_end)
-		var rest := formatted.substr(first_cell_end)
-		var timestamp_end := cell_content.find("[/color]")
-		if timestamp_end != -1:
-			timestamp_end += len("[/color]")
-			var before := cell_content.substr(0, timestamp_end)
-			var after := cell_content.substr(timestamp_end)
-			return "%s [color=%s][%d][/color]%s%s" % [before, count_color, count, after, rest]
-	# Fallback for non-table content
-	var timestamp_end := formatted.find("[/color]")
-	if timestamp_end != -1:
-		timestamp_end += len("[/color]")
-		var before := formatted.substr(0, timestamp_end)
-		var after := formatted.substr(timestamp_end)
-		return "%s [color=%s][%d][/color]%s" % [before, count_color, count, after]
-	return "[color=%s][%d][/color] %s" % [count_color, count, formatted]
+	# Build single row: [timestamp] [channel + count] [message]
+	return "[table=3][cell]%s [/cell] [cell]%s%s%s[/cell][/table]" % [timestamp_content, channel_content, count_content, message_content]
 
 
 ## Parse and format a single stack frame line
@@ -510,34 +558,6 @@ func _get_top_stack_frame(stack_trace: String) -> String:
 		if not formatted.is_empty():
 			return formatted
 	return ""
-
-
-func _format_expanded_entry(entry) -> String:
-	var color: String = _get_level_color_hex(entry.level)
-	var channel_display = entry.channel if entry.channel != "" else ""
-
-	# Build the message content - make it clickable to collapse
-	var message_text := _format_objects(entry.objects)
-	var full_message := "[url=collapse:%d][color=%s]%s[/color][/url]" % [entry.id, color, message_text]
-
-	# Append formatted stack trace if present
-	if entry.stack_trace != "":
-		full_message += "\n" + _format_stack_trace(entry.stack_trace)
-
-	# Build the table layout:
-	# Row 1: [timestamp]   [message with stack trace]
-	# Row 2: [channel]     [empty] (only if channel exists)
-	# Add extra spacing after timestamp for visual separation
-	var row1_col1 := "[color=dim_gray]%s[/color] " % entry.timestamp
-	var row1_col2 := full_message
-
-	if channel_display != "":
-		# Use same color as log level for channel
-		var row2_col1 := "[color=%s][%s][/color] " % [color, channel_display]
-		var row2_col2 := ""
-		return "[table=2][cell]%s[/cell][cell]%s[/cell][cell]%s[/cell][cell]%s[/cell][/table]" % [row1_col1, row1_col2, row2_col1, row2_col2]
-	else:
-		return "[table=2][cell]%s[/cell][cell]%s[/cell][/table]" % [row1_col1, row1_col2]
 
 
 func _format_stack_trace(stack_trace: String) -> String:
@@ -596,14 +616,12 @@ func _display_entry(entry) -> void:
 		rich_label.clear()
 		rich_label.append_text(_bbcode_before_last_entry)
 
-		var collapsed_text := _get_entry_display_text(_last_displayed_entry, _truncate_multiline)
-		rich_label.append_text(_format_with_count(collapsed_text, _last_displayed_count, _last_displayed_entry.level) + "\n")
+		var entry_text := _get_entry_display_text(_last_displayed_entry, _truncate_multiline, _last_displayed_count)
+		rich_label.append_text(entry_text + "\n")
 	else:
 		# Accumulate the previous entry's BBCode before moving to the new entry
 		if _last_displayed_entry != null:
-			var prev_text: String = _get_entry_display_text(_last_displayed_entry, _truncate_multiline)
-			if _last_displayed_count > 1:
-				prev_text = _format_with_count(prev_text, _last_displayed_count, _last_displayed_entry.level)
+			var prev_text: String = _get_entry_display_text(_last_displayed_entry, _truncate_multiline, _last_displayed_count)
 			_bbcode_before_last_entry += prev_text + "\n"
 
 		_last_displayed_entry = entry
@@ -644,8 +662,8 @@ func _rebuild_display() -> void:
 # =============================================================================
 
 func _update_stats_for_entry(entry) -> void:
-	var level_mode = _level_visibility.get(entry.level, VisibilityMode.SHOWN)
-	var channel_mode = _channel_visibility.get(entry.channel, VisibilityMode.SHOWN)
+	var level_mode = _get_level_visibility(entry.level)
+	var channel_mode = _get_channel_visibility(entry.channel)
 
 	var level_stats: FilterStats = _level_stats.get(entry.level)
 	var channel_stats: FilterStats = _channel_stats.get(entry.channel)
@@ -708,21 +726,21 @@ func _update_sidebar_stats() -> void:
 # =============================================================================
 
 func can_log(level: int, channel: String = "") -> bool:
-	if _level_visibility.get(level, VisibilityMode.SHOWN) == VisibilityMode.OFF:
+	if _get_level_visibility(level) == VisibilityMode.OFF:
 		return false
-	if channel != "" and _channel_visibility.get(channel, VisibilityMode.SHOWN) == VisibilityMode.OFF:
+	if channel != "" and _get_channel_visibility(channel) == VisibilityMode.OFF:
 		return false
 	return true
 
 
 func set_level_visibility(level: int, mode: int) -> void:
-	_level_visibility[level] = mode
+	_set_level_visibility(level, mode)
 	_save_filter_settings()
 	_rebuild_display()
 
 
 func set_channel_visibility(channel: String, mode: int) -> void:
-	_channel_visibility[channel] = mode
+	_set_channel_visibility(channel, mode)
 	_save_filter_settings()
 	_rebuild_display()
 
@@ -732,16 +750,18 @@ func set_channel_visibility(channel: String, mode: int) -> void:
 # =============================================================================
 
 func _on_level_visibility_changed(level: int, mode: int) -> void:
-	_level_visibility[level] = mode
+	_set_level_visibility(level, mode)
 	_save_filter_settings()
 	_rebuild_display()
+	level_visibility_changed.emit(level, mode)
 
 
 func _on_channel_visibility_changed(channel: String, mode: int) -> void:
-	_channel_visibility[channel] = mode
+	_set_channel_visibility(channel, mode)
 	_save_filter_settings()
 	_rebuild_display()
 
+	channel_visibility_changed.emit(channel, mode)
 
 func _on_setting_changed(setting_name: String, value: bool) -> void:
 	match setting_name:
@@ -829,12 +849,16 @@ func _save_filter_settings() -> void:
 
 	var config := ConfigFile.new()
 
-	for level in _level_visibility:
-		config.set_value("levels", str(level), _level_visibility[level])
+	# Save level visibility - use local dictionary or query provider for known levels
+	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
+				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
+	for level in levels:
+		config.set_value("levels", str(level), _get_level_visibility(level))
 
-	for channel in _channel_visibility:
+	# Save channel visibility
+	for channel in _known_channels:
 		var key: String = channel if channel != "" else "__general__"
-		config.set_value("channels", key, _channel_visibility[channel])
+		config.set_value("channels", key, _get_channel_visibility(channel))
 
 	config.set_value("settings", "collapse_duplicates", _collapse_duplicates)
 	config.set_value("settings", "wrap_text", _wrap_text)
@@ -857,12 +881,12 @@ func _load_filter_settings() -> void:
 
 	if config.has_section("levels"):
 		for key in config.get_section_keys("levels"):
-			_level_visibility[int(key)] = config.get_value("levels", key)
+			_set_level_visibility(int(key), config.get_value("levels", key))
 
 	if config.has_section("channels"):
 		for key in config.get_section_keys("channels"):
 			var channel := "" if key == "__general__" else key
-			_channel_visibility[channel] = config.get_value("channels", key)
+			_set_channel_visibility(channel, config.get_value("channels", key))
 			if channel not in _known_channels:
 				_known_channels.append(channel)
 
@@ -887,12 +911,14 @@ func _sync_sidebar_state() -> void:
 	if not _sidebar:
 		return
 
-	for level in _level_visibility:
-		_sidebar.set_level_visibility(level, _level_visibility[level])
+	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
+				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
+	for level in levels:
+		_sidebar.set_level_visibility(level, _get_level_visibility(level))
 
 	for channel in _known_channels:
 		_sidebar.add_channel(channel)
-		_sidebar.set_channel_visibility(channel, _channel_visibility.get(channel, VisibilityMode.SHOWN))
+		_sidebar.set_channel_visibility(channel, _get_channel_visibility(channel))
 
 	_sidebar.set_setting("collapse_duplicates", _collapse_duplicates)
 	_sidebar.set_setting("wrap_text", _wrap_text)
