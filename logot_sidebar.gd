@@ -29,6 +29,7 @@ const COLOR_OFF := Color(1, 1, 1, 0.3)     # Semi-transparent white
 const ICON_VISIBLE := preload("res://addons/assets/channel_visible.svg")
 const ICON_HIDDEN := preload("res://addons/assets/channel_hidden.svg")
 const ICON_OFF := preload("res://addons/assets/channel_off.svg")
+const ICON_MIXED := preload("res://addons/assets/channel_mixed.svg")
 
 const LEVEL_COLORS := {
 	LogLevel.ERROR: Color8(204, 101, 102),
@@ -50,11 +51,17 @@ signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
 signal instance_visibility_changed(instance_id: int, mode: int)
 signal setting_changed(setting_name: String, value: bool)
+signal channel_deleted(channel: String)
 
 # =============================================================================
 # UI COMPONENTS (assigned from scene)
 # =============================================================================
 @onready var _tree: Tree = $SidebarTree
+
+# Context menu
+var _context_menu: PopupMenu
+var _context_item_type: String = ""
+var _context_item_value = null  # Can be int (level/instance) or String (channel)
 
 # Tree item references
 var _levels_root: TreeItem
@@ -66,6 +73,10 @@ var _level_items: Dictionary = {}    # {LogLevel.X: TreeItem}
 var _channel_items: Dictionary = {}  # {"channel": TreeItem}
 var _instance_items: Dictionary = {}  # {instance_id: TreeItem}
 var _settings_items: Dictionary = {}  # {"setting_name": TreeItem}
+
+# Hierarchical channel tracking
+var _channel_children: Dictionary = {}  # {"parent_channel": ["child1", "child2"]}
+var _channel_parent: Dictionary = {}    # {"child_channel": "parent_channel"}
 
 # =============================================================================
 # STATE
@@ -92,9 +103,17 @@ var _available_settings: Array[Dictionary] = []
 
 
 func _ready() -> void:
+	_setup_context_menu()
 	_setup_tree()
 	_init_default_levels()
 	_rebuild_ui()
+
+
+func _setup_context_menu() -> void:
+	_context_menu = PopupMenu.new()
+	_context_menu.name = "ContextMenu"
+	add_child(_context_menu)
+	_context_menu.id_pressed.connect(_on_context_menu_id_pressed)
 
 
 func _setup_tree() -> void:
@@ -114,6 +133,7 @@ func _setup_tree() -> void:
 	_tree.item_edited.connect(_on_tree_item_edited)
 	_tree.button_clicked.connect(_on_tree_button_clicked)
 	_tree.gui_input.connect(_on_tree_gui_input)
+	_tree.item_collapsed.connect(_on_tree_item_collapsed)
 
 	# Create invisible root
 	var root := _tree.create_item()
@@ -199,6 +219,26 @@ func set_setting(name: String, value: bool) -> void:
 ## Add a channel if not already known
 func add_channel(channel: String) -> void:
 	if channel not in _known_channels:
+		# For hierarchical channels (e.g., "navigation/nav mesh"), ensure parent channels exist first
+		if "/" in channel:
+			var parts := channel.split("/")
+			var parent_path := ""
+			for i in range(parts.size() - 1):
+				if parent_path == "":
+					parent_path = parts[i]
+				else:
+					parent_path += "/" + parts[i]
+				# Recursively ensure parent exists
+				add_channel(parent_path)
+
+			# Register this channel as a child of its direct parent
+			var direct_parent := "/".join(parts.slice(0, parts.size() - 1))
+			if direct_parent not in _channel_children:
+				_channel_children[direct_parent] = []
+			if channel not in _channel_children[direct_parent]:
+				_channel_children[direct_parent].append(channel)
+			_channel_parent[channel] = direct_parent
+
 		_known_channels.append(channel)
 		if channel not in _channel_visibility:
 			_channel_visibility[channel] = VisibilityMode.SHOWN
@@ -405,9 +445,11 @@ func _rebuild_ui() -> void:
 	for level in levels:
 		_add_level_tree_item(level)
 
-	# Build channel items
+	# Build channel items hierarchically (only add root-level channels here)
 	for channel in _known_channels:
-		_add_channel_tree_item(channel)
+		# Only add channels that don't have a parent (root level or "General")
+		if channel not in _channel_parent:
+			_add_channel_tree_item(channel, _channels_root)
 
 	# Build instance items (only active ones)
 	var has_active_instances := false
@@ -472,9 +514,17 @@ func _add_level_tree_item(level: int) -> void:
 	_level_items[level] = item
 
 
-func _add_channel_tree_item(channel: String) -> void:
-	var item := _tree.create_item(_channels_root)
-	var display_name := channel if channel != "" else DEFAULT_CHANNEL_DISPLAY_NAME
+func _add_channel_tree_item(channel: String, parent_item: TreeItem) -> void:
+	var item := _tree.create_item(parent_item)
+
+	# For hierarchical channels, only show the last part of the name
+	var display_name: String
+	if channel == "":
+		display_name = DEFAULT_CHANNEL_DISPLAY_NAME
+	elif "/" in channel:
+		display_name = channel.get_slice("/", channel.get_slice_count("/") - 1)
+	else:
+		display_name = channel
 
 	item.set_text(COL_NAME, display_name)
 	_set_item_not_selectable(item)
@@ -490,6 +540,11 @@ func _add_channel_tree_item(channel: String) -> void:
 	item.add_button(COL_ICON, _get_icon_for_mode(mode), 0)
 
 	_channel_items[channel] = item
+
+	# Recursively add children if this channel has any
+	if channel in _channel_children:
+		for child_channel in _channel_children[channel]:
+			_add_channel_tree_item(child_channel, item)
 
 
 func _add_instance_tree_item(instance_id: int) -> void:
@@ -535,6 +590,51 @@ func _get_icon_for_mode(mode: int) -> Texture2D:
 	return ICON_VISIBLE
 
 
+## Get all descendant channels of a parent channel (recursive)
+func _get_all_descendants(channel: String) -> Array[String]:
+	var descendants: Array[String] = []
+	if channel in _channel_children:
+		for child in _channel_children[channel]:
+			descendants.append(child)
+			descendants.append_array(_get_all_descendants(child))
+	return descendants
+
+
+## Check if a channel has children
+func _has_children(channel: String) -> bool:
+	return channel in _channel_children and _channel_children[channel].size() > 0
+
+
+## Get aggregated stats for a channel including all descendants
+func _get_aggregated_stats(channel: String) -> Dictionary:
+	var base_stats: Dictionary = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
+	var stats := {"shown": base_stats.shown, "hidden": base_stats.hidden, "off": base_stats.off}
+	for descendant in _get_all_descendants(channel):
+		var desc_stats: Dictionary = _channel_stats.get(descendant, {"shown": 0, "hidden": 0, "off": 0})
+		stats.shown += desc_stats.shown
+		stats.hidden += desc_stats.hidden
+		stats.off += desc_stats.off
+	return stats
+
+
+## Determine the visibility icon for a collapsed parent channel
+## Returns ICON_MIXED if children have different visibility states
+func _get_collapsed_visibility_icon(channel: String) -> Texture2D:
+	var own_mode := _channel_visibility.get(channel, VisibilityMode.SHOWN)
+	var all_same := true
+
+	for descendant in _get_all_descendants(channel):
+		var desc_mode := _channel_visibility.get(descendant, VisibilityMode.SHOWN)
+		if desc_mode != own_mode:
+			all_same = false
+			break
+
+	if all_same:
+		return _get_icon_for_mode(own_mode)
+	else:
+		return ICON_MIXED
+
+
 ## Update a tree item's button icon to reflect visibility mode
 func _update_tree_item_icon(item: TreeItem, mode: int) -> void:
 	item.set_button(COL_ICON, 0, _get_icon_for_mode(mode))
@@ -553,7 +653,13 @@ func _update_ui() -> void:
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-		_update_tree_item_icon(item, mode)
+
+		# For channels with children, check if collapsed to show mixed icon
+		if _has_children(channel) and item.collapsed:
+			item.set_button(COL_ICON, 0, _get_collapsed_visibility_icon(channel))
+		else:
+			_update_tree_item_icon(item, mode)
+
 		_update_tree_item_style(item, mode, Color.WHITE)
 
 	# Update instance items
@@ -597,9 +703,17 @@ func _update_stats_display() -> void:
 	# Update channel stats
 	for channel in _channel_items:
 		var item: TreeItem = _channel_items[channel]
-		var stats = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
 		var mode = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-		_set_item_stats(item, stats, mode)
+
+		# For channels with children that are collapsed, show aggregated stats
+		var stats: Dictionary
+		var is_collapsed_parent := _has_children(channel) and item.collapsed
+		if is_collapsed_parent:
+			stats = _get_aggregated_stats(channel)
+		else:
+			stats = _channel_stats.get(channel, {"shown": 0, "hidden": 0, "off": 0})
+
+		_set_item_stats(item, stats, mode, is_collapsed_parent)
 
 	# Update instance stats
 	for instance_id in _instance_items:
@@ -611,8 +725,8 @@ func _update_stats_display() -> void:
 
 ## Set stats for an item across the three stats columns
 ## - Don't show 0 counts
-## - Off counts only shown on OFF items
-func _set_item_stats(item: TreeItem, stats: Dictionary, mode: int) -> void:
+## - Off counts only shown on OFF items (or collapsed parents with any off counts)
+func _set_item_stats(item: TreeItem, stats: Dictionary, mode: int, is_collapsed_parent: bool = false) -> void:
 	# Shown count - only display if > 0
 	item.set_text(COL_SHOWN, str(stats.shown) if stats.shown > 0 else "")
 	item.set_tooltip_text(COL_SHOWN, "Shown Logs Count")
@@ -622,8 +736,8 @@ func _set_item_stats(item: TreeItem, stats: Dictionary, mode: int) -> void:
 	item.set_text(COL_HIDDEN, str(stats.hidden) if stats.hidden > 0 else "")
 	item.set_tooltip_text(COL_HIDDEN, "Hidden Logs Count")
 
-	# Off count - only display if > 0 AND mode is OFF
-	if stats.off > 0 and mode == VisibilityMode.OFF:
+	# Off count - only display if > 0 AND (mode is OFF OR this is a collapsed parent with aggregated off counts)
+	if stats.off > 0 and (mode == VisibilityMode.OFF or is_collapsed_parent):
 		item.set_text(COL_OFF, str(stats.off))
 	else:
 		item.set_text(COL_OFF, "")
@@ -653,44 +767,28 @@ func _on_tree_item_edited() -> void:
 
 
 ## Handle button clicks on tree items (left-click on visibility icons)
-func _on_tree_button_clicked(item: TreeItem, _column: int, _id: int, mouse_button_index: int) -> void:
+## Handle button clicks on tree items (clicking on visibility icon)
+func _on_tree_button_clicked(item: TreeItem, _column: int, _id: int, _mouse_button_index: int) -> void:
 	var metadata = item.get_metadata(COL_NAME)
 	if not metadata is Dictionary:
 		return
 
 	var item_type: String = metadata.get("type", "")
 
-	match mouse_button_index:
-		MOUSE_BUTTON_LEFT:
-			# Left-click toggles between SHOWN and HIDDEN
-			match item_type:
-				"level":
-					var level: int = metadata.get("value", 0)
-					_cycle_level_visibility(level)
-				"channel":
-					var channel: String = metadata.get("value", "")
-					_cycle_channel_visibility(channel)
-				"instance":
-					var instance_id: int = metadata.get("value", 0)
-					_cycle_instance_visibility(instance_id)
-
-		MOUSE_BUTTON_RIGHT:
-			# Right-click toggles OFF
-			match item_type:
-				"level":
-					var level: int = metadata.get("value", 0)
-					_toggle_level_off(level)
-				"channel":
-					var channel: String = metadata.get("value", "")
-					_toggle_channel_off(channel)
-				"instance":
-					var instance_id: int = metadata.get("value", 0)
-					_toggle_instance_off(instance_id)
+	# Left-click on icon cycles between SHOWN and HIDDEN
+	match item_type:
+		"level":
+			var level: int = metadata.get("value", 0)
+			_cycle_level_visibility(level)
+		"channel":
+			var channel: String = metadata.get("value", "")
+			_cycle_channel_visibility(channel)
+		"instance":
+			var instance_id: int = metadata.get("value", 0)
+			_cycle_instance_visibility(instance_id)
 
 
-## Handle clicks on the tree rows
-## Left-click anywhere toggles between SHOWN and HIDDEN
-## Right-click anywhere toggles OFF
+## Handle right-click on tree rows to show context menu
 func _on_tree_gui_input(event: InputEvent) -> void:
 	if not event is InputEventMouseButton or not event.pressed:
 		return
@@ -709,38 +807,126 @@ func _on_tree_gui_input(event: InputEvent) -> void:
 	if item_type != "level" and item_type != "channel" and item_type != "instance":
 		return
 
-	match event.button_index:
-		MOUSE_BUTTON_LEFT:
-			# Left-click toggles between SHOWN and HIDDEN
-			match item_type:
-				"level":
-					var level: int = metadata.get("value", 0)
-					_cycle_level_visibility(level)
-					_tree.accept_event()
-				"channel":
-					var channel: String = metadata.get("value", "")
-					_cycle_channel_visibility(channel)
-					_tree.accept_event()
-				"instance":
-					var instance_id: int = metadata.get("value", 0)
-					_cycle_instance_visibility(instance_id)
-					_tree.accept_event()
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		_show_context_menu(item, metadata, event.global_position)
+		_tree.accept_event()
 
-		MOUSE_BUTTON_RIGHT:
-			# Right-click toggles OFF
-			match item_type:
-				"level":
-					var level: int = metadata.get("value", 0)
-					_toggle_level_off(level)
-					_tree.accept_event()
-				"channel":
-					var channel: String = metadata.get("value", "")
-					_toggle_channel_off(channel)
-					_tree.accept_event()
-				"instance":
-					var instance_id: int = metadata.get("value", 0)
-					_toggle_instance_off(instance_id)
-					_tree.accept_event()
+
+## Context menu IDs
+enum ContextMenuID {
+	SET_SHOWN = 0,
+	SET_HIDDEN = 1,
+	SET_OFF = 2,
+	SEPARATOR = 3,
+	DELETE_CHANNEL = 4,
+}
+
+
+## Show context menu for a tree item
+func _show_context_menu(_item: TreeItem, metadata: Dictionary, global_pos: Vector2) -> void:
+	_context_menu.clear()
+
+	_context_item_type = metadata.get("type", "")
+	_context_item_value = metadata.get("value")
+
+	# Get current visibility mode
+	var current_mode: int = VisibilityMode.SHOWN
+	match _context_item_type:
+		"level":
+			current_mode = _level_visibility.get(_context_item_value, VisibilityMode.SHOWN)
+		"channel":
+			current_mode = _channel_visibility.get(_context_item_value, VisibilityMode.SHOWN)
+		"instance":
+			current_mode = _instance_visibility.get(_context_item_value, VisibilityMode.SHOWN)
+
+	# Add visibility options with checkmarks for current state
+	_context_menu.add_icon_item(ICON_VISIBLE, "Shown", ContextMenuID.SET_SHOWN)
+	_context_menu.set_item_checked(0, current_mode == VisibilityMode.SHOWN)
+
+	_context_menu.add_icon_item(ICON_HIDDEN, "Hidden", ContextMenuID.SET_HIDDEN)
+	_context_menu.set_item_checked(1, current_mode == VisibilityMode.HIDDEN)
+
+	_context_menu.add_icon_item(ICON_OFF, "Off", ContextMenuID.SET_OFF)
+	_context_menu.set_item_checked(2, current_mode == VisibilityMode.OFF)
+
+	# Add delete option for channels only
+	if _context_item_type == "channel":
+		_context_menu.add_separator()
+		_context_menu.add_item("Delete Channel", ContextMenuID.DELETE_CHANNEL)
+
+	# Convert to screen coordinates for popup positioning
+	var screen_pos := get_window().position + Vector2i(global_pos)
+	_context_menu.position = screen_pos
+	_context_menu.popup()
+
+
+## Handle context menu selection
+func _on_context_menu_id_pressed(id: int) -> void:
+	match id:
+		ContextMenuID.SET_SHOWN:
+			_set_item_visibility(VisibilityMode.SHOWN)
+		ContextMenuID.SET_HIDDEN:
+			_set_item_visibility(VisibilityMode.HIDDEN)
+		ContextMenuID.SET_OFF:
+			_set_item_visibility(VisibilityMode.OFF)
+		ContextMenuID.DELETE_CHANNEL:
+			if _context_item_type == "channel":
+				_delete_channel(_context_item_value)
+
+
+## Set visibility for the current context menu item
+func _set_item_visibility(mode: int) -> void:
+	match _context_item_type:
+		"level":
+			_level_visibility[_context_item_value] = mode
+			_update_ui()
+			level_visibility_changed.emit(_context_item_value, mode)
+		"channel":
+			var channel: String = _context_item_value
+			# Check if this channel has children and is collapsed - if so, cascade the change
+			var item: TreeItem = _channel_items.get(channel)
+			var should_cascade := _has_children(channel) and item != null and item.collapsed
+
+			_channel_visibility[channel] = mode
+			channel_visibility_changed.emit(channel, mode)
+
+			if should_cascade:
+				for descendant in _get_all_descendants(channel):
+					_channel_visibility[descendant] = mode
+					channel_visibility_changed.emit(descendant, mode)
+
+			_update_ui()
+		"instance":
+			_instance_visibility[_context_item_value] = mode
+			_update_ui()
+			instance_visibility_changed.emit(_context_item_value, mode)
+
+
+## Delete a channel and all its children
+func _delete_channel(channel: String) -> void:
+	# Collect all channels to delete (this channel and all descendants)
+	var channels_to_delete: Array[String] = [channel]
+	channels_to_delete.append_array(_get_all_descendants(channel))
+
+	# Remove from known channels, visibility, stats, and hierarchy tracking
+	for ch in channels_to_delete:
+		_known_channels.erase(ch)
+		_channel_visibility.erase(ch)
+		_channel_stats.erase(ch)
+		_channel_children.erase(ch)
+		_channel_parent.erase(ch)
+
+	# Update parent's children list if this channel had a parent
+	for parent_ch in _channel_children:
+		var children: Array = _channel_children[parent_ch]
+		for ch in channels_to_delete:
+			children.erase(ch)
+
+	# Emit signal for each deleted channel
+	for ch in channels_to_delete:
+		channel_deleted.emit(ch)
+
+	_rebuild_ui()
 
 
 ## Left-click cycles between SHOWN and HIDDEN only
@@ -768,9 +954,20 @@ func _cycle_channel_visibility(channel: String) -> void:
 	else:
 		# Toggle between SHOWN and HIDDEN
 		next_mode = VisibilityMode.HIDDEN if current == VisibilityMode.SHOWN else VisibilityMode.SHOWN
+
+	# Check if this channel has children and is collapsed - if so, cascade the change
+	var item: TreeItem = _channel_items.get(channel)
+	var should_cascade := _has_children(channel) and item != null and item.collapsed
+
 	_channel_visibility[channel] = next_mode
-	_update_ui()
 	channel_visibility_changed.emit(channel, next_mode)
+
+	if should_cascade:
+		for descendant in _get_all_descendants(channel):
+			_channel_visibility[descendant] = next_mode
+			channel_visibility_changed.emit(descendant, next_mode)
+
+	_update_ui()
 
 
 ## Right-click toggles OFF state
@@ -794,9 +991,33 @@ func _toggle_channel_off(channel: String) -> void:
 		next_mode = VisibilityMode.SHOWN
 	else:
 		next_mode = VisibilityMode.OFF
+
+	# Check if this channel has children and is collapsed - if so, cascade the change
+	var item: TreeItem = _channel_items.get(channel)
+	var should_cascade := _has_children(channel) and item != null and item.collapsed
+
 	_channel_visibility[channel] = next_mode
-	_update_ui()
 	channel_visibility_changed.emit(channel, next_mode)
+
+	if should_cascade:
+		for descendant in _get_all_descendants(channel):
+			_channel_visibility[descendant] = next_mode
+			channel_visibility_changed.emit(descendant, next_mode)
+
+	_update_ui()
+
+
+## Handle tree item collapse/expand to update aggregated stats and icons
+func _on_tree_item_collapsed(item: TreeItem) -> void:
+	var metadata = item.get_metadata(COL_NAME)
+	if not metadata is Dictionary:
+		return
+
+	var item_type: String = metadata.get("type", "")
+	if item_type == "channel":
+		# Update UI to reflect collapsed/expanded state
+		_update_ui()
+		_update_stats_display()
 
 
 ## Left-click cycles between SHOWN and HIDDEN only for instances
