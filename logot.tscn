@@ -1,8 +1,10 @@
 [gd_scene format=3 uid="uid://4c1jkrksvemx"]
 
 [ext_resource type="Theme" uid="uid://bsjgic8i04ctg" path="res://addons/logot/logot_theme.tres" id="1_theme"]
-[ext_resource type="FontFile" uid="uid://mduarxacu6jr" path="res://addons/logot/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
+[ext_resource type="FontFile" uid="uid://de7gvc2jems6t" path="res://addons/logot/IBMPlexMono-Regular.ttf" id="2_pxr0l"]
 [ext_resource type="PackedScene" uid="uid://c8vntvjl577ft" path="res://addons/logot/logot_sidebar.tscn" id="2_sidebar"]
+[ext_resource type="Texture2D" uid="uid://b54mksr3y2lsi" path="res://addons/assets/Clear.svg" id="3_exnc7"]
+[ext_resource type="Texture2D" uid="uid://doh41uo4aivs5" path="res://addons/assets/AnimationFilter.svg" id="4_qnuwq"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
 bg_color = Color(0, 0, 0, 0.843137)
@@ -112,13 +114,13 @@ placeholder_text = "Search logs or type /help for commands"
 layout_mode = 2
 theme = ExtResource("1_theme")
 shortcut = SubResource("Shortcut_t2106")
-text = "Clear"
+icon = ExtResource("3_exnc7")
 
 [node name="SidebarToggleButton" type="Button" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=632641003]
 layout_mode = 2
 theme = ExtResource("1_theme")
 toggle_mode = true
-text = "Filter"
+icon = ExtResource("4_qnuwq")
 
 [node name="Sidebar" parent="MainContainer" unique_id=254015495 instance=ExtResource("2_sidebar")]
 custom_minimum_size = Vector2(100, 0)
