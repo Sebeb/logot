@@ -11,7 +11,7 @@ var _debugger_plugin: EditorDebuggerPlugin
 
 func _enter_tree() -> void:
 	print("Logot plugin activated.")
-	add_autoload_singleton("Logot", "res://addons/logot/logot.gd")
+	add_autoload_singleton("Console", "res://addons/logot/logot.gd")
 
 	# Create and register the debugger plugin for game instance communication
 	_debugger_plugin = LogotDebuggerPlugin.new()
@@ -47,7 +47,7 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
-	remove_autoload_singleton("Logot")
+	remove_autoload_singleton("Console")
 
 	if _debugger_plugin:
 		remove_debugger_plugin(_debugger_plugin)
