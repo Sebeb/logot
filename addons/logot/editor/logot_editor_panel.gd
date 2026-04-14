@@ -35,6 +35,7 @@ var _instance_stats: Dictionary = {}
 
 # Instance naming
 var _instance_names: Dictionary = {}  # {session_id: String}
+var _instance_numbers: Dictionary = {-1: 0}  # {session_id: int}
 var _next_game_instance_number := 1
 
 # Special session ID for the editor instance
@@ -90,11 +91,17 @@ func _ready() -> void:
 		_display.line_edit.text_changed.connect(_on_text_changed)
 		_display.line_edit.gui_input.connect(_on_line_edit_gui_input)
 
-	# Set up autocomplete popup reference on the display base
-	# Use explicit path since unique name lookup may not work reliably in @tool context
-	var autocomplete_popup = logot_ui.get_node_or_null("MainContainer/LogotContainer/VBoxContainer/AutocompletePopup")
-	if autocomplete_popup:
-		_display.set_autocomplete_popup(autocomplete_popup)
+	# Set up autocomplete popup references on the display base.
+	# Use explicit paths since unique name lookup may not work reliably in @tool context.
+	var history_popup = logot_ui.get_node_or_null("AutocompleteOverlay/HistoryAutocompletePopup")
+	if history_popup:
+		_display.set_history_autocomplete_popup(history_popup)
+	var command_popup = logot_ui.get_node_or_null("AutocompleteOverlay/CommandAutocompletePopup")
+	if command_popup:
+		var command_scroll = command_popup.get_node_or_null("ScrollContainer")
+		var columns_container = command_popup.get_node_or_null("ScrollContainer/ColumnsContainer")
+		if command_scroll and columns_container:
+			_display.set_command_autocomplete_popup(command_popup, command_scroll, columns_container)
 
 	# Connect to Logot autoload
 	call_deferred("_connect_to_logot")
@@ -153,13 +160,13 @@ func _get_log_entries() -> Array:
 
 func _get_entry_display_text(entry, truncate: bool) -> String:
 	var full_text = _display._format_objects(entry.objects) if _display else str(entry.objects)
-	var instance_name: String = entry.instance_name
+	var instance_label := _get_instance_label(entry.session_id)
 
 	if entry.expanded:
 		var formatted_trace := ""
 		if _display and entry.stack_trace != "":
 			formatted_trace = _display._format_stack_trace(entry.stack_trace)
-		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace, instance_name)
+		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace, instance_label)
 
 	# Collapsed view
 	var display_text: String
@@ -168,7 +175,7 @@ func _get_entry_display_text(entry, truncate: bool) -> String:
 	else:
 		display_text = full_text
 	var extra_lines = entry.extra_line_count if truncate else 0
-	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, 0, "", instance_name)
+	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace, 0, "", instance_label)
 
 
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
@@ -246,12 +253,15 @@ func _connect_to_logot() -> void:
 
 
 func _get_logot():
-	if Engine.has_singleton("Logot"):
-		return Engine.get_singleton("Logot")
+	for singleton_name in ["Console", "Logot"]:
+		if Engine.has_singleton(singleton_name):
+			return Engine.get_singleton(singleton_name)
 
 	var root = get_tree().root if get_tree() else null
-	if root and root.has_node("Logot"):
-		return root.get_node("Logot")
+	if root:
+		for node_name in ["Console", "Logot"]:
+			if root.has_node(node_name):
+				return root.get_node(node_name)
 
 	return null
 
@@ -263,6 +273,7 @@ func _sync_existing_entries() -> void:
 				_display._ensure_channel_exists(channel)
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
+		_display.set_display_variables_provider(_get_display_variables)
 
 		# Before setting up providers, capture the loaded visibility settings from display
 		# These were loaded from config in _init_base() before providers were set
@@ -303,10 +314,11 @@ func _register_editor_instance() -> void:
 		return
 
 	_instance_names[EDITOR_SESSION_ID] = "Editor"
+	_instance_numbers[EDITOR_SESSION_ID] = 0
 	_instance_log_entries[EDITOR_SESSION_ID] = []
 	_instance_stats[EDITOR_SESSION_ID] = {"level": {}, "channel": {}}
 
-	_display._sidebar.add_instance(EDITOR_SESSION_ID, "Editor")
+	_display._sidebar.add_instance(EDITOR_SESSION_ID, "Editor", 0)
 
 	# Connect to instance visibility changes
 	if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
@@ -317,8 +329,14 @@ func _register_editor_instance() -> void:
 
 
 func _get_commands() -> Dictionary:
-	if _logot and "console_commands" in _logot:
-		return _logot.console_commands
+	if _logot and _logot.has_method("get_console_commands"):
+		return _logot.get_console_commands()
+	return {}
+
+
+func _get_display_variables() -> Dictionary:
+	if _logot and _logot.has_method("get_display_variables"):
+		return _logot.get_display_variables()
 	return {}
 
 
@@ -426,8 +444,14 @@ func _on_instance_started(session_id: int) -> void:
 
 ## Register a game instance with a generated name and initialize storage
 func _register_game_instance(session_id: int) -> void:
+	var instance_number: int = _instance_numbers.get(session_id, -1)
+	if instance_number < 0:
+		instance_number = _next_game_instance_number
+		_instance_numbers[session_id] = instance_number
+		_next_game_instance_number += 1
+
 	# Generate a meaningful instance name
-	var instance_name := _generate_instance_name(session_id)
+	var instance_name := _generate_instance_name(session_id, instance_number)
 	_instance_names[session_id] = instance_name
 
 	# Initialize storage for this instance
@@ -436,7 +460,7 @@ func _register_game_instance(session_id: int) -> void:
 
 	# Add instance to sidebar
 	if _display and _display._sidebar:
-		_display._sidebar.add_instance(session_id, instance_name)
+		_display._sidebar.add_instance(session_id, instance_name, instance_number)
 
 		# Connect to instance visibility changes
 		if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
@@ -459,7 +483,7 @@ func _on_instance_stopped(session_id: int) -> void:
 
 
 ## Generate a meaningful name for an instance
-func _generate_instance_name(session_id: int) -> String:
+func _generate_instance_name(session_id: int, instance_number: int) -> String:
 	# Check if debugger plugin has a name from the game
 	var game_name := ""
 	if _debugger_plugin:
@@ -468,13 +492,16 @@ func _generate_instance_name(session_id: int) -> String:
 	# If the game provided a project name, use "Game N (ProjectName)"
 	# Otherwise just use "Game N"
 	if game_name != "" and game_name != "Instance %d" % session_id:
-		var name := "Game %d (%s)" % [_next_game_instance_number, game_name]
-		_next_game_instance_number += 1
-		return name
+		return "Game %d (%s)" % [instance_number, game_name]
 	else:
-		var name := "Game %d" % _next_game_instance_number
-		_next_game_instance_number += 1
-		return name
+		return "Game %d" % instance_number
+
+
+func _get_instance_label(session_id: int) -> String:
+	var instance_number: int = _instance_numbers.get(session_id, -1)
+	if instance_number < 0:
+		return ""
+	return str(instance_number)
 
 
 ## Log an instance connection/disconnection event
@@ -647,29 +674,84 @@ func _update_sidebar_instance_stats() -> void:
 # =============================================================================
 
 func _on_text_entered(text: String) -> void:
-	if _display:
-		_display.hide_autocomplete()
+	_submit_line_edit_input(text, false, true)
 
-	if _display and _display.line_edit:
-		_display.line_edit.clear()
-		# Ensure focus remains in the input box after submitting
-		_display.line_edit.grab_focus()
 
-	if _display:
-		_display._search_filter = ""
-		_display._rebuild_display()
+func _extract_command_name(command_input: String) -> String:
+	var trimmed_input := command_input.strip_edges()
+	if not trimmed_input.begins_with("/"):
+		return ""
 
-	if text.strip_edges().is_empty():
-		return
+	var command_text := trimmed_input.substr(1)
+	if command_text.is_empty():
+		return ""
 
-	# Add to command history
-	if _display:
-		_display.add_to_command_history(text)
+	var text_split := PackedStringArray()
+	if _logot and _logot.has_method("parse_line_input"):
+		text_split = _logot.parse_line_input(command_text)
+	else:
+		text_split = command_text.split(" ", false)
+	if text_split.is_empty():
+		return ""
+	return str(text_split[0]).strip_edges()
 
-	# Commands start with /
-	if text.begins_with("/"):
+
+func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bool) -> String:
+	var submitted_text := raw_text.strip_edges()
+	if not prefer_autocomplete_selection:
+		return submitted_text
+	if not submitted_text.begins_with("/"):
+		return submitted_text
+	if not _display or not _display.has_active_command_autocomplete_match():
+		return submitted_text
+	return _display.get_active_command_submission_text().strip_edges()
+
+
+func _is_valid_command_input(command_input: String) -> bool:
+	var command_name := _extract_command_name(command_input)
+	if command_name.is_empty():
+		return false
+	if _get_commands().has(command_name):
+		return true
+	if _logot and _logot.has_method("can_execute_console_command"):
+		return bool(_logot.can_execute_console_command(command_name))
+	return false
+
+
+func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_autocomplete_selection: bool = false) -> bool:
+	var submitted_text := _resolve_submitted_text(raw_text, prefer_autocomplete_selection)
+	if submitted_text.is_empty():
+		return false
+
+	var is_command_input := submitted_text.begins_with("/")
+	if is_command_input and not _is_valid_command_input(submitted_text):
+		return false
+
+	if not keep_input:
+		if _display:
+			_display.hide_autocomplete()
+
+		if _display and _display.line_edit:
+			_display.line_edit.clear()
+			_display.line_edit.grab_focus()
+
+		if _display:
+			_display._search_filter = ""
+			_display._rebuild_display()
+			if _display.is_command_entry_mode():
+				_display.hide_command_entry_mode(false)
+	else:
+		if _display and _display.line_edit:
+			_display.line_edit.grab_focus()
+
+	if is_command_input:
+		if _display:
+			_display.add_to_command_history(submitted_text)
 		if _logot and _logot.has_method("on_text_entered"):
-			_logot.on_text_entered(text)
+			_logot.on_text_entered(submitted_text)
+		return true
+
+	return not keep_input
 
 
 func _on_text_changed(new_text: String) -> void:
@@ -678,33 +760,91 @@ func _on_text_changed(new_text: String) -> void:
 	_display.on_text_changed_autocomplete(new_text)
 
 
+func _input(event: InputEvent) -> void:
+	if not event is InputEventKey:
+		return
+	if _handle_line_edit_autocomplete_input(event as InputEventKey):
+		get_viewport().set_input_as_handled()
+
+
+func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo:
+		return false
+	if not _display or not _display.line_edit or not _display.line_edit.has_focus():
+		return false
+
+	if _display.is_autocomplete_visible():
+		match event.keycode:
+			KEY_DOWN:
+				_display.autocomplete_select_next()
+				return true
+			KEY_UP:
+				_display.autocomplete_select_prev()
+				return true
+			KEY_RIGHT:
+				_display.autocomplete_move_right()
+				return true
+			KEY_LEFT:
+				_display.autocomplete_move_left()
+				return true
+			KEY_TAB:
+				_display.confirm_autocomplete()
+				return true
+			KEY_ESCAPE:
+				if _display.is_command_entry_mode():
+					_display.hide_command_entry_mode()
+				else:
+					_display.hide_autocomplete()
+				return true
+		return false
+
+	match event.keycode:
+		KEY_UP:
+			_display.autocomplete_select_prev()
+			return true
+		KEY_DOWN:
+			_display.autocomplete_select_next()
+			return true
+		KEY_ESCAPE:
+			if _display.is_command_entry_mode():
+				_display.hide_command_entry_mode()
+				return true
+	return false
+
+
 func _on_line_edit_gui_input(event: InputEvent) -> void:
 	if not _display:
 		return
-	if not event is InputEventKey or not event.pressed:
+	if not event is InputEventKey:
 		return
 
 	var key_event := event as InputEventKey
+	if _handle_line_edit_autocomplete_input(key_event) or _handle_line_edit_submit_input(key_event):
+		_display.line_edit.accept_event()
+		_display.line_edit.call_deferred("grab_focus")
 
-	# Handle autocomplete navigation
-	if _display.is_autocomplete_visible():
-		if key_event.keycode == KEY_DOWN:
-			_display.autocomplete_select_next()
-			_display.line_edit.accept_event()
-		elif key_event.keycode == KEY_UP:
-			_display.autocomplete_select_prev()
-			_display.line_edit.accept_event()
-		elif key_event.keycode == KEY_TAB:
-			_display.confirm_autocomplete()
-			_display.line_edit.accept_event()
-		elif key_event.keycode == KEY_ESCAPE:
-			_display.hide_autocomplete()
-			_display.line_edit.accept_event()
-	else:
-		# UP arrow when autocomplete not visible - show history
-		if key_event.keycode == KEY_UP:
-			_display.autocomplete_select_prev()
-			_display.line_edit.accept_event()
+
+func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo:
+		return false
+	if not _display or not _display.line_edit or not _display.line_edit.has_focus():
+		return false
+	if event.keycode != KEY_ENTER and event.keycode != KEY_KP_ENTER:
+		return false
+
+	var keep_input := event.shift_pressed
+	var selected_history_command := ""
+	if _display and _display.has_method("get_selected_history_command"):
+		selected_history_command = str(_display.get_selected_history_command()).strip_edges()
+	if not selected_history_command.is_empty():
+		_submit_line_edit_input(selected_history_command, keep_input, false)
+		return true
+
+	if not _display.line_edit.text.strip_edges().begins_with("/"):
+		return false
+
+	_submit_line_edit_input(_display.line_edit.text, keep_input, true)
+	return true
 
 
 # =============================================================================

@@ -46,7 +46,7 @@ static func init():
 	if console:
 		console.add_command("log_level", print_log_level)
 		EngineDebugger.register_message_capture("LogLevel", on_remote_filter_change)
-		console.log_msg(["LogLevel: Initialized " + str(EngineDebugger.has_capture("LogLevel"))], LogLevel.DEBUG, "Editor")
+		console.log(["LogLevel: Initialized " + str(EngineDebugger.has_capture("LogLevel"))], LogLevel.DEBUG, "Editor")
 
 static func print_log_level():
 	var print_str = "Log levels:\n"
@@ -54,18 +54,18 @@ static func print_log_level():
 		print_str += "%s: %s\n" % [names[level_value], str((bool)(current & level_value))]
 	var console = _get_console()
 	if console:
-		console.log_msg([print_str], LogLevel.MESSAGE, "Editor")
-		console.log_msg(["LogLevel: Initialized " + str(EngineDebugger.has_capture("LogLevel"))], LogLevel.DEBUG, "Editor")
+		console.log([print_str], LogLevel.MESSAGE, "Editor")
+		console.log(["LogLevel: Initialized " + str(EngineDebugger.has_capture("LogLevel"))], LogLevel.DEBUG, "Editor")
 
 static func on_remote_filter_change(_msg, filter_value):
 	var console = _get_console()
 	if console:
-		console.log_msg(["LogLevel received" + _msg + ": " + str(filter_value[0])], LogLevel.DEBUG, "Editor")
+		console.log(["LogLevel received" + _msg + ": " + str(filter_value[0])], LogLevel.DEBUG, "Editor")
 	if Engine.is_editor_hint(): return
 
 	current = filter_value[0]
 	if console:
-		console.log_msg(["LogLevel: Remote filter changed to: " + str(current)], LogLevel.DEBUG, "Editor")
+		console.log(["LogLevel: Remote filter changed to: " + str(current)], LogLevel.DEBUG, "Editor")
 
 static var _current := -1
 static var current := 0:
