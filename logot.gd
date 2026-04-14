@@ -147,6 +147,7 @@ var console_history := []
 var console_history_index := 0
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
+var _external_displays: Array = []
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -455,6 +456,21 @@ func add_command(command_name : String, function : Callable, arguments = [], req
 		for argument in arguments:
 			str_args.append(str(argument))
 		console_commands[command_name] = LogotCommand.new(function, str_args, required, description)
+
+
+func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable()) -> void:
+	var str_args: PackedStringArray = PackedStringArray()
+	for argument in arguments:
+		str_args.append(str(argument))
+	console_commands[command_name] = LogotCommand.new(
+		function,
+		str_args,
+		required,
+		description,
+		[],
+		argument_options_provider,
+		value_getter
+	)
 
 
 func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable()) -> void:
@@ -793,10 +809,130 @@ func _is_setget_command(command_name: String) -> bool:
 	return false
 
 
-func _resolve_console_command_path(command_path: String) -> Dictionary:
+func _is_text_input_option_command(command_name: String) -> bool:
+	return command_name == "pins/save"
+
+
+func _get_pinned_display_variables_for_alias_resolution() -> Array[String]:
+	var pinned_addresses: Array[String] = []
+
+	var active_display := _get_active_display()
+	if active_display and active_display.has_method("get_pinned_display_variables"):
+		for address in active_display.get_pinned_display_variables():
+			var address_str := str(address)
+			if address_str.is_empty() or not display_variables.has(address_str) or pinned_addresses.has(address_str):
+				continue
+			pinned_addresses.append(address_str)
+
+	for pending_address in _pending_pinned_display_variables:
+		var pending_address_str := str(pending_address)
+		if pending_address_str.is_empty() or not display_variables.has(pending_address_str) or pinned_addresses.has(pending_address_str):
+			continue
+		pinned_addresses.append(pending_address_str)
+
+	pinned_addresses.sort()
+	return pinned_addresses
+
+
+func _encode_pins_view_alias_token(address: String) -> String:
+	return address.uri_encode()
+
+
+func _decode_pins_view_alias_token(token: String) -> String:
+	return token.uri_decode()
+
+
+func _resolve_pins_view_alias_token_target(token: String) -> String:
+	if token.is_empty():
+		return ""
+	var decoded_address := _decode_pins_view_alias_token(token)
+	if decoded_address.is_empty():
+		return ""
+	for address in _get_pinned_display_variables_for_alias_resolution():
+		if address == decoded_address:
+			return decoded_address
+	return ""
+
+
+func _resolve_pins_view_alias_command_path(command_path: String) -> String:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	if normalized_path == "pins/view" or not normalized_path.begins_with("pins/view/"):
+		return normalized_path
+
+	var alias_remainder := normalized_path.substr("pins/view/".length())
+	if alias_remainder.is_empty():
+		return normalized_path
+
+	var first_separator := alias_remainder.find("/")
+	var alias_token := alias_remainder if first_separator == -1 else alias_remainder.substr(0, first_separator)
+	var token_suffix := "" if first_separator == -1 else alias_remainder.substr(first_separator)
+	var token_target := _resolve_pins_view_alias_token_target(alias_token)
+	if not token_target.is_empty():
+		return token_target + token_suffix
+
+	var best_match := ""
+	for pinned_address in _get_pinned_display_variables_for_alias_resolution():
+		if alias_remainder == pinned_address or alias_remainder.begins_with(pinned_address + "/"):
+			if pinned_address.length() > best_match.length():
+				best_match = pinned_address
+
+	if best_match.is_empty():
+		return normalized_path
+	return best_match + alias_remainder.substr(best_match.length())
+
+
+func _validate_command_option_segment(command_name: String, option_segment: String) -> Dictionary:
+	if _is_setget_command(command_name):
+		var command_data = console_commands.get(command_name)
+		if command_data is LogotCommand:
+			var value_getter := (command_data as LogotCommand).value_getter
+			if not value_getter.is_valid():
+				return {"checked": false, "valid": true}
+			var current_value := value_getter.call()
+			var converted := _convert_setget_input_to_value(option_segment, current_value, _get_command_argument_option_values(command_name, 0))
+			return {"checked": true, "valid": bool(converted.get("ok", false))}
+		return {"checked": false, "valid": true}
+
+	if _is_text_input_option_command(command_name):
+		var validation := _validate_pin_overlay_name(option_segment)
+		return {"checked": true, "valid": bool(validation.get("ok", false))}
+
+	return {"checked": false, "valid": false}
+
+
+func _resolve_display_variable_pin_subcommand(command_candidate: String, option_segment: String) -> Dictionary:
+	if command_candidate.is_empty() or not display_variables.has(command_candidate):
+		return {"valid": false}
+
+	var option_lowered := option_segment.strip_edges().to_lower()
+	var pin_state: Variant = null
+	if option_lowered == "pin":
+		pin_state = true
+	elif option_lowered == "unpin":
+		pin_state = false
+	else:
+		return {"valid": false}
+
+	return {
+		"valid": true,
+		"command_name": "",
+		"injected_arguments": [],
+		"is_option_subcommand": true,
+		"is_display_variable_pin_action": true,
+		"display_variable_address": command_candidate,
+		"display_variable_pin_state": bool(pin_state),
+	}
+
+
+func _resolve_console_command_path_internal(command_path: String, allow_alias_resolution: bool) -> Dictionary:
 	var normalized_path := command_path.strip_edges()
 	if normalized_path.is_empty():
 		return {"valid": false}
+
+	if allow_alias_resolution:
+		var alias_resolved_path := _resolve_pins_view_alias_command_path(normalized_path)
+		if alias_resolved_path != normalized_path:
+			return _resolve_console_command_path_internal(alias_resolved_path, false)
 
 	if console_commands.has(normalized_path):
 		return {
@@ -812,13 +948,21 @@ func _resolve_console_command_path(command_path: String) -> Dictionary:
 
 	for split_index in range(segments.size() - 1, 0, -1):
 		var command_candidate := "/".join(segments.slice(0, split_index))
-		if not console_commands.has(command_candidate):
-			continue
-
 		var option_segment := "/".join(segments.slice(split_index, segments.size()))
 		if option_segment.is_empty():
 			continue
+
+		var display_variable_pin_resolution := _resolve_display_variable_pin_subcommand(command_candidate, option_segment)
+		if display_variable_pin_resolution.get("valid", false):
+			return display_variable_pin_resolution
+
+		if not console_commands.has(command_candidate):
+			continue
+
 		if _is_setget_command(command_candidate):
+			var setget_validation := _validate_command_option_segment(command_candidate, option_segment)
+			if setget_validation.get("checked", false) and not setget_validation.get("valid", false):
+				continue
 			return {
 				"valid": true,
 				"command_name": command_candidate,
@@ -835,7 +979,20 @@ func _resolve_console_command_path(command_path: String) -> Dictionary:
 				"is_option_subcommand": true,
 			}
 
+		var text_input_validation := _validate_command_option_segment(command_candidate, option_segment)
+		if text_input_validation.get("checked", false) and text_input_validation.get("valid", false):
+			return {
+				"valid": true,
+				"command_name": command_candidate,
+				"injected_arguments": [option_segment],
+				"is_option_subcommand": true,
+			}
+
 	return {"valid": false}
+
+
+func _resolve_console_command_path(command_path: String) -> Dictionary:
+	return _resolve_console_command_path_internal(command_path, true)
 
 
 func can_execute_console_command(command_path: String) -> bool:
@@ -856,8 +1013,9 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 		var current_index := _find_setget_option_index(current_value, discrete_options)
 		var next_index := 0 if current_index == -1 else (current_index + 1) % discrete_options.size()
 		setter.call(_extract_setget_option_value(discrete_options[next_index]))
-		if _display and _display.has_method("refresh_setget_option_highlight"):
-			_display.refresh_setget_option_highlight(command_name)
+		var active_display := _get_active_display()
+		if active_display and active_display.has_method("refresh_setget_option_highlight"):
+			active_display.refresh_setget_option_highlight(command_name)
 		return
 
 	var converted := _convert_setget_input_to_value(value_text, current_value, discrete_options)
@@ -867,8 +1025,9 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 		return
 
 	setter.call(converted.get("value"))
-	if _display and _display.has_method("refresh_setget_option_highlight"):
-		_display.refresh_setget_option_highlight(command_name)
+	var active_display := _get_active_display()
+	if active_display and active_display.has_method("refresh_setget_option_highlight"):
+		active_display.refresh_setget_option_highlight(command_name)
 
 
 func remove_command(command_name : String) -> void:
@@ -883,16 +1042,58 @@ func remove_display_variable(address: String) -> void:
 	display_variables.erase(address)
 
 
-func pin_display_variable(address: String) -> void:
+func register_external_display(display: LogotDisplay) -> void:
+	if display == null:
+		return
+
+	for index in range(_external_displays.size() - 1, -1, -1):
+		var existing_display = _external_displays[index].get_ref()
+		if existing_display == null:
+			_external_displays.remove_at(index)
+			continue
+		if existing_display == display:
+			return
+
+	_external_displays.append(weakref(display))
+	_apply_pending_pinned_display_variables_to(display)
+
+
+func unregister_external_display(display: LogotDisplay) -> void:
+	if display == null:
+		return
+
+	for index in range(_external_displays.size() - 1, -1, -1):
+		var existing_display = _external_displays[index].get_ref()
+		if existing_display == null or existing_display == display:
+			_external_displays.remove_at(index)
+
+
+func _get_active_display() -> LogotDisplay:
 	if _display:
-		_display.pin_display_variable(address)
+		return _display
+
+	for index in range(_external_displays.size() - 1, -1, -1):
+		var external_display = _external_displays[index].get_ref()
+		if external_display == null:
+			_external_displays.remove_at(index)
+			continue
+		if external_display is LogotDisplay:
+			return external_display as LogotDisplay
+	return null
+
+
+func pin_display_variable(address: String) -> void:
+	var active_display := _get_active_display()
+	if active_display:
+		active_display.pin_display_variable(address)
 	else:
 		_pending_pinned_display_variables[address] = true
 
 
 func unpin_display_variable(address: String) -> void:
-	if _display:
-		_display.unpin_display_variable(address)
+	var active_display := _get_active_display()
+	if active_display:
+		active_display.unpin_display_variable(address)
 	else:
 		_pending_pinned_display_variables[address] = false
 
@@ -905,8 +1106,9 @@ func set_display_variable_pinned(address: String, pinned: bool) -> void:
 
 
 func is_display_variable_pinned(address: String) -> bool:
-	if _display:
-		return _display.is_display_variable_pinned(address)
+	var active_display := _get_active_display()
+	if active_display:
+		return active_display.is_display_variable_pinned(address)
 	return bool(_pending_pinned_display_variables.get(address, false))
 
 
@@ -1089,12 +1291,18 @@ func _setup_game_ui() -> void:
 func _apply_pending_pinned_display_variables() -> void:
 	if not _display:
 		return
+	_apply_pending_pinned_display_variables_to(_display)
+
+
+func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay) -> void:
+	if not target_display:
+		return
 
 	for address in _pending_pinned_display_variables:
 		if bool(_pending_pinned_display_variables[address]):
-			_display.pin_display_variable(str(address))
+			target_display.pin_display_variable(str(address))
 		else:
-			_display.unpin_display_variable(str(address))
+			target_display.unpin_display_variable(str(address))
 	_pending_pinned_display_variables.clear()
 
 
@@ -1216,6 +1424,29 @@ func _register_console_setting_commands() -> void:
 	)
 
 
+func _register_pin_commands() -> void:
+	add_command("pins/view", _command_view_pins, [], 0, "Shows currently pinned display variables and their pin/unpin commands.")
+	add_command("view/pins", _command_view_pins, [], 0, "Alias for /pins/view.")
+	add_command("pins/clear", _command_clear_pins, [], 0, "Clears all pinned display variables.")
+	add_command("clear/pins", _command_clear_pins, [], 0, "Alias for /pins/clear.")
+	add_command_with_options(
+		"pins/save",
+		_command_save_pins_overlay,
+		["name"],
+		1,
+		"Saves the current pin selection to a named overlay.",
+		_get_saved_pin_overlay_name_options
+	)
+	add_command_with_options(
+		"pins/load",
+		_command_load_pins_overlay,
+		["name"],
+		1,
+		"Loads pinned display variables from a named overlay.",
+		_get_saved_pin_overlay_name_options
+	)
+
+
 func _ready() -> void:
 	# Commands available in both editor and game
 	add_command("console/clear", clear, 0, 0, "Clears the text on the console.")
@@ -1227,6 +1458,7 @@ func _ready() -> void:
 	add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
 	add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
 	_register_console_setting_commands()
+	_register_pin_commands()
 
 	# Game-only commands
 	if not Engine.is_editor_hint():
@@ -1559,6 +1791,13 @@ func _execute_command(command_input: String) -> void:
 		print_error("Command not found: /%s" % requested_command)
 		return
 
+	if command_resolution.get("is_display_variable_pin_action", false):
+		_execute_display_variable_pin_action(
+			str(command_resolution.get("display_variable_address", "")),
+			bool(command_resolution.get("display_variable_pin_state", false))
+		)
+		return
+
 	var text_command := str(command_resolution.get("command_name", ""))
 	var arguments: Array = text_split.slice(1)
 	for injected_argument in command_resolution.get("injected_arguments", []):
@@ -1632,6 +1871,12 @@ func quit() -> void:
 
 
 func restart_application() -> void:
+	# When running from the editor, request an in-editor restart instead of spawning externally.
+	if _debugger_connected and EngineDebugger.is_active():
+		_send_debugger_message("restart", [])
+		get_tree().quit()
+		return
+
 	var launch_args := OS.get_cmdline_args()
 
 	# Prefer restart-on-exit when available; this preserves platform-specific launch behavior.
@@ -1664,19 +1909,138 @@ func delete_history() -> void:
 	DirAccess.remove_absolute("user://console_history.txt")
 
 
+func _escape_bbcode_text(text: String) -> String:
+	return text.replace("[", "[lb]").replace("]", "[rb]")
+
+
+func _get_saved_pin_overlay_name_options() -> Array:
+	var active_display := _get_active_display()
+	if not active_display or not active_display.has_method("get_saved_pinned_overlay_names"):
+		return []
+	return active_display.get_saved_pinned_overlay_names()
+
+
+func _validate_pin_overlay_name(raw_name: String) -> Dictionary:
+	var overlay_name := raw_name.strip_edges()
+	if overlay_name.is_empty():
+		return {"ok": false, "error": "Overlay name cannot be empty."}
+
+	for invalid_character in ["/", "\\", " ", "\t", "\n", "\r"]:
+		if overlay_name.find(invalid_character) != -1:
+			return {"ok": false, "error": "Overlay names cannot contain spaces or slashes."}
+
+	return {"ok": true, "name": overlay_name}
+
+
+func _execute_display_variable_pin_action(address: String, pinned: bool) -> void:
+	var normalized_address := address.strip_edges()
+	if normalized_address.is_empty():
+		print_error("Display variable address is required for pin actions.")
+		return
+	if not display_variables.has(normalized_address):
+		print_error("Display variable not found: %s" % normalized_address)
+		return
+
+	set_display_variable_pinned(normalized_address, pinned)
+	var action_text := "Pinned" if pinned else "Unpinned"
+	print_line("%s [color=light_green]%s[/color]." % [action_text, _escape_bbcode_text(normalized_address)])
+
+
+func _command_view_pins() -> void:
+	var active_display := _get_active_display()
+	if not active_display:
+		print_error("No active display is available for pin commands.")
+		return
+
+	var pinned_addresses := active_display.get_pinned_display_variables()
+	if pinned_addresses.is_empty():
+		print_line("No display variables are currently pinned.")
+		return
+
+	pinned_addresses.sort()
+	var lines: PackedStringArray = []
+	lines.append("[color=cyan]Pinned display variables:[/color]")
+	for address in pinned_addresses:
+		var address_str := str(address)
+		if address_str.is_empty():
+			continue
+		var escaped_address := _escape_bbcode_text(address_str)
+		lines.append("  [color=light_green]%s[/color] [color=gray](on: /%s/pin | off: /%s/unpin)[/color]" % [escaped_address, escaped_address, escaped_address])
+	self.log(["\n".join(lines)], LogLevel.MESSAGE, "")
+
+
+func _command_clear_pins() -> void:
+	var active_display := _get_active_display()
+	if not active_display:
+		print_error("No active display is available for pin commands.")
+		return
+
+	var pinned_count := active_display.get_pinned_display_variables().size()
+	if pinned_count == 0:
+		print_line("No pinned display variables to clear.")
+		return
+
+	active_display.clear_pinned_display_variables()
+	print_line("Cleared %d pinned display variable(s)." % pinned_count)
+
+
+func _command_save_pins_overlay(name: String) -> void:
+	var active_display := _get_active_display()
+	if not active_display:
+		print_error("No active display is available for pin overlays.")
+		return
+
+	var validation := _validate_pin_overlay_name(name)
+	if not validation.get("ok", false):
+		print_error(str(validation.get("error", "Invalid overlay name.")))
+		return
+
+	var overlay_name := str(validation.get("name", ""))
+	if not active_display.save_pinned_overlay(overlay_name):
+		print_error("Failed to save pin overlay '%s'." % overlay_name)
+		return
+
+	var pinned_count := active_display.get_pinned_display_variables().size()
+	print_line("Saved %d pinned variable(s) to overlay [color=light_green]%s[/color]." % [pinned_count, _escape_bbcode_text(overlay_name)])
+
+
+func _command_load_pins_overlay(name: String) -> void:
+	var active_display := _get_active_display()
+	if not active_display:
+		print_error("No active display is available for pin overlays.")
+		return
+
+	var validation := _validate_pin_overlay_name(name)
+	if not validation.get("ok", false):
+		print_error(str(validation.get("error", "Invalid overlay name.")))
+		return
+
+	var overlay_name := str(validation.get("name", ""))
+	if not active_display.load_pinned_overlay(overlay_name):
+		print_error("Pin overlay not found: %s" % overlay_name)
+		return
+
+	var pinned_count := active_display.get_pinned_display_variables().size()
+	print_line("Loaded overlay [color=light_green]%s[/color] with %d pinned variable(s)." % [_escape_bbcode_text(overlay_name), pinned_count])
+
+
 func help() -> void:
 	self.log(["[color=cyan]Help:[/color]
 	[color=cyan]Search:[/color]
 		Type text to filter logs in real-time
 		Press Enter to confirm and clear the search
-	[color=cyan]Commands (prefix with /):[/color]
-		[color=light_green]/console/calc[/color]: Calculates a given expression
-		[color=light_green]/console/clear[/color]: Clears the registry view
-		[color=light_green]/console/commands[/color]: Shows a detailed list of all the currently registered commands
-		[color=light_green]/console/delete_history[/color]: Deletes the commands history
-		[color=light_green]/console/quit[/color]: Quits the game
-		[color=light_green]/exit[/color]: Quits the game (alias)
-		[color=light_green]/restart[/color]: Restarts the game (root command)
+		[color=cyan]Commands (prefix with /):[/color]
+			[color=light_green]/console/calc[/color]: Calculates a given expression
+			[color=light_green]/console/clear[/color]: Clears the registry view
+			[color=light_green]/console/commands[/color]: Shows a detailed list of all the currently registered commands
+			[color=light_green]/console/delete_history[/color]: Deletes the commands history
+			[color=light_green]/pins/view[/color]: Shows pinned display variables and pin/unpin toggles
+			[color=light_green]/pins/clear[/color]: Clears all pinned display variables
+			[color=light_green]/pins/save <name>[/color]: Saves current pins as a named overlay
+			[color=light_green]/pins/load <name>[/color]: Loads pins from a named overlay
+			[color=light_green]/console/quit[/color]: Quits the game
+			[color=light_green]/exit[/color]: Quits the game (alias)
+			[color=light_green]/restart[/color]: Restarts the game (root command)
 		[color=light_green]/log_show[/color]: Set level/channel to SHOWN
 		[color=light_green]/log_hide[/color]: Set level/channel to HIDDEN
 		[color=light_green]/log_off[/color]: Set level/channel to OFF

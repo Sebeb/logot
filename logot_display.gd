@@ -254,7 +254,7 @@ class AutocompleteCommandColumn:
 			var row_rect := Rect2(0.0, row_top, size.x, _row_height)
 			var row_data: Dictionary = _rows[row_index]
 			var selection_state := _get_row_selection_state(row_index)
-			_draw_row_background(row_rect, selection_state)
+			_draw_row_background(row_rect, row_data, selection_state)
 			_draw_row_content(row_rect, row_data, selection_state, baseline_offset)
 
 	func _notification(what: int) -> void:
@@ -309,12 +309,14 @@ class AutocompleteCommandColumn:
 			return 2
 		return 1
 
-	func _draw_row_background(row_rect: Rect2, selection_state: int) -> void:
-		if selection_state == 0:
-			return
-		var stylebox: StyleBox = _inactive_selected_stylebox if selection_state == 1 else (_selected_focus_stylebox if _selected_focus_stylebox != null else _selected_stylebox)
-		if stylebox != null:
-			stylebox.draw(get_canvas_item(), row_rect)
+	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
+		if selection_state != 0:
+			var stylebox: StyleBox = _inactive_selected_stylebox if selection_state == 1 else (_selected_focus_stylebox if _selected_focus_stylebox != null else _selected_stylebox)
+			if stylebox != null:
+				stylebox.draw(get_canvas_item(), row_rect)
+		var row_tint = row_data.get("row_background_tint")
+		if row_tint is Color:
+			draw_rect(row_rect, row_tint as Color, true)
 
 	func _draw_row_content(row_rect: Rect2, row_data: Dictionary, selection_state: int, baseline_offset: float) -> void:
 		if _font == null:
@@ -550,6 +552,10 @@ const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
 const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
 const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
 const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
+const AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX := "__global_search__"
+const AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND := "search"
+const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
+const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
 const DEBUG_AUTOCOMPLETE := true
 
 
@@ -615,6 +621,7 @@ var _autocomplete_active_column_index := -1
 var _autocomplete_highlighted_tiers: Dictionary = {}
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
+var _autocomplete_global_search_mode := false
 var _suggestions := []
 var _current_suggest := 0
 var _suggesting := false
@@ -627,7 +634,8 @@ var _history_can_switch_to_commands := false
 
 # Display variables
 var _pinned_display_variables: Array[String] = []
-var _pinned_overlay_label: Label
+var _pinned_overlay_label: RichTextLabel
+var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
 
 
 # =============================================================================
@@ -865,6 +873,7 @@ func pin_display_variable(address: String) -> void:
 	_pinned_display_variables.append(address)
 	_save_filter_settings()
 	_refresh_pinned_display_variables()
+	_refresh_pin_option_autocomplete_state()
 
 
 func unpin_display_variable(address: String) -> void:
@@ -874,6 +883,7 @@ func unpin_display_variable(address: String) -> void:
 	_pinned_display_variables.remove_at(index)
 	_save_filter_settings()
 	_refresh_pinned_display_variables()
+	_refresh_pin_option_autocomplete_state()
 
 
 func set_display_variable_pinned(address: String, pinned: bool) -> void:
@@ -889,6 +899,57 @@ func is_display_variable_pinned(address: String) -> bool:
 
 func get_pinned_display_variables() -> Array[String]:
 	return _pinned_display_variables.duplicate()
+
+
+func clear_pinned_display_variables() -> void:
+	if _pinned_display_variables.is_empty():
+		return
+	_pinned_display_variables.clear()
+	_save_filter_settings()
+	_refresh_pinned_display_variables()
+	_refresh_pin_option_autocomplete_state()
+
+
+func get_saved_pinned_overlay_names() -> Array[String]:
+	var names: Array[String] = []
+	for overlay_name in _saved_pin_overlays:
+		names.append(str(overlay_name))
+	names.sort()
+	return names
+
+
+func save_pinned_overlay(name: String) -> bool:
+	var overlay_name := name.strip_edges()
+	if overlay_name.is_empty():
+		return false
+	_saved_pin_overlays[overlay_name] = _pinned_display_variables.duplicate()
+	_save_filter_settings()
+	return true
+
+
+func load_pinned_overlay(name: String) -> bool:
+	var overlay_name := name.strip_edges()
+	if overlay_name.is_empty() or not _saved_pin_overlays.has(overlay_name):
+		return false
+
+	_pinned_display_variables.clear()
+	var stored_addresses = _saved_pin_overlays[overlay_name]
+	if stored_addresses is Array:
+		for address in stored_addresses:
+			var address_str := str(address)
+			if address_str.is_empty() or _pinned_display_variables.has(address_str):
+				continue
+			_pinned_display_variables.append(address_str)
+
+	_save_filter_settings()
+	_refresh_pinned_display_variables()
+	_refresh_pin_option_autocomplete_state()
+	return true
+
+
+func _refresh_pin_option_autocomplete_state() -> void:
+	if _is_command_popup_visible():
+		update_autocomplete_popup()
 
 
 ## Called when a custom setting changes
@@ -1003,11 +1064,13 @@ func _ensure_pinned_overlay() -> void:
 	if _pinned_overlay_label:
 		return
 
-	_pinned_overlay_label = Label.new()
+	_pinned_overlay_label = RichTextLabel.new()
 	_pinned_overlay_label.name = "PinnedDisplayVariables"
+	_pinned_overlay_label.bbcode_enabled = true
+	_pinned_overlay_label.scroll_active = false
+	_pinned_overlay_label.fit_content = true
+	_pinned_overlay_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	_pinned_overlay_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pinned_overlay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_pinned_overlay_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_pinned_overlay_label.position = Vector2(8, 8)
 	_pinned_overlay_label.visible = false
 	_pinned_overlay_label.z_index = 200
@@ -1024,10 +1087,20 @@ func _refresh_pinned_display_variables() -> void:
 	for address in _pinned_display_variables:
 		if not _has_display_variable(address):
 			continue
-		lines.append("%s: %s" % [address, _get_display_variable_value_text(address, false)])
+		var row_text := "%s: %s" % [address, _get_display_variable_display_text(address, true)]
+		lines.append("[bgcolor=#1a202acc]  %s  [/bgcolor]" % [_escape_overlay_bbcode(row_text)])
 
-	_pinned_overlay_label.text = "\n".join(lines)
-	_pinned_overlay_label.visible = not _command_entry_mode and not lines.is_empty()
+	_pinned_overlay_label.clear()
+	if lines.is_empty():
+		_pinned_overlay_label.visible = false
+		return
+
+	_pinned_overlay_label.append_text("\n".join(lines))
+	_pinned_overlay_label.visible = true
+
+
+func _escape_overlay_bbcode(text: String) -> String:
+	return text.replace("[", "[lb]").replace("]", "[rb]")
 
 
 func _init_default_levels() -> void:
@@ -1526,6 +1599,24 @@ func _save_filter_settings() -> void:
 	config.set_value("settings", "sidebar_visible", _sidebar_visible)
 	config.set_value("display_variables", "pinned", _pinned_display_variables)
 
+	var serialized_pin_overlays := {}
+	for overlay_name in _saved_pin_overlays:
+		var overlay_key := str(overlay_name).strip_edges()
+		if overlay_key.is_empty():
+			continue
+
+		var serialized_overlay_addresses: Array[String] = []
+		var overlay_addresses = _saved_pin_overlays[overlay_name]
+		if overlay_addresses is Array:
+			for address in overlay_addresses:
+				var address_str := str(address)
+				if address_str.is_empty() or serialized_overlay_addresses.has(address_str):
+					continue
+				serialized_overlay_addresses.append(address_str)
+
+		serialized_pin_overlays[overlay_key] = serialized_overlay_addresses
+	config.set_value("display_variables", "pin_overlays", serialized_pin_overlays)
+
 	_save_custom_settings(config)
 
 	config.save(settings_file)
@@ -1562,7 +1653,29 @@ func _load_filter_settings() -> void:
 		_pinned_display_variables.clear()
 		if pinned_addresses is Array:
 			for address in pinned_addresses:
-				_pinned_display_variables.append(str(address))
+				var address_str := str(address)
+				if address_str.is_empty() or _pinned_display_variables.has(address_str):
+					continue
+				_pinned_display_variables.append(address_str)
+
+		_saved_pin_overlays.clear()
+		var pin_overlays = config.get_value("display_variables", "pin_overlays", {})
+		if pin_overlays is Dictionary:
+			for overlay_name in pin_overlays:
+				var overlay_key := str(overlay_name).strip_edges()
+				if overlay_key.is_empty():
+					continue
+
+				var overlay_addresses: Array[String] = []
+				var stored_overlay_addresses = (pin_overlays as Dictionary)[overlay_name]
+				if stored_overlay_addresses is Array:
+					for address in stored_overlay_addresses:
+						var address_str := str(address)
+						if address_str.is_empty() or overlay_addresses.has(address_str):
+							continue
+						overlay_addresses.append(address_str)
+
+				_saved_pin_overlays[overlay_key] = overlay_addresses
 
 	_load_custom_settings(config)
 
@@ -1593,27 +1706,231 @@ func _sync_sidebar_state() -> void:
 	_sidebar.set_setting("truncate_multiline", _truncate_multiline)
 
 
-func _get_registered_addresses() -> Array[String]:
+func _append_unique_address(addresses: Array[String], address: String) -> void:
+	if address.is_empty() or addresses.has(address):
+		return
+	addresses.append(address)
+
+
+func _get_base_registered_addresses() -> Array[String]:
 	var addresses: Array[String] = []
 	for command in _get_commands():
-		var command_name := str(command)
-		addresses.append(command_name)
-		for option_address in _get_command_option_subcommand_addresses(command_name, 0):
-			if not addresses.has(option_address):
-				addresses.append(option_address)
+		_append_unique_address(addresses, str(command))
 	for address in _get_display_variables():
-		var address_str := str(address)
-		if not addresses.has(address_str):
-			addresses.append(address_str)
+		_append_unique_address(addresses, str(address))
 	return addresses
 
 
-func _has_display_variable(address: String) -> bool:
+func _get_default_menu_hierarchy_addresses(command_path: String) -> Array[String]:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	var addresses: Array[String] = []
+	var base_addresses := _get_base_registered_addresses()
+	if normalized_path.is_empty():
+		for address in base_addresses:
+			_append_unique_address(addresses, address)
+		return addresses
+
+	var path_prefix := normalized_path + "/"
+	for base_address in base_addresses:
+		if str(base_address).begins_with(path_prefix):
+			_append_unique_address(addresses, str(base_address))
+
+	if _get_command_data_direct(normalized_path) != null:
+		for option_address in _get_command_option_subcommand_addresses(normalized_path, 0):
+			_append_unique_address(addresses, option_address)
+
+	if _has_display_variable_direct(normalized_path):
+		for pin_option_address in _get_display_variable_pin_action_subcommand_addresses(normalized_path):
+			_append_unique_address(addresses, pin_option_address)
+
+	return addresses
+
+
+func _get_available_pinned_display_variables() -> Array[String]:
+	var addresses: Array[String] = []
+	for address in _pinned_display_variables:
+		var address_str := str(address)
+		if address_str.is_empty() or not _has_display_variable_direct(address_str) or addresses.has(address_str):
+			continue
+		addresses.append(address_str)
+	addresses.sort()
+	return addresses
+
+
+func _encode_pins_view_alias_token(address: String) -> String:
+	return address.uri_encode()
+
+
+func _decode_pins_view_alias_token(token: String) -> String:
+	return token.uri_decode()
+
+
+func _resolve_pins_view_alias_token_target(token: String) -> String:
+	if token.is_empty():
+		return ""
+	var decoded_address := _decode_pins_view_alias_token(token)
+	if decoded_address.is_empty():
+		return ""
+	for address in _get_available_pinned_display_variables():
+		if address == decoded_address:
+			return decoded_address
+	return ""
+
+
+func _resolve_pins_view_alias_target_path(alias_remainder: String) -> String:
+	var normalized_remainder := alias_remainder.strip_edges().trim_prefix("/")
+	if normalized_remainder.is_empty():
+		return ""
+
+	var first_separator := normalized_remainder.find("/")
+	var alias_token := normalized_remainder if first_separator == -1 else normalized_remainder.substr(0, first_separator)
+	var token_suffix := "" if first_separator == -1 else normalized_remainder.substr(first_separator)
+	var token_target := _resolve_pins_view_alias_token_target(alias_token)
+	if not token_target.is_empty():
+		return token_target + token_suffix
+
+	var best_match := ""
+	for address in _get_available_pinned_display_variables():
+		if normalized_remainder == address or normalized_remainder.begins_with(address + "/"):
+			if address.length() > best_match.length():
+				best_match = address
+
+	if best_match.is_empty():
+		return ""
+	return best_match + normalized_remainder.substr(best_match.length())
+
+
+func _resolve_alias_command_path(command_path: String) -> String:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		return normalized_path
+
+	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	if alias_remainder.is_empty():
+		return normalized_path
+
+	var alias_target := _resolve_pins_view_alias_target_path(alias_remainder)
+	return normalized_path if alias_target.is_empty() else alias_target
+
+
+func _get_display_alias_command_path(command_path: String) -> String:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		return normalized_path
+
+	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	if alias_remainder.is_empty():
+		return normalized_path
+
+	var first_separator := alias_remainder.find("/")
+	var alias_token := alias_remainder if first_separator == -1 else alias_remainder.substr(0, first_separator)
+	var token_suffix := "" if first_separator == -1 else alias_remainder.substr(first_separator)
+	var token_target := _resolve_pins_view_alias_token_target(alias_token)
+	if token_target.is_empty():
+		return normalized_path
+	return PINS_VIEW_ALIAS_PREFIX + token_target + token_suffix
+
+
+func _get_internal_alias_command_path(command_path: String) -> String:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		return normalized_path
+
+	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	if alias_remainder.is_empty():
+		return normalized_path
+
+	var first_separator := alias_remainder.find("/")
+	var alias_token := alias_remainder if first_separator == -1 else alias_remainder.substr(0, first_separator)
+	if not _resolve_pins_view_alias_token_target(alias_token).is_empty():
+		return normalized_path
+
+	var best_match := ""
+	for address in _get_available_pinned_display_variables():
+		if alias_remainder == address or alias_remainder.begins_with(address + "/"):
+			if address.length() > best_match.length():
+				best_match = address
+
+	if best_match.is_empty():
+		return normalized_path
+
+	var suffix := alias_remainder.substr(best_match.length())
+	return PINS_VIEW_ALIAS_PREFIX + _encode_pins_view_alias_token(best_match) + suffix
+
+
+func _set_line_edit_command_path(command_path: String, include_trailing_separator: bool) -> void:
+	if not line_edit:
+		return
+
+	var normalized_path := _get_display_alias_command_path(command_path.strip_edges().trim_suffix("/"))
+	if normalized_path.is_empty():
+		line_edit.text = "/"
+	else:
+		line_edit.text = "/" + normalized_path + ("/" if include_trailing_separator else "")
+	line_edit.caret_column = line_edit.text.length()
+
+
+func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String]:
+	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	var addresses: Array[String] = []
+	if normalized_path != "pins/view" and not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		return addresses
+
+	for pinned_address in _get_available_pinned_display_variables():
+		_append_unique_address(addresses, PINS_VIEW_ALIAS_PREFIX + _encode_pins_view_alias_token(pinned_address))
+
+	if not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		return addresses
+
+	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	if alias_remainder.is_empty():
+		return addresses
+
+	var alias_target := _resolve_pins_view_alias_target_path(alias_remainder)
+	if alias_target.is_empty():
+		return addresses
+
+	var target_children := _get_default_menu_hierarchy_addresses(alias_target)
+	var target_prefix := alias_target + "/"
+	for target_child in target_children:
+		if not str(target_child).begins_with(target_prefix):
+			continue
+		var suffix := str(target_child).substr(alias_target.length())
+		var alias_token := alias_remainder
+		var first_separator := alias_remainder.find("/")
+		if first_separator != -1:
+			alias_token = alias_remainder.substr(0, first_separator)
+		_append_unique_address(addresses, PINS_VIEW_ALIAS_PREFIX + alias_token + suffix)
+
+	return addresses
+
+
+func _get_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String]:
+	return _get_pins_view_dynamic_menu_hierarchy_addresses(command_path)
+
+
+func _get_menu_hierarchy_addresses(command_path: String) -> Array[String]:
+	var addresses := _get_default_menu_hierarchy_addresses(command_path)
+	for dynamic_address in _get_dynamic_menu_hierarchy_addresses(command_path):
+		_append_unique_address(addresses, dynamic_address)
+	return addresses
+
+
+func _get_registered_addresses() -> Array[String]:
+	return _get_menu_hierarchy_addresses("")
+
+
+func _has_display_variable_direct(address: String) -> bool:
 	return _get_display_variables().has(address)
 
 
+func _has_display_variable(address: String) -> bool:
+	return _has_display_variable_direct(_resolve_alias_command_path(address))
+
+
 func _get_display_variable_value(address: String) -> Variant:
-	var display_variable = _get_display_variables().get(address)
+	var resolved_address := _resolve_alias_command_path(address)
+	var display_variable = _get_display_variables().get(resolved_address)
 	if display_variable == null:
 		return null
 
@@ -1630,6 +1947,18 @@ func _get_display_variable_value(address: String) -> Variant:
 
 func _get_display_variable_value_text(address: String, single_line: bool = true) -> String:
 	var value := _get_display_variable_value(address)
+	var text := str(value)
+	if single_line:
+		text = text.replace("\n", " ").replace("\r", " ")
+	return text
+
+
+func _get_display_variable_display_text(address: String, single_line: bool = true) -> String:
+	var value := _get_display_variable_value(address)
+	var option_label := _get_command_option_label_for_value(address, value, 0)
+	if not option_label.is_empty():
+		return option_label
+
 	var text := str(value)
 	if single_line:
 		text = text.replace("\n", " ").replace("\r", " ")
@@ -1660,7 +1989,8 @@ func _debug_autocomplete(message: String, extra: String = "") -> void:
 
 func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 	var tier_matches: Dictionary = {}
-	var addresses := _get_registered_addresses()
+	var menu_path := prefix.trim_suffix("/")
+	var addresses := _get_menu_hierarchy_addresses(menu_path)
 
 	for address in addresses:
 		if not address.begins_with(prefix):
@@ -1680,24 +2010,195 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 
 	var matches: Array[Dictionary] = []
 	for tier in tier_matches:
+		var tier_text := str(tier)
 		var has_children := false
-		for address in addresses:
-			if address.begins_with(str(tier) + "/"):
+		for address in _get_menu_hierarchy_addresses(tier_text):
+			if str(address).begins_with(tier_text + "/"):
 				has_children = true
 				break
 
-		if not has_children and not _get_command_option_subcommand_addresses(str(tier), 0).is_empty():
+		if not has_children and not _get_command_option_subcommand_addresses(tier_text, 0).is_empty():
 			has_children = true
-		if not has_children and _is_setget_command_name(str(tier)):
+		if not has_children and not _get_display_variable_pin_action_subcommand_addresses(tier_text).is_empty():
 			has_children = true
-		var has_option_command := _is_command_option_subcommand_tier(str(tier))
+		if not has_children and _is_setget_command_name(tier_text):
+			has_children = true
+		if not has_children and _is_text_input_command_path(tier_text):
+			has_children = true
+		var has_option_command := _is_command_option_subcommand_tier(tier_text) or _is_display_variable_pin_action_subcommand_tier(tier_text) or _is_text_input_option_subcommand_tier(tier_text)
+		var resolved_tier := _resolve_alias_command_path(tier_text)
+		var has_direct_command := _get_commands().has(resolved_tier)
+		var tier_label_override := ""
+		if prefix == PINS_VIEW_ALIAS_PREFIX and tier_text.begins_with(PINS_VIEW_ALIAS_PREFIX):
+			var alias_token := tier_text.substr(PINS_VIEW_ALIAS_PREFIX.length())
+			var token_target := _resolve_pins_view_alias_token_target(alias_token)
+			if not token_target.is_empty():
+				tier_label_override = token_target
 
 		matches.append({
-			"tier": str(tier),
+			"tier": tier_text,
 			"score": int(tier_matches[tier]),
 			"has_children": has_children,
-			"has_command": _get_commands().has(tier) or has_option_command,
+			"has_command": has_direct_command or has_option_command,
 			"has_display_variable": _has_display_variable(str(tier)),
+			"tier_label_override": tier_label_override,
+		})
+
+	var text_input_match := _build_text_input_tier_match(prefix, query)
+	if not text_input_match.is_empty():
+		matches.append(text_input_match)
+	if prefix.is_empty():
+		var existing_search_index := -1
+		for row_index in range(matches.size()):
+			if str(matches[row_index].get("tier", "")) == AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND:
+				existing_search_index = row_index
+				break
+
+		if existing_search_index != -1:
+			matches[existing_search_index]["has_children"] = true
+		else:
+			var search_score := _calculate_match_score(AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND, query)
+			if search_score >= 0:
+				matches.append({
+					"tier": AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND,
+					"score": search_score,
+					"has_children": true,
+					"has_command": false,
+					"has_display_variable": false,
+				})
+
+	matches.sort_custom(func(a, b): return int(a.get("score", 0)) < int(b.get("score", 0)))
+	return matches
+
+
+func _get_all_known_autocomplete_tiers() -> Array[String]:
+	var tiers: Array[String] = []
+	var visited_menu_paths: Dictionary = {}
+	var queue: Array[String] = [""]
+
+	while not queue.is_empty():
+		var menu_path := queue.pop_front()
+		if visited_menu_paths.has(menu_path):
+			continue
+		visited_menu_paths[menu_path] = true
+
+		var prefix := ""
+		if not menu_path.is_empty():
+			prefix = menu_path + "/"
+
+		for address_variant in _get_menu_hierarchy_addresses(menu_path):
+			var address := str(address_variant)
+			if not address.begins_with(prefix):
+				continue
+
+			var next_tier := _get_next_tier(address, prefix)
+			if next_tier.is_empty():
+				continue
+
+			_append_unique_address(tiers, next_tier)
+			if not visited_menu_paths.has(next_tier):
+				queue.append(next_tier)
+
+	return tiers
+
+
+func _has_autocomplete_tier_children(tier: String, all_tiers: Array[String]) -> bool:
+	for candidate in all_tiers:
+		if candidate.begins_with(tier + "/"):
+			return true
+
+	if not _get_command_option_subcommand_addresses(tier, 0).is_empty():
+		return true
+	if not _get_display_variable_pin_action_subcommand_addresses(tier).is_empty():
+		return true
+	if _is_setget_command_name(tier):
+		return true
+	if _is_text_input_command_path(tier):
+		return true
+	return false
+
+
+func _calculate_global_command_search_match_score(tier: String, query: String) -> int:
+	if query.is_empty():
+		return 0
+
+	var tier_lower := tier.to_lower()
+	var query_lower := query.to_lower()
+
+	if tier_lower == query_lower:
+		return 5000
+	if tier_lower.begins_with(query_lower):
+		return 4500 - tier.length()
+
+	var best_score := -1
+	var segments := _split_autocomplete_segments(tier)
+	for segment_index in range(segments.size()):
+		var segment := segments[segment_index]
+		var segment_score := _calculate_match_score(segment, query)
+		if segment_score >= 0:
+			best_score = maxi(best_score, 3000 + segment_score - segment_index * 20)
+
+		var contains_index := segment.to_lower().find(query_lower)
+		if contains_index != -1:
+			best_score = maxi(best_score, 2500 - segment_index * 20 - contains_index)
+
+	if best_score >= 0:
+		return best_score
+
+	var full_path_index := tier_lower.find(query_lower)
+	if full_path_index != -1:
+		return 2000 - full_path_index
+	return -1
+
+
+func _highlight_search_match_text(text: String, query: String) -> String:
+	if query.is_empty():
+		return text
+
+	var query_lower := query.to_lower()
+	var query_len := query_lower.length()
+	if query_len <= 0:
+		return text
+
+	var lower_text := text.to_lower()
+	var highlighted := ""
+	var cursor := 0
+	while cursor < text.length():
+		var match_index := lower_text.find(query_lower, cursor)
+		if match_index == -1:
+			highlighted += text.substr(cursor)
+			break
+
+		highlighted += text.substr(cursor, match_index - cursor)
+		highlighted += "[" + text.substr(match_index, query_len) + "]"
+		cursor = match_index + query_len
+
+	return highlighted
+
+
+func _build_global_command_search_matches(query: String) -> Array[Dictionary]:
+	var matches: Array[Dictionary] = []
+	var all_tiers := _get_all_known_autocomplete_tiers()
+
+	for tier in all_tiers:
+		if tier == AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND:
+			continue
+
+		var score := _calculate_global_command_search_match_score(tier, query)
+		if score < 0:
+			continue
+
+		var has_option_command := _is_command_option_subcommand_tier(tier) or _is_display_variable_pin_action_subcommand_tier(tier) or _is_text_input_option_subcommand_tier(tier)
+		var resolved_tier := _resolve_alias_command_path(tier)
+		var has_direct_command := _get_commands().has(resolved_tier)
+		matches.append({
+			"tier": tier,
+			"score": score,
+			"has_children": _has_autocomplete_tier_children(tier, all_tiers),
+			"has_command": has_direct_command or has_option_command,
+			"has_display_variable": _has_display_variable(tier),
+			"full_label_override": _highlight_search_match_text("/" + tier, query),
+			"suppress_value_text": true,
 		})
 
 	matches.sort_custom(func(a, b): return int(a.get("score", 0)) < int(b.get("score", 0)))
@@ -1705,6 +2206,14 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 
 
 func _get_autocomplete_tier_label(prefix: String, match_data: Dictionary) -> String:
+	var full_label_override := str(match_data.get("full_label_override", ""))
+	if not full_label_override.is_empty():
+		return full_label_override
+	if match_data.get("is_text_input", false):
+		return str(match_data.get("input_label", ""))
+	var tier_label_override := str(match_data.get("tier_label_override", ""))
+	if not tier_label_override.is_empty():
+		return tier_label_override
 	var tier: String = match_data.get("tier", "")
 	return tier.substr(prefix.length()) if tier.begins_with(prefix) else tier
 
@@ -1720,6 +2229,15 @@ func _format_autocomplete_item_text(prefix: String, match_data: Dictionary, left
 
 
 func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary) -> Dictionary:
+	if match_data.get("is_text_input", false):
+		return {
+			"label": _get_autocomplete_tier_label(prefix, match_data),
+			"value_text": "",
+			"has_children": false,
+			"can_submit": match_data.get("has_command", false),
+			"row_background_tint": match_data.get("row_background_tint", null),
+		}
+
 	if match_data.get("is_option", false):
 		return {
 			"label": str(match_data.get("option_label", "")),
@@ -1730,7 +2248,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 
 	return {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
-		"value_text": _get_autocomplete_display_variable_value_text(match_data),
+		"value_text": "" if match_data.get("suppress_value_text", false) else _get_autocomplete_display_variable_value_text(match_data),
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
 	}
@@ -1743,12 +2261,7 @@ func _get_autocomplete_display_variable_value_text(match_data: Dictionary) -> St
 	var tier := str(match_data.get("tier", ""))
 	if tier.is_empty():
 		return ""
-
-	var value := _get_display_variable_value(tier)
-	var option_label := _get_command_option_label_for_value(tier, value, 0)
-	if not option_label.is_empty():
-		return option_label
-	return _get_display_variable_value_text(tier, true)
+	return _get_display_variable_display_text(tier, true)
 
 
 func _get_command_autocomplete_column_name(prefix: String) -> String:
@@ -1758,6 +2271,10 @@ func _get_command_autocomplete_column_name(prefix: String) -> String:
 	var segments := command_path.split("/", false)
 	if segments.is_empty():
 		return command_path
+	if segments.size() == 3 and segments[0] == "pins" and segments[1] == "view":
+		var token_target := _resolve_pins_view_alias_token_target(str(segments[2]))
+		if not token_target.is_empty():
+			return token_target
 	return str(segments[segments.size() - 1])
 
 
@@ -1767,6 +2284,11 @@ func _get_command_autocomplete_description(command_name: String) -> String:
 
 	var command_data = _get_command_data(command_name)
 	if command_data == null:
+		if _is_display_variable_pin_action_subcommand_tier(command_name):
+			var option_segment := command_name.substr(command_name.rfind("/") + 1).to_lower()
+			return "Pin this display variable." if option_segment == "pin" else "Unpin this display variable."
+		if _has_display_variable(command_name):
+			return "Display variable commands."
 		return ""
 	if command_data is LogotCommand:
 		return str((command_data as LogotCommand).description)
@@ -1784,13 +2306,17 @@ func _get_command_autocomplete_column_description(prefix: String, command_name: 
 	return _get_command_autocomplete_description(command_name)
 
 
-func _get_command_data(command_name: String) -> Variant:
+func _get_command_data_direct(command_name: String) -> Variant:
 	if command_name.is_empty():
 		return null
 	var commands := _get_commands()
 	if not commands.has(command_name):
 		return null
 	return commands[command_name]
+
+
+func _get_command_data(command_name: String) -> Variant:
+	return _get_command_data_direct(_resolve_alias_command_path(command_name))
 
 
 func _is_setget_command_name(command_name: String) -> bool:
@@ -1933,20 +2459,218 @@ func _get_command_option_subcommand_addresses(command_name: String, argument_ind
 	return addresses
 
 
+func _get_display_variable_pin_action_values(address: String) -> Array:
+	var resolved_address := _resolve_alias_command_path(address)
+	if not _has_display_variable_direct(resolved_address):
+		return []
+	var is_pinned := is_display_variable_pinned(resolved_address)
+	return [{"label": "unpin", "value": false}] if is_pinned else [{"label": "pin", "value": true}]
+
+
+func _get_display_variable_pin_action_subcommand_addresses(address: String) -> Array[String]:
+	var addresses: Array[String] = []
+	for option_entry in _get_display_variable_pin_action_values(address):
+		var option_segment := _get_command_option_subcommand_segment(option_entry)
+		if option_segment.is_empty():
+			continue
+		addresses.append("%s/%s" % [address, option_segment])
+	return addresses
+
+
 func _is_command_option_subcommand_tier(tier: String) -> bool:
-	var last_separator := tier.rfind("/")
+	var resolved_tier := _resolve_alias_command_path(tier)
+	var last_separator := resolved_tier.rfind("/")
 	if last_separator <= 0:
 		return false
 
-	var command_name := tier.substr(0, last_separator)
-	if command_name.is_empty() or _get_command_data(command_name) == null:
+	var command_name := resolved_tier.substr(0, last_separator)
+	if command_name.is_empty() or _get_command_data_direct(command_name) == null:
 		return false
-	var option_segment := tier.substr(last_separator + 1)
+	var option_segment := resolved_tier.substr(last_separator + 1)
 	if option_segment.is_empty():
 		return false
 
 	var option_match := _match_setget_option_text(option_segment, _get_command_argument_option_values(command_name, 0))
 	return option_match.get("matched", false)
+
+
+func _is_display_variable_pin_action_subcommand_tier(tier: String) -> bool:
+	var resolved_tier := _resolve_alias_command_path(tier)
+	var last_separator := resolved_tier.rfind("/")
+	if last_separator <= 0:
+		return false
+
+	var address := resolved_tier.substr(0, last_separator)
+	if address.is_empty():
+		return false
+
+	var option_segment := resolved_tier.substr(last_separator + 1)
+	if option_segment.is_empty():
+		return false
+
+	var lowered_option := option_segment.strip_edges().to_lower()
+	for option_entry in _get_display_variable_pin_action_values(address):
+		var option_label := _get_command_option_entry_label(option_entry).strip_edges().to_lower()
+		if not option_label.is_empty() and option_label == lowered_option:
+			return true
+	return false
+
+
+func _is_text_input_command_path(command_name: String) -> bool:
+	var resolved_command := _resolve_alias_command_path(command_name)
+	if resolved_command == "pins/save":
+		return true
+	if not _is_setget_command_name(resolved_command):
+		return false
+	return _get_command_argument_option_values(resolved_command, 0).is_empty()
+
+
+func _get_input_type_label_from_value(value: Variant) -> String:
+	match typeof(value):
+		TYPE_BOOL:
+			return "boolean"
+		TYPE_INT:
+			return "integer"
+		TYPE_FLOAT:
+			return "float"
+		TYPE_STRING:
+			return "string"
+		TYPE_STRING_NAME:
+			return "string"
+		TYPE_VECTOR2:
+			return "Vector2"
+		TYPE_VECTOR3:
+			return "Vector3"
+		TYPE_VECTOR4:
+			return "Vector4"
+		TYPE_COLOR:
+			return "Color"
+		TYPE_ARRAY:
+			return "Array"
+		TYPE_DICTIONARY:
+			return "Dictionary"
+		TYPE_NIL:
+			return "value"
+		_:
+			return "value"
+
+
+func _parse_bool_from_string(text: String) -> Dictionary:
+	var lowered := text.strip_edges().to_lower()
+	if lowered in ["true", "1", "yes", "y", "on"]:
+		return {"ok": true, "value": true}
+	if lowered in ["false", "0", "no", "n", "off"]:
+		return {"ok": true, "value": false}
+	return {"ok": false}
+
+
+func _convert_setget_input_to_value(raw_value: String, current_value: Variant, discrete_options: Array) -> Dictionary:
+	var option_match := _match_setget_option_text(raw_value, discrete_options)
+	if option_match.get("matched", false):
+		return {"ok": true, "value": option_match.get("value")}
+
+	var current_type := typeof(current_value)
+	match current_type:
+		TYPE_BOOL:
+			var parsed_bool := _parse_bool_from_string(raw_value)
+			if parsed_bool.get("ok", false):
+				return {"ok": true, "value": parsed_bool.get("value", false)}
+			return {"ok": false}
+		TYPE_INT:
+			var trimmed := raw_value.strip_edges()
+			if trimmed.is_valid_int():
+				return {"ok": true, "value": int(trimmed)}
+			if trimmed.is_valid_float():
+				var float_value := float(trimmed)
+				if is_equal_approx(float_value, round(float_value)):
+					return {"ok": true, "value": int(float_value)}
+			return {"ok": false}
+		TYPE_FLOAT:
+			var trimmed_float := raw_value.strip_edges()
+			if trimmed_float.is_valid_float() or trimmed_float.is_valid_int():
+				return {"ok": true, "value": float(trimmed_float)}
+			return {"ok": false}
+		TYPE_STRING:
+			return {"ok": true, "value": raw_value}
+		TYPE_STRING_NAME:
+			return {"ok": true, "value": StringName(raw_value)}
+		_:
+			var parsed_value = str_to_var(raw_value)
+			if typeof(parsed_value) == current_type:
+				return {"ok": true, "value": parsed_value}
+			return {"ok": false}
+
+
+func _validate_pin_overlay_name_for_input(raw_name: String) -> Dictionary:
+	var overlay_name := raw_name.strip_edges()
+	if overlay_name.is_empty():
+		return {"valid": false}
+	for invalid_character in ["/", "\\", " ", "\t", "\n", "\r"]:
+		if overlay_name.find(invalid_character) != -1:
+			return {"valid": false}
+	return {"valid": true}
+
+
+func _validate_text_input_for_command_path(command_name: String, raw_input: String) -> Dictionary:
+	var resolved_command := _resolve_alias_command_path(command_name)
+	if resolved_command == "pins/save":
+		var save_valid := _validate_pin_overlay_name_for_input(raw_input)
+		return {
+			"valid": bool(save_valid.get("valid", false)),
+			"accepted_type": "overlay name",
+		}
+
+	if not _is_setget_command_name(resolved_command):
+		return {"valid": false, "accepted_type": "value"}
+
+	var current_value := _get_command_current_value(resolved_command)
+	var accepted_type := _get_input_type_label_from_value(current_value)
+	var converted := _convert_setget_input_to_value(raw_input, current_value, _get_command_argument_option_values(resolved_command, 0))
+	return {
+		"valid": bool(converted.get("ok", false)),
+		"accepted_type": accepted_type,
+	}
+
+
+func _build_text_input_tier_match(prefix: String, query: String) -> Dictionary:
+	if prefix.is_empty() or not prefix.ends_with("/"):
+		return {}
+
+	var command_path := prefix.trim_suffix("/")
+	if not _is_text_input_command_path(command_path):
+		return {}
+
+	var validation := _validate_text_input_for_command_path(command_path, query)
+	var accepted_type := str(validation.get("accepted_type", "value"))
+	var is_valid := not query.is_empty() and bool(validation.get("valid", false))
+	var current_input := query if not query.is_empty() else "type a valid %s" % accepted_type
+	var synthetic_tier_suffix := query if not query.is_empty() else "__pending_input__"
+	var row_data := {
+		"tier": prefix + synthetic_tier_suffix,
+		"score": 2000,
+		"has_children": false,
+		"has_command": is_valid,
+		"has_display_variable": false,
+		"is_text_input": true,
+		"input_label": "set to [%s]" % current_input,
+	}
+	if not query.is_empty() and not is_valid:
+		row_data["row_background_tint"] = INVALID_INPUT_ROW_BG_COLOR
+	return row_data
+
+
+func _is_text_input_option_subcommand_tier(tier: String) -> bool:
+	var last_separator := tier.rfind("/")
+	if last_separator <= 0:
+		return false
+
+	var command_name := tier.substr(0, last_separator)
+	var option_segment := tier.substr(last_separator + 1)
+	if option_segment.is_empty() or not _is_text_input_command_path(command_name):
+		return false
+
+	var validation := _validate_text_input_for_command_path(command_name, option_segment)
+	return bool(validation.get("valid", false))
 
 
 func _find_setget_preview_option_selected_index(command_name: String, preview_prefix: String, preview_matches: Array) -> int:
@@ -1967,6 +2691,18 @@ func _find_setget_preview_option_selected_index(command_name: String, preview_pr
 		var option_value = option_match.get("value")
 		if option_value == current_value or str(option_value) == current_text:
 			return option_index
+
+	if _has_display_variable(command_name):
+		var resolved_command_name := _resolve_alias_command_path(command_name)
+		var expected_pin_segment := "unpin" if is_display_variable_pinned(resolved_command_name) else "pin"
+		for option_index in range(preview_matches.size()):
+			var option_tier := str(preview_matches[option_index].get("tier", ""))
+			if not option_tier.begins_with(preview_prefix):
+				continue
+			var option_segment := option_tier.substr(preview_prefix.length()).to_lower()
+			if option_segment == expected_pin_segment:
+				return option_index
+
 	return -1
 
 
@@ -2101,7 +2837,10 @@ func _get_autocomplete_input_state() -> Dictionary:
 	if not text.begins_with("/"):
 		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
 
-	var full_text := text.substr(1)
+	var raw_full_text := text.substr(1)
+	var had_trailing_separator := raw_full_text.ends_with("/")
+	var normalized_full_text := _get_internal_alias_command_path(raw_full_text.trim_suffix("/"))
+	var full_text := normalized_full_text + ("/" if had_trailing_separator and not normalized_full_text.is_empty() else "")
 	query = full_text
 
 	if full_text.ends_with("/"):
@@ -2127,6 +2866,11 @@ func _build_command_autocomplete_state() -> bool:
 	var query: String = input_state.get("query", "")
 
 	_autocomplete_column_states.clear()
+	_autocomplete_global_search_mode = false
+
+	if committed_segments.size() == 1 and committed_segments[0] == AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND:
+		return _build_global_command_autocomplete_state(query)
+
 	_autocomplete_active_column_index = committed_segments.size()
 
 	var prefix := ""
@@ -2134,6 +2878,17 @@ func _build_command_autocomplete_state() -> bool:
 		var column_query := query if column_index == _autocomplete_active_column_index else ""
 		var matches := _build_tier_matches(prefix, column_query)
 		if matches.is_empty():
+			if column_index == _autocomplete_active_column_index and column_query.is_empty() and column_index > 0:
+				_autocomplete_column_states.append({
+					"prefix": prefix,
+					"query": column_query,
+					"matches": [],
+					"selected_index": -1,
+					"preview": false,
+					"left_width": 0,
+					"width": 0,
+				})
+				break
 			_autocomplete_active_column_index = -1
 			return false
 
@@ -2165,7 +2920,39 @@ func _build_command_autocomplete_state() -> bool:
 	return not _autocomplete_column_states.is_empty()
 
 
+func _build_global_command_autocomplete_state(query: String) -> bool:
+	var matches := _build_global_command_search_matches(query)
+	if matches.is_empty():
+		_autocomplete_active_column_index = -1
+		return false
+
+	_autocomplete_global_search_mode = true
+	_autocomplete_active_column_index = 0
+
+	var selected_tier := str(_autocomplete_highlighted_tiers.get(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX, ""))
+	var selected_index := _find_autocomplete_match_index(matches, selected_tier)
+	if selected_index == -1:
+		selected_index = matches.size() - 1
+	_store_autocomplete_highlighted_tier(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX, matches, selected_index)
+
+	_autocomplete_column_states.append({
+		"prefix": AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX,
+		"query": query,
+		"matches": matches,
+		"selected_index": selected_index,
+		"preview": false,
+		"column_name_override": "Search",
+		"column_description_override": "all command paths, right reveals, enter runs executable commands",
+		"left_width": 0,
+		"width": 0,
+	})
+	return true
+
+
 func _refresh_active_preview_column_state() -> void:
+	if _autocomplete_global_search_mode:
+		return
+
 	while _autocomplete_column_states.size() > _autocomplete_active_column_index + 1:
 		_autocomplete_column_states.remove_at(_autocomplete_column_states.size() - 1)
 
@@ -2187,7 +2974,7 @@ func _refresh_active_preview_column_state() -> void:
 		var preview_prefix := selected_tier + "/"
 		var preview_matches := _build_tier_matches(preview_prefix, "")
 		if not preview_matches.is_empty():
-			var preview_selected_index := _find_setget_preview_option_selected_index(selected_tier, preview_prefix, preview_matches) if _is_setget_command_name(selected_tier) else -1
+			var preview_selected_index := _find_setget_preview_option_selected_index(selected_tier, preview_prefix, preview_matches)
 			_store_autocomplete_highlighted_tier(preview_prefix, preview_matches, preview_selected_index)
 
 			_autocomplete_column_states.append({
@@ -2196,13 +2983,13 @@ func _refresh_active_preview_column_state() -> void:
 				"matches": preview_matches,
 				"selected_index": preview_selected_index,
 				"preview": true,
-				"preview_parent_command": selected_tier if _is_setget_command_name(selected_tier) else "",
+				"preview_parent_tier": selected_tier,
 				"left_width": 0,
 				"width": 0,
 			})
 
 	# Show a dedicated command details column for executable leaf selections.
-	if selected_match.get("has_command", false) and not selected_match.get("has_children", false) and not _is_command_option_subcommand_tier(selected_tier):
+	if selected_match.get("has_command", false) and not selected_match.get("has_children", false) and not _is_command_option_subcommand_tier(selected_tier) and not _is_display_variable_pin_action_subcommand_tier(selected_tier) and not _is_text_input_option_subcommand_tier(selected_tier):
 		var option_matches := _build_command_option_matches(selected_tier, 0)
 		var option_selected_index := _find_command_option_match_index(selected_tier, option_matches)
 		if not option_matches.is_empty():
@@ -2484,12 +3271,12 @@ func _refresh_command_preview_option_state(column_state: Dictionary) -> Dictiona
 	if not column_state.get("preview", false):
 		return column_state
 
-	var preview_parent_command := str(column_state.get("preview_parent_command", ""))
-	if not preview_parent_command.is_empty():
+	var preview_parent_tier := str(column_state.get("preview_parent_tier", column_state.get("preview_parent_command", "")))
+	if not preview_parent_tier.is_empty():
 		var preview_prefix := str(column_state.get("prefix", ""))
 		var preview_matches := _build_tier_matches(preview_prefix, "")
 		column_state["matches"] = preview_matches
-		column_state["selected_index"] = _find_setget_preview_option_selected_index(preview_parent_command, preview_prefix, preview_matches)
+		column_state["selected_index"] = _find_setget_preview_option_selected_index(preview_parent_tier, preview_prefix, preview_matches)
 		_store_autocomplete_highlighted_tier(preview_prefix, preview_matches, int(column_state.get("selected_index", -1)))
 		return column_state
 
@@ -2702,7 +3489,7 @@ func refresh_setget_option_highlight(command_name: String) -> void:
 	var refreshed := false
 	for column_index in range(_autocomplete_column_states.size()):
 		var column_state: Dictionary = _autocomplete_column_states[column_index]
-		var tracked_command := str(column_state.get("preview_parent_command", column_state.get("preview_command", "")))
+		var tracked_command := str(column_state.get("preview_parent_tier", column_state.get("preview_parent_command", column_state.get("preview_command", ""))))
 		if tracked_command != command_name:
 			continue
 		_autocomplete_column_states[column_index] = _refresh_command_preview_option_state(column_state)
@@ -2747,7 +3534,8 @@ func _set_active_command_column_selection(index: int) -> void:
 	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(matches[index].get("tier", ""))
 	_debug_autocomplete("_set_active_command_column_selection.selected", "resolved_index=%d tier=%s" % [index, str(matches[index].get("tier", ""))])
 	_debug_command_popup_height("_set_active_command_column_selection.selected_height")
-	_refresh_active_preview_column_state()
+	if not _autocomplete_global_search_mode:
+		_refresh_active_preview_column_state()
 	_sync_visible_command_autocomplete_columns(0)
 	call_deferred("_debug_command_popup_height", "_set_active_command_column_selection.deferred_height")
 
@@ -2839,6 +3627,7 @@ func hide_autocomplete() -> void:
 	_autocomplete_column_states.clear()
 	_autocomplete_column_nodes.clear()
 	_autocomplete_active_column_index = -1
+	_autocomplete_global_search_mode = false
 	_pending_autocomplete_column_sync_start = -1
 	_autocomplete_column_sync_queued = false
 	_debug_autocomplete("hide_autocomplete.end")
@@ -2927,8 +3716,10 @@ func autocomplete_select_prev() -> void:
 		return
 
 	var next_index := _autocomplete_selected_index - 1
-	if _autocomplete_selected_index < 0 or next_index < 0:
-		if _history_can_switch_to_commands:
+	if _autocomplete_selected_index < 0:
+		next_index = _history_autocomplete_popup.item_count - 1
+	elif next_index < 0:
+		if _history_can_switch_to_commands and _autocomplete_selected_index == 0:
 			_show_root_command_popup()
 			return
 		next_index = _history_autocomplete_popup.item_count - 1
@@ -2999,11 +3790,16 @@ func _reveal_selected_history_command_path() -> bool:
 	command_path = command_path.strip_edges()
 	while command_path.ends_with("/"):
 		command_path = command_path.left(command_path.length() - 1)
+	return _reveal_command_path(command_path)
+
+
+func _reveal_command_path(command_path: String) -> bool:
+	if not line_edit:
+		return false
 
 	var segments := _split_autocomplete_segments(command_path)
 	if segments.is_empty():
-		line_edit.text = "/"
-		line_edit.caret_column = line_edit.text.length()
+		_set_line_edit_command_path("", false)
 		update_autocomplete_popup()
 		return true
 
@@ -3015,11 +3811,10 @@ func _reveal_selected_history_command_path() -> bool:
 			prefix = tier + "/"
 
 	if segments.size() == 1:
-		line_edit.text = "/"
+		_set_line_edit_command_path("", false)
 	else:
 		var committed_segments := segments.slice(0, segments.size() - 1)
-		line_edit.text = "/" + "/".join(committed_segments) + "/"
-	line_edit.caret_column = line_edit.text.length()
+		_set_line_edit_command_path("/".join(committed_segments), true)
 	update_autocomplete_popup()
 	return true
 
@@ -3033,11 +3828,18 @@ func autocomplete_move_right() -> void:
 		return
 
 	var match_data := _get_active_autocomplete_match()
-	if match_data.is_empty() or not match_data.get("has_children", false):
+	if match_data.is_empty():
 		return
 
-	line_edit.text = "/" + str(match_data.get("tier", "")) + "/"
-	line_edit.caret_column = line_edit.text.length()
+	var tier := str(match_data.get("tier", "")).strip_edges()
+	if tier.is_empty():
+		return
+
+	if _autocomplete_global_search_mode:
+		_reveal_command_path(tier)
+		return
+
+	_set_line_edit_command_path(tier, true)
 	update_autocomplete_popup()
 
 
@@ -3054,10 +3856,9 @@ func autocomplete_move_left() -> void:
 
 	committed_segments.remove_at(committed_segments.size() - 1)
 	if committed_segments.is_empty():
-		line_edit.text = "/"
+		_set_line_edit_command_path("", false)
 	else:
-		line_edit.text = "/" + "/".join(committed_segments) + "/"
-	line_edit.caret_column = line_edit.text.length()
+		_set_line_edit_command_path("/".join(committed_segments), true)
 	update_autocomplete_popup()
 
 
@@ -3109,8 +3910,7 @@ func autocomplete() -> void:
 				var suggestion: Dictionary = _suggestions[i]
 				var tier: String = suggestion.get("tier", "")
 				var has_children: bool = suggestion.get("has_children", false)
-				line_edit.text = "/" + tier + ("/" if has_children else "")
-				line_edit.caret_column = line_edit.text.length()
+				_set_line_edit_command_path(tier, has_children)
 
 				# If has children, refresh suggestions for the new prefix
 				if has_children:
