@@ -108,6 +108,7 @@ const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
 const VisibilityMode = LogotDisplay.VisibilityMode
 const LogEntry = LogotDisplay.LogEntry
 const LogotCommand = LogotDisplay.LogotCommand
+const LogotDisplayVariable = LogotDisplay.LogotDisplayVariable
 
 
 # =============================================================================
@@ -141,9 +142,11 @@ var line_edit: LineEdit
 var theme: Theme = preload("res://addons/logot/logot_theme.tres")
 
 var console_commands := {}
+var display_variables := {}
 var console_history := []
 var console_history_index := 0
 var was_paused_already := false
+var _pending_pinned_display_variables: Dictionary = {}
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -168,6 +171,7 @@ var _off_channel_counts: Dictionary = {}  # {channel: int}
 var _logot_ui: Control  # Root of the instantiated logot UI scene
 var _display: LogotDisplay  # Handles filtering, display, sidebar, autocomplete
 var _is_sidebar_layout := true
+var _restore_full_console_after_command_entry := false
 
 # Settings toggles (synced with display)
 var _collapse_duplicates := false
@@ -453,8 +457,465 @@ func add_command(command_name : String, function : Callable, arguments = [], req
 		console_commands[command_name] = LogotCommand.new(function, str_args, required, description)
 
 
+func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable()) -> void:
+	if not setter.is_valid():
+		push_warning("Cannot add set/get command '%s': invalid setter." % command_name)
+		return
+	if not getter.is_valid():
+		push_warning("Cannot add set/get command '%s': invalid getter." % command_name)
+		return
+
+	var command_arguments: PackedStringArray = PackedStringArray(["value"])
+	var argument_options_provider := func() -> Array:
+		return [_resolve_setget_option_values(getter, options_provider)]
+	var command_function := func(value_text: String) -> void:
+		_execute_setget_command_setter(command_name, setter, getter, value_text, options_provider)
+
+	console_commands[command_name] = LogotCommand.new(
+		command_function,
+		command_arguments,
+		0,
+		description,
+		[],
+		argument_options_provider,
+		getter
+	)
+	add_display_variable(command_name, getter)
+
+
+func _resolve_setget_option_values(getter: Callable, options_provider: Callable = Callable()) -> Array:
+	if options_provider.is_valid():
+		return _normalize_setget_option_values(options_provider.call())
+
+	if not getter.is_valid():
+		return []
+
+	var current_value := getter.call()
+	if typeof(current_value) == TYPE_BOOL:
+		return [false, true]
+	var enum_options := _resolve_setget_enum_options(getter)
+	if not enum_options.is_empty():
+		return enum_options
+
+	if current_value is Object and (current_value as Object).has_method("get_options"):
+		return _normalize_setget_option_values((current_value as Object).call("get_options"))
+
+	var getter_owner = getter.get_object()
+	if getter_owner != null and getter_owner is Object:
+		var owner := getter_owner as Object
+		if owner.has_method("get_options"):
+			return _normalize_setget_option_values(owner.call("get_options"))
+
+		var getter_method := getter.get_method()
+		if not getter_method.is_empty():
+			var method_base := getter_method
+			if method_base.begins_with("get_"):
+				method_base = method_base.substr(4)
+			for method_name in [
+				"get_%s_options" % method_base,
+				"%s_get_options" % method_base,
+				"%s_options" % method_base,
+			]:
+				if owner.has_method(method_name):
+					var method_options = _normalize_setget_option_values(owner.call(method_name))
+					if not method_options.is_empty():
+						return method_options
+
+	return []
+
+
+func _resolve_setget_enum_options(getter: Callable) -> Array:
+	if not getter.is_valid():
+		return []
+
+	var getter_owner = getter.get_object()
+	if getter_owner == null or not (getter_owner is Object):
+		return []
+	var owner := getter_owner as Object
+	var getter_method := getter.get_method()
+	if getter_method.is_empty():
+		return []
+
+	var candidate_names: Array[String] = []
+	candidate_names.append(getter_method)
+	if getter_method.begins_with("get_") and getter_method.length() > 4:
+		candidate_names.append(getter_method.substr(4))
+	if getter_method.begins_with("_get_") and getter_method.length() > 5:
+		candidate_names.append(getter_method.substr(5))
+
+	var properties := owner.get_property_list()
+	for property_info in properties:
+		if not (property_info is Dictionary):
+			continue
+		var property_dict := property_info as Dictionary
+		var property_name := str(property_dict.get("name", ""))
+		if not candidate_names.has(property_name):
+			continue
+
+		var property_hint := int(property_dict.get("hint", PROPERTY_HINT_NONE))
+		if property_hint != PROPERTY_HINT_ENUM:
+			continue
+
+		var hint_string := str(property_dict.get("hint_string", ""))
+		var options: Array = []
+		var implicit_value := 0
+		for raw_entry in hint_string.split(",", false):
+			var option_text := str(raw_entry).strip_edges()
+			if option_text.is_empty():
+				continue
+			var separator_idx := option_text.find(":")
+			var option_label := option_text
+			var option_value: Variant = implicit_value
+			if separator_idx != -1:
+				option_label = option_text.substr(0, separator_idx).strip_edges()
+				var explicit_value_text := option_text.substr(separator_idx + 1).strip_edges()
+				if explicit_value_text.is_valid_int():
+					option_value = int(explicit_value_text)
+				elif explicit_value_text.is_valid_float():
+					option_value = float(explicit_value_text)
+				elif not explicit_value_text.is_empty():
+					option_value = explicit_value_text
+			else:
+				option_label = option_text.strip_edges()
+
+			if not option_label.is_empty():
+				options.append({"label": option_label, "value": option_value})
+				implicit_value += 1
+		if not options.is_empty():
+			return options
+
+	return []
+
+
+func _normalize_setget_option_values(options_data: Variant) -> Array:
+	var values: Array = []
+	if options_data is Array:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	if options_data is PackedStringArray:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	if options_data is PackedInt32Array:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	if options_data is PackedInt64Array:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	if options_data is PackedFloat32Array:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	if options_data is PackedFloat64Array:
+		for option_value in options_data:
+			values.append(option_value)
+		return values
+	return values
+
+
+func _match_setget_discrete_option(raw_value: String, options: Array) -> Dictionary:
+	var trimmed_value := raw_value.strip_edges()
+	if trimmed_value.is_empty():
+		return {"matched": false}
+
+	var lowered_value := trimmed_value.to_lower()
+	for option_entry in options:
+		var resolved_value = option_entry
+		var candidate_texts: Array[String] = []
+		if option_entry is Dictionary:
+			var option_dict := option_entry as Dictionary
+			resolved_value = option_dict.get("value")
+			var option_label := str(option_dict.get("label", "")).strip_edges()
+			if not option_label.is_empty():
+				candidate_texts.append(option_label)
+			candidate_texts.append(str(resolved_value))
+		else:
+			candidate_texts.append(str(option_entry))
+
+		for candidate_text in candidate_texts:
+			if candidate_text == trimmed_value or candidate_text.to_lower() == lowered_value:
+				return {"matched": true, "value": resolved_value}
+	return {"matched": false}
+
+
+func _parse_bool_from_string(text: String) -> Dictionary:
+	var lowered := text.strip_edges().to_lower()
+	if lowered in ["true", "1", "yes", "y", "on"]:
+		return {"ok": true, "value": true}
+	if lowered in ["false", "0", "no", "n", "off"]:
+		return {"ok": true, "value": false}
+	return {"ok": false}
+
+
+func _convert_setget_input_to_value(raw_value: String, current_value: Variant, discrete_options: Array) -> Dictionary:
+	var option_match := _match_setget_discrete_option(raw_value, discrete_options)
+	if option_match.get("matched", false):
+		return {"ok": true, "value": option_match.get("value")}
+
+	var current_type := typeof(current_value)
+	match current_type:
+		TYPE_BOOL:
+			var parsed_bool := _parse_bool_from_string(raw_value)
+			if parsed_bool.get("ok", false):
+				return {"ok": true, "value": parsed_bool.get("value", false)}
+			return {"ok": false, "error": "Expected a boolean value (true/false)."}
+		TYPE_INT:
+			var trimmed := raw_value.strip_edges()
+			if trimmed.is_valid_int():
+				return {"ok": true, "value": int(trimmed)}
+			if trimmed.is_valid_float():
+				var float_value := float(trimmed)
+				if is_equal_approx(float_value, round(float_value)):
+					return {"ok": true, "value": int(float_value)}
+			return {"ok": false, "error": "Expected an integer value."}
+		TYPE_FLOAT:
+			var trimmed_float := raw_value.strip_edges()
+			if trimmed_float.is_valid_float() or trimmed_float.is_valid_int():
+				return {"ok": true, "value": float(trimmed_float)}
+			return {"ok": false, "error": "Expected a float value."}
+		TYPE_STRING:
+			return {"ok": true, "value": raw_value}
+		TYPE_STRING_NAME:
+			return {"ok": true, "value": StringName(raw_value)}
+		_:
+			var parsed_value = str_to_var(raw_value)
+			if typeof(parsed_value) == current_type:
+				return {"ok": true, "value": parsed_value}
+			return {"ok": true, "value": raw_value}
+
+
+func _extract_setget_option_value(option_entry: Variant) -> Variant:
+	if option_entry is Dictionary:
+		return (option_entry as Dictionary).get("value")
+	return option_entry
+
+
+func _find_setget_option_index(current_value: Variant, options: Array) -> int:
+	var current_text := str(current_value)
+	for option_index in range(options.size()):
+		var option_value = _extract_setget_option_value(options[option_index])
+		if option_value == current_value:
+			return option_index
+		if str(option_value) == current_text:
+			return option_index
+	return -1
+
+
+func _normalize_single_command_option_list(option_data: Variant) -> Array:
+	var values: Array = []
+	if option_data is Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedStringArray:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedInt32Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedInt64Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedFloat32Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedFloat64Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	values.append(option_data)
+	return values
+
+
+func _normalize_command_option_values(options_data: Variant) -> Array:
+	var normalized: Array = []
+	if not (options_data is Array):
+		return normalized
+
+	var options_array: Array = options_data
+	if options_array.is_empty():
+		return normalized
+
+	var first_value = options_array[0]
+	if first_value is Array or first_value is PackedStringArray or first_value is PackedInt32Array or first_value is PackedInt64Array or first_value is PackedFloat32Array or first_value is PackedFloat64Array:
+		for option_group in options_array:
+			normalized.append(_normalize_single_command_option_list(option_group))
+	else:
+		normalized.append(_normalize_single_command_option_list(options_array))
+	return normalized
+
+
+func _get_command_argument_option_values(command_name: String, argument_index: int = 0) -> Array:
+	if argument_index < 0:
+		return []
+	if not console_commands.has(command_name):
+		return []
+
+	var command_data = console_commands[command_name]
+	if command_data is LogotCommand:
+		var command := command_data as LogotCommand
+		if command.argument_options_provider.is_valid():
+			var provided_options = _normalize_command_option_values(command.argument_options_provider.call())
+			if argument_index < provided_options.size():
+				return provided_options[argument_index]
+
+		var static_options = _normalize_command_option_values(command.argument_options)
+		if argument_index < static_options.size():
+			return static_options[argument_index]
+		return []
+
+	if command_data is Dictionary:
+		var options_data = (command_data as Dictionary).get("argument_options", [])
+		var normalized_options = _normalize_command_option_values(options_data)
+		if argument_index < normalized_options.size():
+			return normalized_options[argument_index]
+		return []
+
+	return []
+
+
+func _is_setget_command(command_name: String) -> bool:
+	if not console_commands.has(command_name):
+		return false
+
+	var command_data = console_commands[command_name]
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).value_getter.is_valid()
+	if command_data is Dictionary:
+		return bool((command_data as Dictionary).get("is_setget", false))
+	return false
+
+
+func _resolve_console_command_path(command_path: String) -> Dictionary:
+	var normalized_path := command_path.strip_edges()
+	if normalized_path.is_empty():
+		return {"valid": false}
+
+	if console_commands.has(normalized_path):
+		return {
+			"valid": true,
+			"command_name": normalized_path,
+			"injected_arguments": [],
+			"is_option_subcommand": false,
+		}
+
+	var segments := normalized_path.split("/", false)
+	if segments.size() < 2:
+		return {"valid": false}
+
+	for split_index in range(segments.size() - 1, 0, -1):
+		var command_candidate := "/".join(segments.slice(0, split_index))
+		if not console_commands.has(command_candidate):
+			continue
+
+		var option_segment := "/".join(segments.slice(split_index, segments.size()))
+		if option_segment.is_empty():
+			continue
+		if _is_setget_command(command_candidate):
+			return {
+				"valid": true,
+				"command_name": command_candidate,
+				"injected_arguments": [option_segment],
+				"is_option_subcommand": true,
+			}
+
+		var option_match := _match_setget_discrete_option(option_segment, _get_command_argument_option_values(command_candidate, 0))
+		if option_match.get("matched", false):
+			return {
+				"valid": true,
+				"command_name": command_candidate,
+				"injected_arguments": [option_segment],
+				"is_option_subcommand": true,
+			}
+
+	return {"valid": false}
+
+
+func can_execute_console_command(command_path: String) -> bool:
+	return bool(_resolve_console_command_path(command_path).get("valid", false))
+
+
+func _execute_setget_command_setter(command_name: String, setter: Callable, getter: Callable, value_text: String, options_provider: Callable = Callable()) -> void:
+	if not setter.is_valid() or not getter.is_valid():
+		print_error("Set/get command '%s' is missing a valid setter/getter." % command_name)
+		return
+
+	var current_value := getter.call()
+	var discrete_options := _resolve_setget_option_values(getter, options_provider)
+	if value_text.strip_edges().is_empty():
+		if discrete_options.is_empty():
+			print_error("Failed to set '%s': this command requires a value." % command_name)
+			return
+		var current_index := _find_setget_option_index(current_value, discrete_options)
+		var next_index := 0 if current_index == -1 else (current_index + 1) % discrete_options.size()
+		setter.call(_extract_setget_option_value(discrete_options[next_index]))
+		if _display and _display.has_method("refresh_setget_option_highlight"):
+			_display.refresh_setget_option_highlight(command_name)
+		return
+
+	var converted := _convert_setget_input_to_value(value_text, current_value, discrete_options)
+	if not converted.get("ok", false):
+		var conversion_error := str(converted.get("error", "Invalid value for command '%s'." % command_name))
+		print_error("Failed to set '%s': %s Received '%s'." % [command_name, conversion_error, value_text])
+		return
+
+	setter.call(converted.get("value"))
+	if _display and _display.has_method("refresh_setget_option_highlight"):
+		_display.refresh_setget_option_highlight(command_name)
+
+
 func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
+
+
+func add_display_variable(address: String, getter: Callable) -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter)
+
+
+func remove_display_variable(address: String) -> void:
+	display_variables.erase(address)
+
+
+func pin_display_variable(address: String) -> void:
+	if _display:
+		_display.pin_display_variable(address)
+	else:
+		_pending_pinned_display_variables[address] = true
+
+
+func unpin_display_variable(address: String) -> void:
+	if _display:
+		_display.unpin_display_variable(address)
+	else:
+		_pending_pinned_display_variables[address] = false
+
+
+func set_display_variable_pinned(address: String, pinned: bool) -> void:
+	if pinned:
+		pin_display_variable(address)
+	else:
+		unpin_display_variable(address)
+
+
+func is_display_variable_pinned(address: String) -> bool:
+	if _display:
+		return _display.is_display_variable_pinned(address)
+	return bool(_pending_pinned_display_variables.get(address, false))
+
+
+func get_console_commands() -> Dictionary:
+	return console_commands
+
+
+func get_display_variables() -> Dictionary:
+	return display_variables
 
 
 # =============================================================================
@@ -563,7 +1024,7 @@ func _setup_game_ui() -> void:
 	# Create the display base
 	_display = LogotDisplay.new()
 	_display.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_display.visible = false
+	_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas_layer.add_child(_display)
 
 	# Instantiate the logot UI scene as a child of display
@@ -578,6 +1039,7 @@ func _setup_game_ui() -> void:
 	_display.set_log_entries_provider(func(): return _log_entries)
 	_display.set_entry_text_provider(func(entry, truncate): return get_collapsed_display_text(entry, truncate))
 	_display.set_commands_provider(func(): return console_commands)
+	_display.set_display_variables_provider(func(): return display_variables)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))
 	_display.set_rejected_channel_count_provider(func(channel): return get_rejected_channel_count(channel))
 	_display.set_level_visibility_provider(get_level_visibility, set_level_visibility)
@@ -594,22 +1056,46 @@ func _setup_game_ui() -> void:
 	_display._connect_ui_signals()
 	_display._setup_sidebar()
 	_display._init_display()
+	_sync_console_setting_cache_from_display()
 
 	# Get references to UI nodes from display
-	control = _display
+	_logot_ui.visible = false
+	control = _logot_ui
 	rich_label = _display.rich_label
 	line_edit = _display.line_edit
 
-	# Set up autocomplete popup
-	var autocomplete_popup = _logot_ui.get_node_or_null("%AutocompletePopup")
-	if autocomplete_popup:
-		_display.set_autocomplete_popup(autocomplete_popup)
+	# Set up autocomplete popups
+	var history_popup = _logot_ui.get_node_or_null("AutocompleteOverlay/HistoryAutocompletePopup")
+	if history_popup:
+		_display.set_history_autocomplete_popup(history_popup)
+	var command_popup = _logot_ui.get_node_or_null("AutocompleteOverlay/CommandAutocompletePopup")
+	if command_popup:
+		var command_scroll = command_popup.get_node_or_null("ScrollContainer")
+		var columns_container = command_popup.get_node_or_null("ScrollContainer/ColumnsContainer")
+		if command_scroll and columns_container:
+			_display.set_command_autocomplete_popup(command_popup, command_scroll, columns_container)
+	for command in console_history:
+		_display.add_to_command_history(command)
 
 	# Connect line edit signals
 	if line_edit:
 		line_edit.text_submitted.connect(on_text_entered)
 		line_edit.text_changed.connect(on_line_edit_text_changed)
 		line_edit.gui_input.connect(_on_line_edit_gui_input)
+
+	_apply_pending_pinned_display_variables()
+
+
+func _apply_pending_pinned_display_variables() -> void:
+	if not _display:
+		return
+
+	for address in _pending_pinned_display_variables:
+		if bool(_pending_pinned_display_variables[address]):
+			_display.pin_display_variable(str(address))
+		else:
+			_display.unpin_display_variable(str(address))
+	_pending_pinned_display_variables.clear()
 
 
 func _on_display_setting_changed(setting_name: String, value: bool) -> void:
@@ -656,22 +1142,98 @@ func _exit_tree() -> void:
 			write_index += 1
 
 
+func _sync_console_setting_cache_from_display() -> void:
+	if not _display:
+		return
+	_collapse_duplicates = _get_console_setting_value("collapse_duplicates", _collapse_duplicates)
+	_wrap_text = _get_console_setting_value("wrap_text", _wrap_text)
+	_truncate_multiline = _get_console_setting_value("truncate_multiline", _truncate_multiline)
+
+
+func _get_console_setting_value(setting_name: String, fallback: bool) -> bool:
+	if _display and _display._sidebar:
+		return _display._sidebar.get_setting(setting_name)
+	return fallback
+
+
+func _set_console_setting_value(setting_name: String, value: bool) -> void:
+	match setting_name:
+		"collapse_duplicates":
+			_collapse_duplicates = value
+		"wrap_text":
+			_wrap_text = value
+		"truncate_multiline":
+			_truncate_multiline = value
+
+	if _display:
+		if _display._sidebar:
+			_display._sidebar.set_setting(setting_name, value)
+		_display._on_setting_changed(setting_name, value)
+
+
+func _get_setting_collapse_duplicates() -> bool:
+	return _get_console_setting_value("collapse_duplicates", _collapse_duplicates)
+
+
+func _set_setting_collapse_duplicates(value: bool) -> void:
+	_set_console_setting_value("collapse_duplicates", value)
+
+
+func _get_setting_wrap_text() -> bool:
+	return _get_console_setting_value("wrap_text", _wrap_text)
+
+
+func _set_setting_wrap_text(value: bool) -> void:
+	_set_console_setting_value("wrap_text", value)
+
+
+func _get_setting_truncate_multiline() -> bool:
+	return _get_console_setting_value("truncate_multiline", _truncate_multiline)
+
+
+func _set_setting_truncate_multiline(value: bool) -> void:
+	_set_console_setting_value("truncate_multiline", value)
+
+
+func _register_console_setting_commands() -> void:
+	add_setget_command(
+		"console/settings/collapse_duplicates",
+		_set_setting_collapse_duplicates,
+		_get_setting_collapse_duplicates,
+		"Set whether duplicate logs are collapsed."
+	)
+	add_setget_command(
+		"console/settings/wrap_text",
+		_set_setting_wrap_text,
+		_get_setting_wrap_text,
+		"Set whether log lines wrap."
+	)
+	add_setget_command(
+		"console/settings/truncate_multiline",
+		_set_setting_truncate_multiline,
+		_get_setting_truncate_multiline,
+		"Set whether multi-line logs are truncated in collapsed view."
+	)
+
+
 func _ready() -> void:
 	# Commands available in both editor and game
-	add_command("clear", clear, 0, 0, "Clears the text on the console.")
-	add_command("help", help, 0, 0, "Displays instructions on how to use the console.")
-	add_command("commands", commands_list, 0, 0, "Lists all commands and their descriptions.")
-	add_command("calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
+	add_command("console/clear", clear, 0, 0, "Clears the text on the console.")
+	add_command("console/help", help, 0, 0, "Displays instructions on how to use the console.")
+	add_command("console/commands", commands_list, 0, 0, "Lists all commands and their descriptions.")
+	add_command("console/calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
 
 	add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
 	add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
 	add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
+	_register_console_setting_commands()
 
 	# Game-only commands
 	if not Engine.is_editor_hint():
-		add_command("quit", quit, 0, 0, "Quits the game.")
+		add_command("console/quit", quit, 0, 0, "Quits the game.")
 		add_command("exit", quit, 0, 0, "Quits the game.")
-		add_command("delete_history", delete_history, 0, 0, "Deletes the history of previously entered commands.")
+		add_command("restart", restart_application, 0, 0, "Restarts the game application.")
+		add_command("console/delete_history", delete_history, 0, 0, "Deletes the history of previously entered commands.")
 
 
 # =============================================================================
@@ -684,6 +1246,9 @@ func _input(event : InputEvent) -> void:
 		return
 
 	if event is InputEventKey:
+		if _handle_line_edit_autocomplete_input(event):
+			get_tree().get_root().set_input_as_handled()
+			return
 		if event.get_physical_keycode_with_modifiers() == KEY_QUOTELEFT:
 			if event.pressed:
 				toggle_console()
@@ -696,9 +1261,15 @@ func _input(event : InputEvent) -> void:
 					toggle_console()
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
+		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
+			_open_command_entry_view()
+			get_tree().get_root().set_input_as_handled()
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and control.visible:
 			if event.pressed:
-				toggle_console()
+				if _display and _display.is_command_entry_mode():
+					_close_command_entry_view()
+				else:
+					toggle_console()
 				get_tree().get_root().set_input_as_handled()
 		if control.visible and event.pressed:
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
@@ -713,43 +1284,84 @@ func _input(event : InputEvent) -> void:
 				get_tree().get_root().set_input_as_handled()
 
 
+func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo:
+		return false
+	if not _display or not line_edit or not line_edit.has_focus():
+		return false
+
+	if _display.is_autocomplete_visible():
+		match event.keycode:
+			KEY_DOWN:
+				_display.autocomplete_select_next()
+				return true
+			KEY_UP:
+				_display.autocomplete_select_prev()
+				return true
+			KEY_RIGHT:
+				_display.autocomplete_move_right()
+				return true
+			KEY_LEFT:
+				_display.autocomplete_move_left()
+				return true
+			KEY_TAB:
+				_display.confirm_autocomplete()
+				return true
+			KEY_ESCAPE:
+				if _display.is_command_entry_mode():
+					_close_command_entry_view()
+				else:
+					_display.hide_autocomplete()
+				return true
+		return false
+
+	match event.keycode:
+		KEY_UP:
+			_display.autocomplete_select_prev()
+			return true
+		KEY_DOWN:
+			_display.autocomplete_select_next()
+			return true
+		KEY_ESCAPE:
+			if _display.is_command_entry_mode():
+				_close_command_entry_view()
+				return true
+	return false
+
+
 func _on_line_edit_gui_input(event: InputEvent) -> void:
 	if not _display:
 		return
-	if not event is InputEventKey or not event.pressed:
+	if not event is InputEventKey:
 		return
 
 	var key_event := event as InputEventKey
+	if _handle_line_edit_autocomplete_input(key_event) or _handle_line_edit_submit_input(key_event):
+		line_edit.accept_event()
+		line_edit.call_deferred("grab_focus")
 
-	# Handle autocomplete navigation
-	if _display.is_autocomplete_visible():
-		if key_event.keycode == KEY_DOWN:
-			_display.autocomplete_select_next()
-			line_edit.accept_event()
-		elif key_event.keycode == KEY_UP:
-			_display.autocomplete_select_prev()
-			line_edit.accept_event()
-		elif key_event.keycode == KEY_TAB:
-			_display.confirm_autocomplete()
-			line_edit.accept_event()
-		elif key_event.keycode == KEY_ESCAPE:
-			_display.hide_autocomplete()
-			line_edit.accept_event()
-	else:
-		# UP/DOWN for history when autocomplete not visible
-		if key_event.keycode == KEY_UP:
-			_display.autocomplete_select_prev()
-			line_edit.accept_event()
-		elif key_event.keycode == KEY_DOWN:
-			if console_history_index < console_history.size():
-				console_history_index += 1
-				if console_history_index < console_history.size():
-					line_edit.text = console_history[console_history_index]
-					line_edit.caret_column = line_edit.text.length()
-				else:
-					line_edit.text = ""
-				_display.reset_autocomplete()
-			line_edit.accept_event()
+
+func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo:
+		return false
+	if not line_edit or not line_edit.has_focus():
+		return false
+	if event.keycode != KEY_ENTER and event.keycode != KEY_KP_ENTER:
+		return false
+
+	var keep_input := event.shift_pressed
+	var selected_history_command := ""
+	if _display and _display.has_method("get_selected_history_command"):
+		selected_history_command = str(_display.get_selected_history_command()).strip_edges()
+	if not selected_history_command.is_empty():
+		_submit_line_edit_input(selected_history_command, keep_input, false)
+		return true
+
+	if not line_edit.text.strip_edges().begins_with("/"):
+		return false
+
+	_submit_line_edit_input(line_edit.text, keep_input, true)
+	return true
 
 
 # =============================================================================
@@ -779,11 +1391,15 @@ func toggle_console() -> void:
 		control.visible = false
 
 	if control.visible:
+		_restore_full_console_after_command_entry = false
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
 		line_edit.grab_focus()
 		console_opened.emit()
 	else:
+		if _display and _display.is_command_entry_mode():
+			_display.hide_command_entry_mode()
+		_restore_full_console_after_command_entry = false
 		control.anchor_bottom = 1.0
 		scroll_to_bottom()
 		if _display:
@@ -795,6 +1411,16 @@ func toggle_console() -> void:
 
 func is_visible():
 	return control.visible
+
+
+func is_capturing_keyboard_input() -> bool:
+	return (
+		enabled
+		and control != null
+		and control.visible
+		and line_edit != null
+		and line_edit.has_focus()
+	)
 
 
 func scroll_to_bottom() -> void:
@@ -845,24 +1471,74 @@ func parse_line_input(text : String) -> PackedStringArray:
 
 
 func on_text_entered(new_text : String) -> void:
-	# Handle UI updates if line_edit is available (in-game console)
-	if line_edit != null:
-		scroll_to_bottom()
+	_submit_line_edit_input(new_text, false, true)
+
+
+func _extract_command_name(command_input: String) -> String:
+	var trimmed_input := command_input.strip_edges()
+	if not trimmed_input.begins_with("/"):
+		return ""
+
+	var command_text := trimmed_input.substr(1)
+	if command_text.is_empty():
+		return ""
+
+	var text_split := parse_line_input(command_text)
+	if text_split.is_empty():
+		return ""
+	return str(text_split[0]).strip_edges()
+
+
+func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bool) -> String:
+	var submitted_text := raw_text.strip_edges()
+	if not prefer_autocomplete_selection:
+		return submitted_text
+	if not submitted_text.begins_with("/"):
+		return submitted_text
+	if not _display or not _display.has_active_command_autocomplete_match():
+		return submitted_text
+	return _display.get_active_command_submission_text().strip_edges()
+
+
+func _is_valid_command_input(command_input: String) -> bool:
+	var command_name := _extract_command_name(command_input)
+	return not command_name.is_empty() and can_execute_console_command(command_name)
+
+
+func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_autocomplete_selection: bool = false) -> bool:
+	var submitted_text := _resolve_submitted_text(raw_text, prefer_autocomplete_selection)
+	if submitted_text.is_empty():
+		return false
+
+	var is_command_input := submitted_text.begins_with("/")
+	if is_command_input and not _is_valid_command_input(submitted_text):
+		return false
+
+	if not keep_input:
+		if line_edit != null:
+			scroll_to_bottom()
 		if _display:
 			_display.reset_autocomplete()
-		line_edit.clear()
-		if !Engine.is_editor_hint():
+		if line_edit != null:
+			line_edit.clear()
+			if !Engine.is_editor_hint():
+				line_edit.grab_focus()
+
+		if _display:
+			_display._search_filter = ""
+			_display._rebuild_display()
+
+		if _display and _display.is_command_entry_mode():
+			_close_command_entry_view()
+	else:
+		if line_edit != null:
 			line_edit.grab_focus()
 
-	# Clear search filter when entering text
-	if _display:
-		_display._search_filter = ""
-		_display._rebuild_display()
+	if is_command_input:
+		_execute_command(submitted_text)
+		return true
 
-	if not new_text.strip_edges().is_empty():
-		# Commands must start with /
-		if new_text.begins_with("/"):
-			_execute_command(new_text)
+	return not keep_input
 
 
 ## Execute a command string (must start with /)
@@ -873,37 +1549,78 @@ func _execute_command(command_input: String) -> void:
 		_display.add_to_command_history(command_input)
 	self.log(["[i]> " + command_input + "[/i]"], LogLevel.COMMAND, "")
 	var text_split := parse_line_input(command_text)
-	var text_command := text_split[0]
+	if text_split.is_empty():
+		return
 
-	if console_commands.has(text_command):
-		var arguments := text_split.slice(1)
+	var requested_command := str(text_split[0]).strip_edges()
+	var command_resolution := _resolve_console_command_path(requested_command)
+	if not command_resolution.get("valid", false):
+		console_unknown_command.emit(requested_command)
+		print_error("Command not found: /%s" % requested_command)
+		return
 
-		if text_command.match("calc"):
-			var expression := ""
-			for word in arguments:
-				expression += word
-			console_commands[text_command].function.callv([expression])
-			return
+	var text_command := str(command_resolution.get("command_name", ""))
+	var arguments: Array = text_split.slice(1)
+	for injected_argument in command_resolution.get("injected_arguments", []):
+		arguments.insert(0, str(injected_argument))
 
-		if arguments.size() < console_commands[text_command].required:
-			print_error("Too few arguments! Required < %d >" % console_commands[text_command].required)
-			return
-		elif arguments.size() > console_commands[text_command].arguments.size():
-			print_error("Too many arguments! < %d > Max" % console_commands[text_command].arguments.size())
-			return
+	if text_command == "console/calc":
+		var expression := ""
+		for word in arguments:
+			expression += word
+		console_commands[text_command].function.callv([expression])
+		return
 
-		while arguments.size() < console_commands[text_command].arguments.size():
-			arguments.append("")
+	if arguments.size() < console_commands[text_command].required:
+		print_error("Too few arguments! Required < %d >" % console_commands[text_command].required)
+		return
+	elif arguments.size() > console_commands[text_command].arguments.size():
+		print_error("Too many arguments! < %d > Max" % console_commands[text_command].arguments.size())
+		return
 
-		console_commands[text_command].function.callv(arguments)
-	else:
-		console_unknown_command.emit(text_command)
-		print_error("Command not found: /%s" % text_command)
+	while arguments.size() < console_commands[text_command].arguments.size():
+		arguments.append("")
+
+	console_commands[text_command].function.callv(arguments)
 
 
 func on_line_edit_text_changed(new_text: String) -> void:
 	if _display:
 		_display.on_text_changed_autocomplete(new_text)
+
+
+func _open_command_entry_view() -> void:
+	if not enabled or not control or not _display:
+		return
+	if _display.is_command_entry_mode():
+		return
+
+	_restore_full_console_after_command_entry = control.visible
+	if not control.visible:
+		control.visible = true
+		was_paused_already = get_tree().paused
+		get_tree().paused = was_paused_already || pause_enabled
+		console_opened.emit()
+
+	_display.show_command_entry_mode("/")
+
+
+func _close_command_entry_view() -> void:
+	if not _display or not _display.is_command_entry_mode():
+		return
+
+	_display.hide_command_entry_mode()
+	if _restore_full_console_after_command_entry:
+		line_edit.grab_focus()
+	else:
+		control.visible = false
+		control.anchor_bottom = 1.0
+		scroll_to_bottom()
+		if pause_enabled and !was_paused_already:
+			get_tree().paused = false
+		console_closed.emit()
+
+	_restore_full_console_after_command_entry = false
 
 
 # =============================================================================
@@ -914,6 +1631,27 @@ func quit() -> void:
 	get_tree().quit()
 
 
+func restart_application() -> void:
+	var launch_args := OS.get_cmdline_args()
+
+	# Prefer restart-on-exit when available; this preserves platform-specific launch behavior.
+	if OS.has_method("set_restart_on_exit"):
+		OS.call("set_restart_on_exit", true, launch_args)
+		get_tree().quit()
+		return
+
+	# Fallback: launch a new instance and quit the current one.
+	if OS.has_method("create_instance"):
+		var restart_result: int = int(OS.call("create_instance", launch_args))
+		if restart_result == OK:
+			get_tree().quit()
+			return
+		print_error("Failed to restart application (error %d)." % restart_result)
+		return
+
+	print_error("Restart is not supported on this platform/runtime.")
+
+
 func clear() -> void:
 	_clear_logs()
 
@@ -921,6 +1659,8 @@ func clear() -> void:
 func delete_history() -> void:
 	console_history.clear()
 	console_history_index = 0
+	if _display:
+		_display.clear_command_history()
 	DirAccess.remove_absolute("user://console_history.txt")
 
 
@@ -930,22 +1670,26 @@ func help() -> void:
 		Type text to filter logs in real-time
 		Press Enter to confirm and clear the search
 	[color=cyan]Commands (prefix with /):[/color]
-		[color=light_green]/calc[/color]: Calculates a given expression
-		[color=light_green]/clear[/color]: Clears the registry view
-		[color=light_green]/commands[/color]: Shows a reduced list of all the currently registered commands
-		[color=light_green]/commands_list[/color]: Shows a detailed list of all the currently registered commands
-		[color=light_green]/delete_history[/color]: Deletes the commands history
-		[color=light_green]/quit[/color]: Quits the game
+		[color=light_green]/console/calc[/color]: Calculates a given expression
+		[color=light_green]/console/clear[/color]: Clears the registry view
+		[color=light_green]/console/commands[/color]: Shows a detailed list of all the currently registered commands
+		[color=light_green]/console/delete_history[/color]: Deletes the commands history
+		[color=light_green]/console/quit[/color]: Quits the game
+		[color=light_green]/exit[/color]: Quits the game (alias)
+		[color=light_green]/restart[/color]: Restarts the game (root command)
 		[color=light_green]/log_show[/color]: Set level/channel to SHOWN
 		[color=light_green]/log_hide[/color]: Set level/channel to HIDDEN
 		[color=light_green]/log_off[/color]: Set level/channel to OFF
 		[color=light_green]/log_stats[/color]: Show all filter statistics
 	[color=cyan]Controls:[/color]
-		[color=light_blue]Up[/color] and [color=light_blue]Down[/color] arrow keys to navigate commands history
+		[color=light_blue]Up[/color] from an empty input box to browse commands
+		[color=light_blue]Down[/color] from an empty input box or bare [color=light_blue]/[/color] to browse recent commands
 		[color=light_blue]PageUp[/color] and [color=light_blue]PageDown[/color] to scroll registry
 		[[color=light_blue]Ctrl[/color] + [color=light_blue]~[/color]] to change console size between half screen and full screen
 		[color=light_blue]~[/color] or [color=light_blue]Esc[/color] key to close the console
-		[color=light_blue]Tab[/color] key to autocomplete, [color=light_blue]Tab[/color] again to cycle between matching suggestions"])
+		[color=light_blue]Up[/color] and [color=light_blue]Down[/color] move within the active autocomplete column
+		[color=light_blue]Right[/color] or [color=light_blue]Tab[/color] commits the highlighted branch to the next column
+		[color=light_blue]Left[/color] moves back to the previous autocomplete column"])
 
 
 func calculate(command : String) -> void:

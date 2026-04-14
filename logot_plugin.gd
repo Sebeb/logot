@@ -5,7 +5,7 @@ const EditorPanelScript = preload("res://addons/logot/editor/logot_editor_panel.
 const LogotDebuggerPlugin = preload("res://addons/logot/editor/logot_debugger_plugin.gd")
 
 var _editor_panel: Control
-var _scroll_container: ScrollContainer
+var _editor_dock: EditorDock
 var _debugger_plugin: EditorDebuggerPlugin
 
 
@@ -20,24 +20,30 @@ func _enter_tree() -> void:
 	# Create editor panel - it instantiates logot.tscn internally
 	# No inheritance issues since logot_editor_panel.gd extends Control directly
 	_editor_panel = Control.new()
+	_editor_panel.name = "LogotPanel"
 	_editor_panel.set_script(EditorPanelScript)
+	_editor_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_editor_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	# Pass the debugger plugin reference to the editor panel
 	_editor_panel.set_debugger_plugin(_debugger_plugin)
 
-	_scroll_container = ScrollContainer.new()
-	_scroll_container.name = "LogotPanel"
-	_scroll_container.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll_container.add_child(_editor_panel)
-	_editor_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_editor_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var shortcut = Shortcut.new()
 	var key_event = InputEventKey.new()
 	key_event.keycode = KEY_QUOTELEFT
 	# key_event.meta_pressed = true
 	# key_event.command_or_control_autoremap = true # Swaps Ctrl for Command on Mac.
 	shortcut.events = [key_event]
-	add_control_to_bottom_panel(_scroll_container, "Logot", shortcut)
+
+	_editor_dock = EditorDock.new()
+	_editor_dock.name = "LogotDock"
+	_editor_dock.title = "Logot"
+	_editor_dock.layout_key = "Logot"
+	_editor_dock.default_slot = EditorDock.DOCK_SLOT_BOTTOM
+	_editor_dock.available_layouts = EditorDock.DOCK_LAYOUT_ALL
+	_editor_dock.dock_shortcut = shortcut
+	_editor_dock.add_child(_editor_panel)
+	add_dock(_editor_dock)
 
 
 	# Connect to editor play signal for "clear on play" feature
@@ -53,10 +59,10 @@ func _exit_tree() -> void:
 		remove_debugger_plugin(_debugger_plugin)
 		_debugger_plugin = null
 
-	if _scroll_container:
-		remove_control_from_bottom_panel(_scroll_container)
-		_scroll_container.queue_free()
-		_scroll_container = null
+	if _editor_dock:
+		remove_dock(_editor_dock)
+		_editor_dock.queue_free()
+		_editor_dock = null
 		_editor_panel = null
 
 

@@ -85,7 +85,7 @@ var _level_visibility: Dictionary = {}
 var _channel_visibility: Dictionary = {}
 var _instance_visibility: Dictionary = {}  # {instance_id: VisibilityMode}
 var _known_channels: Array[String] = []
-var _known_instances: Dictionary = {}  # {instance_id: {name: String, active: bool}}
+var _known_instances: Dictionary = {}  # {instance_id: {name: String, number: int, active: bool}}
 
 # Level statistics: {LogLevel.X: {shown: int, hidden: int, off: int}}
 var _level_stats: Dictionary = {}
@@ -248,15 +248,19 @@ func add_channel(channel: String) -> void:
 
 
 ## Add a running instance
-func add_instance(instance_id: int, instance_name: String) -> void:
+func add_instance(instance_id: int, instance_name: String, instance_number: int = -1) -> void:
 	var needs_rebuild := false
 
 	if instance_id not in _known_instances:
-		_known_instances[instance_id] = {"name": instance_name, "active": true}
+		_known_instances[instance_id] = {"name": instance_name, "number": instance_number, "active": true}
 		needs_rebuild = true
 	else:
 		# Update existing instance
 		_known_instances[instance_id].name = instance_name
+		if instance_number >= 0:
+			_known_instances[instance_id].number = instance_number
+		elif not _known_instances[instance_id].has("number"):
+			_known_instances[instance_id].number = -1
 		_known_instances[instance_id].active = true
 
 	if instance_id not in _instance_visibility:
@@ -551,8 +555,9 @@ func _add_instance_tree_item(instance_id: int) -> void:
 	var item := _tree.create_item(_instances_root)
 	var instance_data: Dictionary = _known_instances.get(instance_id, {})
 	var display_name: String = instance_data.get("name", "Instance %d" % instance_id)
+	var instance_number: int = int(instance_data.get("number", -1))
 
-	item.set_text(COL_NAME, display_name)
+	item.set_text(COL_NAME, _format_instance_display_name(display_name, instance_number))
 	_set_item_not_selectable(item)
 
 	# Store instance_id in metadata for callback
@@ -566,6 +571,12 @@ func _add_instance_tree_item(instance_id: int) -> void:
 	item.add_button(COL_ICON, _get_icon_for_mode(mode), 0)
 
 	_instance_items[instance_id] = item
+
+
+func _format_instance_display_name(instance_name: String, instance_number: int) -> String:
+	if instance_number >= 0:
+		return "%s [%d]" % [instance_name, instance_number]
+	return instance_name
 
 
 ## Helper to set up stats columns with proper alignment and colors

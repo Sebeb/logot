@@ -74,12 +74,449 @@ class LogotCommand:
 	var arguments: PackedStringArray
 	var required: int
 	var description: String
+	var argument_options: Array
+	var argument_options_provider: Callable
+	var value_getter: Callable
 
-	func _init(in_function: Callable, in_arguments: PackedStringArray, in_required: int = 0, in_description: String = ""):
+	func _init(
+		in_function: Callable,
+		in_arguments: PackedStringArray,
+		in_required: int = 0,
+		in_description: String = "",
+		in_argument_options: Array = [],
+		in_argument_options_provider: Callable = Callable(),
+		in_value_getter: Callable = Callable()
+	):
 		function = in_function
 		arguments = in_arguments
 		required = in_required
 		description = in_description
+		argument_options = in_argument_options
+		argument_options_provider = in_argument_options_provider
+		value_getter = in_value_getter
+
+
+class LogotDisplayVariable:
+	var getter: Callable
+
+	func _init(in_getter: Callable):
+		getter = in_getter
+
+
+class AutocompleteCommandColumn:
+	extends Control
+
+	const CELL_GAP := 12.0
+	const CONTENT_PADDING_X := 12.0
+	const HEADER_TOP_PADDING := 8.0
+	const HEADER_BOTTOM_PADDING := 8.0
+	const HEADER_CONTENT_GAP := 4.0
+	const VALUE_PILL_PADDING_X := 10.0
+	const VALUE_PILL_HEIGHT := 20.0
+	const ACTION_ICON_DIAMETER := 18.0
+	const ACTION_ICON_GAP := 6.0
+
+	var _rows: Array[Dictionary] = []
+	var _metrics: Dictionary = {"name_width": 0, "value_width": 0, "action_width": 0, "width": 0}
+	var _selected_index := -1
+	var _scroll_row := 0
+	var _row_height := 28
+	var _is_preview := false
+	var _selected_is_active := true
+	var _header_title := ""
+	var _header_description := ""
+	var _header_height := 0.0
+	var _header_label: RichTextLabel
+
+	var _font: Font
+	var _font_size := 16
+	var _header_title_font_size := 22
+	var _header_description_font_size := 12
+	var _font_color := Color(0.8, 0.8, 0.8, 1.0)
+	var _selected_font_color := Color(1, 1, 1, 1.0)
+	var _preview_font_color := Color(0.65, 0.65, 0.7, 1.0)
+	var _inactive_selected_font_color := Color(0.88, 0.88, 0.9, 1.0)
+	var _header_title_color := Color(0.92, 0.92, 0.95, 1.0)
+	var _header_description_color := Color(0.62, 0.62, 0.68, 1.0)
+	var _value_pill_color := Color(0.19, 0.2, 0.24, 0.95)
+	var _value_pill_border_color := Color(0.38, 0.4, 0.48, 1.0)
+	var _selected_value_pill_color := Color(0.24, 0.34, 0.48, 0.98)
+	var _selected_value_pill_border_color := Color(0.55, 0.7, 0.9, 1.0)
+	var _inactive_selected_value_pill_color := Color(0.22, 0.27, 0.34, 0.96)
+	var _inactive_selected_value_pill_border_color := Color(0.44, 0.52, 0.64, 1.0)
+	var _action_circle_color := Color(0.18, 0.19, 0.22, 0.95)
+	var _action_circle_border_color := Color(0.42, 0.44, 0.5, 1.0)
+	var _selected_action_circle_color := Color(0.21, 0.32, 0.46, 0.98)
+	var _selected_action_circle_border_color := Color(0.6, 0.75, 0.92, 1.0)
+	var _inactive_selected_action_circle_color := Color(0.2, 0.24, 0.3, 0.95)
+	var _inactive_selected_action_circle_border_color := Color(0.47, 0.56, 0.68, 1.0)
+	var _selected_stylebox: StyleBox
+	var _selected_focus_stylebox: StyleBox
+	var _inactive_selected_stylebox := StyleBoxFlat.new()
+	var _value_pill_style := StyleBoxFlat.new()
+	var _selected_value_pill_style := StyleBoxFlat.new()
+	var _inactive_selected_value_pill_style := StyleBoxFlat.new()
+
+	func _init() -> void:
+		clip_contents = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		focus_mode = Control.FOCUS_NONE
+		_header_label = RichTextLabel.new()
+		_header_label.bbcode_enabled = true
+		_header_label.fit_content = true
+		_header_label.scroll_active = false
+		_header_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_header_label.focus_mode = Control.FOCUS_NONE
+		add_child(_header_label)
+		_configure_value_pill_styles()
+
+	func configure_theme(theme_source: Control) -> void:
+		if theme_source == null:
+			return
+		theme = theme_source.theme
+		_font = theme_source.get_theme_font("font")
+		_font_size = theme_source.get_theme_font_size("font_size")
+		if _font_size <= 0:
+			_font_size = 16
+		_header_title_font_size = maxi(20, _font_size + 6)
+		_header_description_font_size = maxi(11, _font_size - 2)
+		_font_color = theme_source.get_theme_color("font_color")
+		_selected_font_color = theme_source.get_theme_color("font_selected_color")
+		_preview_font_color = _font_color.lerp(Color(0.5, 0.5, 0.55, 1.0), 0.35)
+		_header_title_color = _font_color.lerp(_selected_font_color, 0.25)
+		_header_description_color = _font_color.lerp(Color(0.55, 0.55, 0.62, 1.0), 0.35)
+		_selected_stylebox = theme_source.get_theme_stylebox("selected")
+		_selected_focus_stylebox = theme_source.get_theme_stylebox("selected_focus")
+		_configure_inactive_selection_styles()
+		_configure_value_pill_styles()
+		_update_header_layout()
+
+	func set_column_data(rows: Array[Dictionary], metrics: Dictionary, selected_index: int, is_preview: bool, row_height: int, selected_is_active: bool = true, header_title: String = "", header_description: String = "") -> void:
+		_rows = rows
+		_metrics = metrics
+		_selected_index = selected_index
+		_is_preview = is_preview
+		_row_height = row_height
+		_selected_is_active = selected_is_active
+		_header_title = header_title
+		_header_description = header_description
+		_update_header_layout()
+		_ensure_selection_visible()
+		queue_redraw()
+
+	func get_row_count() -> int:
+		return _rows.size()
+
+	func ensure_current_is_visible() -> void:
+		_ensure_selection_visible()
+		queue_redraw()
+
+	func _ensure_selection_visible() -> void:
+		if _rows.is_empty():
+			_scroll_row = 0
+			return
+
+		var visible_rows := _get_visible_row_capacity()
+		var max_scroll := maxi(0, _rows.size() - visible_rows)
+		if _is_preview:
+			_scroll_row = max_scroll
+			return
+
+		if _selected_index < 0:
+			_scroll_row = 0
+			return
+
+		if _selected_index < _scroll_row:
+			_scroll_row = _selected_index
+		elif _selected_index >= _scroll_row + visible_rows:
+			_scroll_row = _selected_index - visible_rows + 1
+
+		_scroll_row = clampi(_scroll_row, 0, max_scroll)
+
+	func _get_visible_row_capacity() -> int:
+		return maxi(1, int(floor(maxf(0.0, size.y - _header_height) / maxf(1.0, float(_row_height)))))
+
+	func _draw() -> void:
+		var visible_rows := _get_visible_row_capacity()
+		var start_index := clampi(_scroll_row, 0, maxi(0, _rows.size() - visible_rows))
+		var end_index := mini(_rows.size(), start_index + visible_rows)
+		var baseline_offset := _get_baseline_offset()
+		var rows_top := _header_height
+		var rows_area_height := maxf(0.0, size.y - _header_height)
+		if _rows.size() <= visible_rows:
+			var drawn_rows := maxi(0, end_index - start_index)
+			var drawn_height := float(drawn_rows * _row_height)
+			rows_top += maxf(0.0, rows_area_height - drawn_height)
+
+		for row_index in range(start_index, end_index):
+			var row_top := rows_top + float((row_index - start_index) * _row_height)
+			var row_rect := Rect2(0.0, row_top, size.x, _row_height)
+			var row_data: Dictionary = _rows[row_index]
+			var selection_state := _get_row_selection_state(row_index)
+			_draw_row_background(row_rect, selection_state)
+			_draw_row_content(row_rect, row_data, selection_state, baseline_offset)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_RESIZED:
+			_update_header_layout()
+
+	func _update_header_layout() -> void:
+		if _header_label == null:
+			return
+
+		var header_title := _header_title.strip_edges()
+		if header_title.is_empty():
+			_header_height = 0.0
+			_header_label.visible = false
+			return
+
+		var bbcode := "[b][font_size=%d][color=#%s]%s[/color][/font_size][/b]" % [
+			_header_title_font_size,
+			_header_title_color.to_html(false),
+			_escape_bbcode(header_title.to_upper()),
+		]
+		var header_description := _header_description.strip_edges()
+		if not header_description.is_empty():
+			bbcode += "\n[i][font_size=%d][color=#%s]%s[/color][/font_size][/i]" % [
+				_header_description_font_size,
+				_header_description_color.to_html(false),
+				_escape_bbcode(header_description),
+			]
+
+		_header_label.visible = true
+		_header_label.theme = theme
+		_header_label.clear()
+		_header_label.append_text(bbcode)
+		_header_label.position = Vector2(CONTENT_PADDING_X, HEADER_TOP_PADDING)
+		_header_label.size = Vector2(
+			maxf(0.0, size.x - CONTENT_PADDING_X * 2.0),
+			maxf(0.0, size.y - HEADER_TOP_PADDING)
+		)
+
+		var content_height := float(_header_label.get_content_height())
+		_header_height = HEADER_TOP_PADDING + content_height + HEADER_BOTTOM_PADDING + HEADER_CONTENT_GAP
+
+	func _escape_bbcode(text: String) -> String:
+		return text.replace("[", "[lb]").replace("]", "[rb]")
+
+	func _get_row_selection_state(row_index: int) -> int:
+		if row_index != _selected_index:
+			return 0
+		if _is_preview:
+			return 1
+		if _selected_is_active:
+			return 2
+		return 1
+
+	func _draw_row_background(row_rect: Rect2, selection_state: int) -> void:
+		if selection_state == 0:
+			return
+		var stylebox: StyleBox = _inactive_selected_stylebox if selection_state == 1 else (_selected_focus_stylebox if _selected_focus_stylebox != null else _selected_stylebox)
+		if stylebox != null:
+			stylebox.draw(get_canvas_item(), row_rect)
+
+	func _draw_row_content(row_rect: Rect2, row_data: Dictionary, selection_state: int, baseline_offset: float) -> void:
+		if _font == null:
+			return
+
+		var value_width := float(_metrics.get("value_width", 0))
+		var action_width := float(_metrics.get("action_width", 0))
+		var text_color := _resolve_row_text_color(selection_state)
+		var text_baseline := row_rect.position.y + baseline_offset
+		var content_left := row_rect.position.x + CONTENT_PADDING_X
+		var content_right := row_rect.position.x + row_rect.size.x - CONTENT_PADDING_X
+		var info_cursor_x := content_right
+
+		var action_rect := Rect2()
+		if action_width > 0.0:
+			action_rect = Rect2(info_cursor_x - action_width, row_rect.position.y, action_width, row_rect.size.y)
+			info_cursor_x = action_rect.position.x - CELL_GAP
+
+		var value_rect := Rect2()
+		if value_width > 0.0:
+			value_rect = Rect2(
+				info_cursor_x - value_width,
+				row_rect.position.y + (row_rect.size.y - VALUE_PILL_HEIGHT) * 0.5,
+				value_width,
+				VALUE_PILL_HEIGHT
+			)
+			info_cursor_x = value_rect.position.x - CELL_GAP
+
+		var label_max_width := maxf(0.0, info_cursor_x - content_left)
+		var label_text := _fit_text_to_width(str(row_data.get("label", "")), label_max_width)
+		if not label_text.is_empty():
+			draw_string(_font, Vector2(content_left, text_baseline), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+
+		var value_text := str(row_data.get("value_text", ""))
+		if not value_text.is_empty() and value_rect.size.x > 0.0:
+			var value_text_max_width := maxf(0.0, value_rect.size.x - VALUE_PILL_PADDING_X * 2.0)
+			var fitted_value_text := _fit_text_to_width(value_text, value_text_max_width)
+			draw_style_box(_resolve_value_pill_style(selection_state), value_rect)
+			if not fitted_value_text.is_empty():
+				draw_string(_font, Vector2(value_rect.position.x + VALUE_PILL_PADDING_X, text_baseline), fitted_value_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+
+		if action_rect.size.x > 0.0:
+			_draw_action_icons(
+				action_rect,
+				bool(row_data.get("has_children", false)),
+				bool(row_data.get("can_submit", false)),
+				selection_state,
+				text_color
+			)
+
+	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, selection_state: int, icon_color: Color) -> void:
+		if action_rect.size.x <= 0.0:
+			return
+
+		var icon_count := 0
+		if has_children:
+			icon_count += 1
+		if can_submit:
+			icon_count += 1
+		if icon_count == 0:
+			return
+
+		var total_width := ACTION_ICON_DIAMETER * icon_count + ACTION_ICON_GAP * maxi(0, icon_count - 1)
+		var current_x := action_rect.position.x + action_rect.size.x - total_width
+		var center_y := action_rect.position.y + action_rect.size.y * 0.5
+
+		if has_children:
+			_draw_action_icon(Vector2(current_x + ACTION_ICON_DIAMETER * 0.5, center_y), true, false, selection_state, icon_color)
+			current_x += ACTION_ICON_DIAMETER + ACTION_ICON_GAP
+		if can_submit:
+			_draw_action_icon(Vector2(current_x + ACTION_ICON_DIAMETER * 0.5, center_y), false, true, selection_state, icon_color)
+
+	func _draw_action_icon(center: Vector2, draw_filled_arrow: bool, draw_return_symbol: bool, selection_state: int, icon_color: Color) -> void:
+		# var radius := ACTION_ICON_DIAMETER * 0.5
+		# draw_circle(center, radius, _resolve_action_circle_color(selection_state))
+		# draw_arc(center, radius - 0.5, 0.0, TAU, 20, _resolve_action_circle_border_color(selection_state), 1.0, true)
+
+		if draw_filled_arrow:
+			_draw_action_symbol(center, "▶︎", icon_color)
+		elif draw_return_symbol:
+			_draw_action_symbol(center, "⏎", icon_color)
+
+	func _draw_action_symbol(center: Vector2, symbol: String, icon_color: Color) -> void:
+		if _font == null:
+			return
+		var symbol_font_size := clampi(_font_size, 11, 14)
+		var symbol_size := _font.get_string_size(symbol, HORIZONTAL_ALIGNMENT_LEFT, -1, symbol_font_size)
+		var ascent := _font.get_ascent(symbol_font_size)
+		var descent := _font.get_descent(symbol_font_size)
+		var draw_position := Vector2(
+			center.x - symbol_size.x * 0.5,
+			center.y + (ascent - descent) * 0.5
+		)
+		draw_string(_font, draw_position, symbol, HORIZONTAL_ALIGNMENT_LEFT, -1, symbol_font_size, icon_color)
+
+	func _get_baseline_offset() -> float:
+		if _font == null:
+			return float(_row_height) * 0.7
+		var font_height := _font.get_height(_font_size)
+		return floor((float(_row_height) - font_height) * 0.5) + _font.get_ascent(_font_size)
+
+	func _measure_text(text: String) -> float:
+		if _font == null:
+			return text.length() * 8.0
+		return _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size).x
+
+	func _fit_text_to_width(text: String, max_width: float) -> String:
+		if text.is_empty() or max_width <= 0.0:
+			return ""
+		if _measure_text(text) <= max_width:
+			return text
+
+		var ellipsis := "..."
+		if _measure_text(ellipsis) > max_width:
+			return ""
+
+		var truncated := text
+		while not truncated.is_empty() and _measure_text(truncated + ellipsis) > max_width:
+			truncated = truncated.left(truncated.length() - 1)
+
+		return truncated + ellipsis
+
+	func _configure_value_pill_styles() -> void:
+		for stylebox in [_value_pill_style, _selected_value_pill_style, _inactive_selected_value_pill_style]:
+			stylebox.corner_radius_top_left = 8
+			stylebox.corner_radius_top_right = 8
+			stylebox.corner_radius_bottom_right = 8
+			stylebox.corner_radius_bottom_left = 8
+			stylebox.border_width_left = 1
+			stylebox.border_width_top = 1
+			stylebox.border_width_right = 1
+			stylebox.border_width_bottom = 1
+
+		_value_pill_style.bg_color = _value_pill_color
+		_value_pill_style.border_color = _value_pill_border_color
+		_selected_value_pill_style.bg_color = _selected_value_pill_color
+		_selected_value_pill_style.border_color = _selected_value_pill_border_color
+		_inactive_selected_value_pill_style.bg_color = _inactive_selected_value_pill_color
+		_inactive_selected_value_pill_style.border_color = _inactive_selected_value_pill_border_color
+
+	func _configure_inactive_selection_styles() -> void:
+		_inactive_selected_font_color = _font_color.lerp(_selected_font_color, 0.45)
+		_inactive_selected_value_pill_color = _value_pill_color.lerp(_selected_value_pill_color, 0.45)
+		_inactive_selected_value_pill_border_color = _value_pill_border_color.lerp(_selected_value_pill_border_color, 0.45)
+		_inactive_selected_action_circle_color = _action_circle_color.lerp(_selected_action_circle_color, 0.45)
+		_inactive_selected_action_circle_border_color = _action_circle_border_color.lerp(_selected_action_circle_border_color, 0.45)
+
+		var selected_bg := Color(0.2, 0.4, 0.6, 0.8)
+		if _selected_focus_stylebox is StyleBoxFlat:
+			selected_bg = (_selected_focus_stylebox as StyleBoxFlat).bg_color
+		elif _selected_stylebox is StyleBoxFlat:
+			selected_bg = (_selected_stylebox as StyleBoxFlat).bg_color
+
+		var inactive_bg := _font_color.lerp(selected_bg, 0.3)
+		inactive_bg.a = selected_bg.a * 0.55
+		_inactive_selected_stylebox.bg_color = inactive_bg
+
+		if _selected_focus_stylebox is StyleBoxFlat:
+			var selected_flat := _selected_focus_stylebox as StyleBoxFlat
+			_inactive_selected_stylebox.corner_radius_top_left = selected_flat.corner_radius_top_left
+			_inactive_selected_stylebox.corner_radius_top_right = selected_flat.corner_radius_top_right
+			_inactive_selected_stylebox.corner_radius_bottom_right = selected_flat.corner_radius_bottom_right
+			_inactive_selected_stylebox.corner_radius_bottom_left = selected_flat.corner_radius_bottom_left
+		elif _selected_stylebox is StyleBoxFlat:
+			var selected_flat := _selected_stylebox as StyleBoxFlat
+			_inactive_selected_stylebox.corner_radius_top_left = selected_flat.corner_radius_top_left
+			_inactive_selected_stylebox.corner_radius_top_right = selected_flat.corner_radius_top_right
+			_inactive_selected_stylebox.corner_radius_bottom_right = selected_flat.corner_radius_bottom_right
+			_inactive_selected_stylebox.corner_radius_bottom_left = selected_flat.corner_radius_bottom_left
+		else:
+			_inactive_selected_stylebox.corner_radius_top_left = 2
+			_inactive_selected_stylebox.corner_radius_top_right = 2
+			_inactive_selected_stylebox.corner_radius_bottom_right = 2
+			_inactive_selected_stylebox.corner_radius_bottom_left = 2
+
+	func _resolve_row_text_color(selection_state: int) -> Color:
+		if selection_state == 2:
+			return _selected_font_color
+		if selection_state == 1:
+			return _inactive_selected_font_color
+		return _preview_font_color if _is_preview else _font_color
+
+	func _resolve_value_pill_style(selection_state: int) -> StyleBoxFlat:
+		if selection_state == 2:
+			return _selected_value_pill_style
+		if selection_state == 1:
+			return _inactive_selected_value_pill_style
+		return _value_pill_style
+
+	func _resolve_action_circle_color(selection_state: int) -> Color:
+		if selection_state == 2:
+			return _selected_action_circle_color
+		if selection_state == 1:
+			return _inactive_selected_action_circle_color
+		return _action_circle_color
+
+	func _resolve_action_circle_border_color(selection_state: int) -> Color:
+		if selection_state == 2:
+			return _selected_action_circle_border_color
+		if selection_state == 1:
+			return _inactive_selected_action_circle_border_color
+		return _action_circle_border_color
 
 
 # =============================================================================
@@ -97,6 +534,23 @@ const LEVEL_COLORS := {
 	LogLevel.VERBOSE: Color8(210, 180, 162),
 	LogLevel.DEBUG: Color8(128, 128, 128),
 }
+const AUTOCOMPLETE_ITEM_HEIGHT := 28
+const AUTOCOMPLETE_MAX_VISIBLE_ITEMS := 10
+const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 10
+const AUTOCOMPLETE_COLUMN_PADDING := 24
+const AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH := 20
+const AUTOCOMPLETE_ACTION_ICON_DIAMETER := 18
+const AUTOCOMPLETE_ACTION_ICON_GAP := 6
+const AUTOCOMPLETE_CELL_GAP := 12
+const AUTOCOMPLETE_POPUP_GAP := 4
+const AUTOCOMPLETE_COLUMN_MAX_FALLBACK_WIDTH := 480
+const AUTOCOMPLETE_COLUMN_MIN_WIDTH := 180
+const AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH := 320
+const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
+const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
+const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
+const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
+const DEBUG_AUTOCOMPLETE := true
 
 
 # =============================================================================
@@ -139,6 +593,7 @@ var _welcome_message: String = "Logot\n"
 var _log_entries_provider: Callable
 var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
+var _display_variables_provider: Callable  # Returns Dictionary of address -> display_variable
 var _rejected_level_count_provider: Callable  # Returns int for a given level
 var _rejected_channel_count_provider: Callable  # Returns int for a given channel
 var _level_visibility_getter: Callable  # Returns int (VisibilityMode) for a given level
@@ -149,15 +604,30 @@ var _instance_visibility_getter: Callable  # Returns int (VisibilityMode) for a 
 var _custom_settings: Array = []
 
 # Autocomplete state
-var _autocomplete_popup: ItemList
+var _history_autocomplete_popup: ItemList
+var _command_autocomplete_popup: PanelContainer
+var _command_autocomplete_scroll: ScrollContainer
+var _command_autocomplete_columns_container: HBoxContainer
 var _autocomplete_selected_index := -1
+var _autocomplete_column_states: Array[Dictionary] = []
+var _autocomplete_column_nodes: Array[Control] = []
+var _autocomplete_active_column_index := -1
+var _autocomplete_highlighted_tiers: Dictionary = {}
+var _pending_autocomplete_column_sync_start := -1
+var _autocomplete_column_sync_queued := false
 var _suggestions := []
 var _current_suggest := 0
 var _suggesting := false
+var _command_entry_mode := false
 
 # Command history
 var _command_history: Array[String] = []
 var _max_history_size := 50
+var _history_can_switch_to_commands := false
+
+# Display variables
+var _pinned_display_variables: Array[String] = []
+var _pinned_overlay_label: Label
 
 
 # =============================================================================
@@ -182,6 +652,10 @@ func set_entry_text_provider(provider: Callable) -> void:
 
 func set_commands_provider(provider: Callable) -> void:
 	_commands_provider = provider
+
+
+func set_display_variables_provider(provider: Callable) -> void:
+	_display_variables_provider = provider
 
 
 func set_rejected_level_count_provider(provider: Callable) -> void:
@@ -243,8 +717,20 @@ func _get_instance_visibility(session_id: int) -> int:
 	return VisibilityMode.SHOWN
 
 
-func set_autocomplete_popup(popup: ItemList) -> void:
-	_autocomplete_popup = popup
+func set_history_autocomplete_popup(popup: ItemList) -> void:
+	_history_autocomplete_popup = popup
+
+
+func set_command_autocomplete_popup(popup: PanelContainer, scroll: ScrollContainer, columns_container: HBoxContainer) -> void:
+	_command_autocomplete_popup = popup
+	_command_autocomplete_scroll = scroll
+	_command_autocomplete_columns_container = columns_container
+	if _command_autocomplete_popup:
+		_command_autocomplete_popup.clip_contents = true
+	if _command_autocomplete_scroll:
+		_command_autocomplete_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+		_command_autocomplete_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		_command_autocomplete_scroll.clip_contents = true
 
 
 func add_custom_setting(name: String, label: String, default: bool) -> void:
@@ -256,6 +742,55 @@ func add_custom_setting(name: String, label: String, default: bool) -> void:
 func set_custom_setting(name: String, value: bool) -> void:
 	if _sidebar:
 		_sidebar.set_setting(name, value)
+
+
+func is_command_entry_mode() -> bool:
+	return _command_entry_mode
+
+
+func show_command_entry_mode(prefill_text: String = "/") -> void:
+	_command_entry_mode = true
+	_update_command_entry_mode_visibility()
+	if not line_edit:
+		return
+
+	line_edit.text = prefill_text
+	line_edit.caret_column = line_edit.text.length()
+	line_edit.grab_focus()
+	on_text_changed_autocomplete(line_edit.text)
+
+
+func hide_command_entry_mode(clear_input: bool = true) -> void:
+	_command_entry_mode = false
+	hide_autocomplete()
+
+	if line_edit and clear_input:
+		line_edit.clear()
+
+	if _search_filter != "":
+		_search_filter = ""
+		_rebuild_display()
+
+	_update_command_entry_mode_visibility()
+
+
+func _update_command_entry_mode_visibility() -> void:
+	if _logot_container:
+		_logot_container.alignment = BoxContainer.ALIGNMENT_END if _command_entry_mode else BoxContainer.ALIGNMENT_BEGIN
+
+	if rich_label:
+		rich_label.visible = not _command_entry_mode
+
+	if _clear_btn:
+		_clear_btn.visible = not _command_entry_mode
+
+	if _sidebar_toggle_btn:
+		_sidebar_toggle_btn.visible = not _command_entry_mode
+
+	if _sidebar:
+		_sidebar.visible = _sidebar_visible and not _command_entry_mode
+
+	_refresh_pinned_display_variables()
 
 
 # =============================================================================
@@ -318,6 +853,44 @@ func _get_commands() -> Dictionary:
 	return {}
 
 
+func _get_display_variables() -> Dictionary:
+	if _display_variables_provider.is_valid():
+		return _display_variables_provider.call()
+	return {}
+
+
+func pin_display_variable(address: String) -> void:
+	if address.is_empty() or _pinned_display_variables.has(address):
+		return
+	_pinned_display_variables.append(address)
+	_save_filter_settings()
+	_refresh_pinned_display_variables()
+
+
+func unpin_display_variable(address: String) -> void:
+	var index := _pinned_display_variables.find(address)
+	if index == -1:
+		return
+	_pinned_display_variables.remove_at(index)
+	_save_filter_settings()
+	_refresh_pinned_display_variables()
+
+
+func set_display_variable_pinned(address: String, pinned: bool) -> void:
+	if pinned:
+		pin_display_variable(address)
+	else:
+		unpin_display_variable(address)
+
+
+func is_display_variable_pinned(address: String) -> bool:
+	return _pinned_display_variables.has(address)
+
+
+func get_pinned_display_variables() -> Array[String]:
+	return _pinned_display_variables.duplicate()
+
+
 ## Called when a custom setting changes
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
 	custom_setting_changed.emit(setting_name, value)
@@ -344,6 +917,7 @@ func _toggle_entry_expansion(entry_id: int) -> void:
 func _init_base() -> void:
 	_init_default_levels()
 	_load_filter_settings()
+	set_process(true)
 
 
 func _setup_ui_nodes() -> void:
@@ -388,7 +962,7 @@ func _connect_ui_signals() -> void:
 		_sidebar_toggle_btn.button_pressed = _sidebar_visible
 
 	if _sidebar:
-		_sidebar.visible = _sidebar_visible
+		_sidebar.visible = _sidebar_visible and not _command_entry_mode
 
 
 func _setup_sidebar() -> void:
@@ -413,8 +987,47 @@ func _setup_sidebar() -> void:
 
 
 func _init_display() -> void:
+	_ensure_pinned_overlay()
 	if rich_label:
 		rich_label.append_text(_get_welcome_message())
+	_refresh_pinned_display_variables()
+
+
+func _process(_delta: float) -> void:
+	if _is_command_popup_visible():
+		_refresh_command_autocomplete_popup_values()
+	_refresh_pinned_display_variables()
+
+
+func _ensure_pinned_overlay() -> void:
+	if _pinned_overlay_label:
+		return
+
+	_pinned_overlay_label = Label.new()
+	_pinned_overlay_label.name = "PinnedDisplayVariables"
+	_pinned_overlay_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pinned_overlay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_pinned_overlay_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_pinned_overlay_label.position = Vector2(8, 8)
+	_pinned_overlay_label.visible = false
+	_pinned_overlay_label.z_index = 200
+	if _main_container and _main_container.theme:
+		_pinned_overlay_label.theme = _main_container.theme
+	add_child(_pinned_overlay_label)
+
+
+func _refresh_pinned_display_variables() -> void:
+	if not _pinned_overlay_label:
+		return
+
+	var lines: PackedStringArray = []
+	for address in _pinned_display_variables:
+		if not _has_display_variable(address):
+			continue
+		lines.append("%s: %s" % [address, _get_display_variable_value_text(address, false)])
+
+	_pinned_overlay_label.text = "\n".join(lines)
+	_pinned_overlay_label.visible = not _command_entry_mode and not lines.is_empty()
 
 
 func _init_default_levels() -> void:
@@ -911,6 +1524,7 @@ func _save_filter_settings() -> void:
 	config.set_value("settings", "wrap_text", _wrap_text)
 	config.set_value("settings", "truncate_multiline", _truncate_multiline)
 	config.set_value("settings", "sidebar_visible", _sidebar_visible)
+	config.set_value("display_variables", "pinned", _pinned_display_variables)
 
 	_save_custom_settings(config)
 
@@ -943,6 +1557,13 @@ func _load_filter_settings() -> void:
 		_truncate_multiline = config.get_value("settings", "truncate_multiline", true)
 		_sidebar_visible = config.get_value("settings", "sidebar_visible", false)
 
+	if config.has_section("display_variables"):
+		var pinned_addresses = config.get_value("display_variables", "pinned", [])
+		_pinned_display_variables.clear()
+		if pinned_addresses is Array:
+			for address in pinned_addresses:
+				_pinned_display_variables.append(str(address))
+
 	_load_custom_settings(config)
 
 
@@ -970,6 +1591,417 @@ func _sync_sidebar_state() -> void:
 	_sidebar.set_setting("collapse_duplicates", _collapse_duplicates)
 	_sidebar.set_setting("wrap_text", _wrap_text)
 	_sidebar.set_setting("truncate_multiline", _truncate_multiline)
+
+
+func _get_registered_addresses() -> Array[String]:
+	var addresses: Array[String] = []
+	for command in _get_commands():
+		var command_name := str(command)
+		addresses.append(command_name)
+		for option_address in _get_command_option_subcommand_addresses(command_name, 0):
+			if not addresses.has(option_address):
+				addresses.append(option_address)
+	for address in _get_display_variables():
+		var address_str := str(address)
+		if not addresses.has(address_str):
+			addresses.append(address_str)
+	return addresses
+
+
+func _has_display_variable(address: String) -> bool:
+	return _get_display_variables().has(address)
+
+
+func _get_display_variable_value(address: String) -> Variant:
+	var display_variable = _get_display_variables().get(address)
+	if display_variable == null:
+		return null
+
+	if display_variable is LogotDisplayVariable:
+		if display_variable.getter.is_valid():
+			return display_variable.getter.call()
+	elif display_variable is Callable:
+		var getter := display_variable as Callable
+		if getter.is_valid():
+			return getter.call()
+
+	return null
+
+
+func _get_display_variable_value_text(address: String, single_line: bool = true) -> String:
+	var value := _get_display_variable_value(address)
+	var text := str(value)
+	if single_line:
+		text = text.replace("\n", " ").replace("\r", " ")
+	return text
+
+
+func _debug_autocomplete(message: String, extra: String = "") -> void:
+	if not DEBUG_AUTOCOMPLETE:
+		return
+
+	var input_text := line_edit.text if line_edit else "<no line edit>"
+	var active_column := _autocomplete_active_column_index
+	var column_count := _autocomplete_column_states.size()
+	var history_visible := _is_history_popup_visible()
+	var command_visible := _is_command_popup_visible()
+	var output := "[logot autocomplete] %s | input='%s' active=%d columns=%d history=%s command=%s" % [
+		message,
+		input_text,
+		active_column,
+		column_count,
+		str(history_visible),
+		str(command_visible),
+	]
+	if not extra.is_empty():
+		output += " | " + extra
+	print(output)
+
+
+func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
+	var tier_matches: Dictionary = {}
+	var addresses := _get_registered_addresses()
+
+	for address in addresses:
+		if not address.begins_with(prefix):
+			continue
+
+		var next_tier := _get_next_tier(address, prefix)
+		if next_tier.is_empty():
+			continue
+
+		var tier_segment := next_tier.substr(prefix.length())
+		var score := _calculate_match_score(tier_segment, query)
+		if score < 0:
+			continue
+
+		if not tier_matches.has(next_tier) or tier_matches[next_tier] < score:
+			tier_matches[next_tier] = score
+
+	var matches: Array[Dictionary] = []
+	for tier in tier_matches:
+		var has_children := false
+		for address in addresses:
+			if address.begins_with(str(tier) + "/"):
+				has_children = true
+				break
+
+		if not has_children and not _get_command_option_subcommand_addresses(str(tier), 0).is_empty():
+			has_children = true
+		if not has_children and _is_setget_command_name(str(tier)):
+			has_children = true
+		var has_option_command := _is_command_option_subcommand_tier(str(tier))
+
+		matches.append({
+			"tier": str(tier),
+			"score": int(tier_matches[tier]),
+			"has_children": has_children,
+			"has_command": _get_commands().has(tier) or has_option_command,
+			"has_display_variable": _has_display_variable(str(tier)),
+		})
+
+	matches.sort_custom(func(a, b): return int(a.get("score", 0)) < int(b.get("score", 0)))
+	return matches
+
+
+func _get_autocomplete_tier_label(prefix: String, match_data: Dictionary) -> String:
+	var tier: String = match_data.get("tier", "")
+	return tier.substr(prefix.length()) if tier.begins_with(prefix) else tier
+
+
+func _format_autocomplete_item_text(prefix: String, match_data: Dictionary, left_column_width: int) -> String:
+	var left_text := _get_autocomplete_tier_label(prefix, match_data)
+	if not match_data.get("has_display_variable", false):
+		return left_text
+
+	var value_text := _get_display_variable_value_text(match_data.get("tier", ""), true)
+	var padding := maxi(2, left_column_width - left_text.length() + 4)
+	return left_text + " ".repeat(padding) + value_text
+
+
+func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary) -> Dictionary:
+	if match_data.get("is_option", false):
+		return {
+			"label": str(match_data.get("option_label", "")),
+			"value_text": "",
+			"has_children": false,
+			"can_submit": false,
+		}
+
+	return {
+		"label": _get_autocomplete_tier_label(prefix, match_data),
+		"value_text": _get_autocomplete_display_variable_value_text(match_data),
+		"has_children": match_data.get("has_children", false),
+		"can_submit": match_data.get("has_command", false),
+	}
+
+
+func _get_autocomplete_display_variable_value_text(match_data: Dictionary) -> String:
+	if not match_data.get("has_display_variable", false):
+		return ""
+
+	var tier := str(match_data.get("tier", ""))
+	if tier.is_empty():
+		return ""
+
+	var value := _get_display_variable_value(tier)
+	var option_label := _get_command_option_label_for_value(tier, value, 0)
+	if not option_label.is_empty():
+		return option_label
+	return _get_display_variable_value_text(tier, true)
+
+
+func _get_command_autocomplete_column_name(prefix: String) -> String:
+	var command_path := prefix.trim_suffix("/")
+	if command_path.is_empty():
+		return "Commands"
+	var segments := command_path.split("/", false)
+	if segments.is_empty():
+		return command_path
+	return str(segments[segments.size() - 1])
+
+
+func _get_command_autocomplete_description(command_name: String) -> String:
+	if command_name.is_empty():
+		return ""
+
+	var command_data = _get_command_data(command_name)
+	if command_data == null:
+		return ""
+	if command_data is LogotCommand:
+		return str((command_data as LogotCommand).description)
+	if command_data is Dictionary:
+		return str((command_data as Dictionary).get("description", ""))
+	if command_data is Object:
+		var description = (command_data as Object).get("description")
+		return "" if description == null else str(description)
+	return ""
+
+
+func _get_command_autocomplete_column_description(prefix: String, command_name: String) -> String:
+	if prefix.is_empty():
+		return "%s, %s" % [AUTOCOMPLETE_ROOT_COMMANDS_HINT, AUTOCOMPLETE_HISTORY_HINT]
+	return _get_command_autocomplete_description(command_name)
+
+
+func _get_command_data(command_name: String) -> Variant:
+	if command_name.is_empty():
+		return null
+	var commands := _get_commands()
+	if not commands.has(command_name):
+		return null
+	return commands[command_name]
+
+
+func _is_setget_command_name(command_name: String) -> bool:
+	var command_data = _get_command_data(command_name)
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).value_getter.is_valid()
+	if command_data is Dictionary:
+		return bool((command_data as Dictionary).get("is_setget", false))
+	return false
+
+
+func _normalize_single_command_option_list(option_data: Variant) -> Array:
+	var values: Array = []
+	if option_data is Array:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	if option_data is PackedStringArray:
+		for option_value in option_data:
+			values.append(option_value)
+		return values
+	values.append(option_data)
+	return values
+
+
+func _normalize_command_option_values(options_data: Variant) -> Array:
+	var normalized: Array = []
+	if not (options_data is Array):
+		return normalized
+
+	var options_array: Array = options_data
+	if options_array.is_empty():
+		return normalized
+
+	var first_value = options_array[0]
+	if first_value is Array or first_value is PackedStringArray:
+		for option_group in options_array:
+			normalized.append(_normalize_single_command_option_list(option_group))
+	else:
+		normalized.append(_normalize_single_command_option_list(options_array))
+	return normalized
+
+
+func _get_command_argument_option_values(command_name: String, argument_index: int = 0) -> Array:
+	if argument_index < 0:
+		return []
+
+	var command_data = _get_command_data(command_name)
+	if command_data == null:
+		return []
+
+	if command_data is LogotCommand:
+		var logot_command := command_data as LogotCommand
+		if logot_command.argument_options_provider.is_valid():
+			var provided_options = _normalize_command_option_values(logot_command.argument_options_provider.call())
+			if argument_index < provided_options.size():
+				return provided_options[argument_index]
+
+		var static_options = _normalize_command_option_values(logot_command.argument_options)
+		if argument_index < static_options.size():
+			return static_options[argument_index]
+		return []
+
+	if command_data is Dictionary:
+		var options_data = (command_data as Dictionary).get("argument_options", [])
+		var normalized_options = _normalize_command_option_values(options_data)
+		if argument_index < normalized_options.size():
+			return normalized_options[argument_index]
+		return []
+
+	return []
+
+
+func _get_command_current_value(command_name: String) -> Variant:
+	var command_data = _get_command_data(command_name)
+	if command_data is LogotCommand:
+		var value_getter := (command_data as LogotCommand).value_getter
+		if value_getter.is_valid():
+			return value_getter.call()
+
+	if _has_display_variable(command_name):
+		return _get_display_variable_value(command_name)
+
+	return null
+
+
+func _build_command_option_matches(command_name: String, argument_index: int = 0) -> Array[Dictionary]:
+	var option_values := _get_command_argument_option_values(command_name, argument_index)
+	var option_matches: Array[Dictionary] = []
+	for option_entry in option_values:
+		var option_value := _get_command_option_entry_value(option_entry)
+		var option_label := _get_command_option_entry_label(option_entry)
+		option_matches.append({
+			"is_option": true,
+			"option_label": option_label,
+			"option_value": option_value,
+		})
+	return option_matches
+
+
+func _get_command_option_entry_value(option_entry: Variant) -> Variant:
+	if option_entry is Dictionary:
+		return (option_entry as Dictionary).get("value")
+	return option_entry
+
+
+func _get_command_option_entry_label(option_entry: Variant) -> String:
+	if option_entry is Dictionary:
+		var option_label := str((option_entry as Dictionary).get("label", "")).strip_edges()
+		if not option_label.is_empty():
+			return option_label
+	return str(_get_command_option_entry_value(option_entry))
+
+
+func _get_command_option_subcommand_segment(option_entry: Variant) -> String:
+	return _get_command_option_entry_label(option_entry).strip_edges()
+
+
+func _get_command_option_label_for_value(command_name: String, value: Variant, argument_index: int = 0) -> String:
+	var options := _get_command_argument_option_values(command_name, argument_index)
+	if options.is_empty():
+		return ""
+
+	var value_text := str(value)
+	for option_entry in options:
+		var option_value := _get_command_option_entry_value(option_entry)
+		if option_value == value or str(option_value) == value_text:
+			return _get_command_option_entry_label(option_entry)
+	return ""
+
+
+func _get_command_option_subcommand_addresses(command_name: String, argument_index: int = 0) -> Array[String]:
+	var addresses: Array[String] = []
+	var option_values := _get_command_argument_option_values(command_name, argument_index)
+	for option_entry in option_values:
+		var option_segment := _get_command_option_subcommand_segment(option_entry)
+		if option_segment.is_empty():
+			continue
+		addresses.append("%s/%s" % [command_name, option_segment])
+	return addresses
+
+
+func _is_command_option_subcommand_tier(tier: String) -> bool:
+	var last_separator := tier.rfind("/")
+	if last_separator <= 0:
+		return false
+
+	var command_name := tier.substr(0, last_separator)
+	if command_name.is_empty() or _get_command_data(command_name) == null:
+		return false
+	var option_segment := tier.substr(last_separator + 1)
+	if option_segment.is_empty():
+		return false
+
+	var option_match := _match_setget_option_text(option_segment, _get_command_argument_option_values(command_name, 0))
+	return option_match.get("matched", false)
+
+
+func _find_setget_preview_option_selected_index(command_name: String, preview_prefix: String, preview_matches: Array) -> int:
+	if command_name.is_empty() or preview_prefix.is_empty() or preview_matches.is_empty():
+		return -1
+
+	var current_value := _get_command_current_value(command_name)
+	var current_text := str(current_value)
+	var option_values := _get_command_argument_option_values(command_name, 0)
+	for option_index in range(preview_matches.size()):
+		var option_tier := str(preview_matches[option_index].get("tier", ""))
+		if not option_tier.begins_with(preview_prefix):
+			continue
+		var option_segment := option_tier.substr(preview_prefix.length())
+		var option_match := _match_setget_option_text(option_segment, option_values)
+		if not option_match.get("matched", false):
+			continue
+		var option_value = option_match.get("value")
+		if option_value == current_value or str(option_value) == current_text:
+			return option_index
+	return -1
+
+
+func _match_setget_option_text(raw_value: String, options: Array) -> Dictionary:
+	var trimmed_value := raw_value.strip_edges()
+	if trimmed_value.is_empty():
+		return {"matched": false}
+
+	var lowered_value := trimmed_value.to_lower()
+	for option_entry in options:
+		var option_value := _get_command_option_entry_value(option_entry)
+		var option_label := _get_command_option_entry_label(option_entry)
+		for candidate in [option_label, str(option_value)]:
+			if candidate == trimmed_value or candidate.to_lower() == lowered_value:
+				return {"matched": true, "value": option_value}
+	return {"matched": false}
+
+
+func _find_command_option_match_index(command_name: String, option_matches: Array[Dictionary]) -> int:
+	if option_matches.is_empty():
+		return -1
+
+	var current_value := _get_command_current_value(command_name)
+	if current_value == null:
+		return -1
+
+	var current_text := str(current_value)
+	for option_index in range(option_matches.size()):
+		var option_data := option_matches[option_index]
+		var option_value = option_data.get("option_value")
+		if option_value == current_value:
+			return option_index
+		if str(option_value) == current_text:
+			return option_index
+	return -1
 
 
 # =============================================================================
@@ -1014,21 +2046,6 @@ func _calculate_match_score(command: String, query: String) -> int:
 	return -1  # No match
 
 
-## Get the current tier prefix from the input text
-## Returns the prefix up to and including the last / (e.g., "console/" from "/console/te")
-func _get_current_tier_prefix() -> String:
-	if not line_edit:
-		return ""
-	var text := line_edit.text
-	if not text.begins_with("/"):
-		return ""
-	var full_text := text.substr(1)  # Remove leading /
-	var last_slash := full_text.rfind("/")
-	if last_slash == -1:
-		return ""
-	return full_text.substr(0, last_slash + 1)  # Include the trailing /
-
-
 ## Get the next tier suggestion for a command given the current prefix
 ## For "console/test/foo" with prefix "console/", returns "console/test"
 ## For "console" with prefix "", returns "console"
@@ -1042,251 +2059,1036 @@ func _get_next_tier(command: String, prefix: String) -> String:
 	return prefix + remainder.substr(0, next_slash)  # Return up to next tier
 
 
-## Check if a command has more tiers after the given prefix
-func _has_sub_tiers(command: String, prefix: String) -> bool:
-	if not command.begins_with(prefix):
+func _find_autocomplete_match_index(matches: Array[Dictionary], tier: String) -> int:
+	if tier.is_empty():
+		return -1
+	for i in range(matches.size()):
+		if str(matches[i].get("tier", "")) == tier:
+			return i
+	return -1
+
+
+func _store_autocomplete_highlighted_tier(prefix: String, matches: Array, selected_index: int) -> void:
+	if selected_index < 0 or selected_index >= matches.size():
+		return
+	var selected_match: Dictionary = matches[selected_index]
+	var selected_tier := str(selected_match.get("tier", ""))
+	if selected_tier.is_empty():
+		return
+	_autocomplete_highlighted_tiers[prefix] = selected_tier
+
+
+func _split_autocomplete_segments(path: String) -> Array[String]:
+	var segments: Array[String] = []
+	if path.is_empty():
+		return segments
+
+	for segment in path.split("/", false):
+		if not str(segment).is_empty():
+			segments.append(str(segment))
+	return segments
+
+
+func _get_autocomplete_input_state() -> Dictionary:
+	var committed_segments: Array[String] = []
+	var committed_prefix := ""
+	var query := ""
+
+	if not line_edit:
+		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
+
+	var text := line_edit.text
+	if not text.begins_with("/"):
+		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
+
+	var full_text := text.substr(1)
+	query = full_text
+
+	if full_text.ends_with("/"):
+		query = ""
+		var without_trailing := full_text.left(full_text.length() - 1)
+		committed_segments = _split_autocomplete_segments(without_trailing)
+		committed_prefix = full_text
+	else:
+		var last_slash := full_text.rfind("/")
+		if last_slash != -1:
+			committed_prefix = full_text.substr(0, last_slash + 1)
+			committed_segments = _split_autocomplete_segments(committed_prefix.left(committed_prefix.length() - 1))
+			query = full_text.substr(last_slash + 1)
+
+	return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
+
+
+func _build_command_autocomplete_state() -> bool:
+	var input_state := _get_autocomplete_input_state()
+	var committed_segments: Array[String] = []
+	for segment in input_state.get("segments", []):
+		committed_segments.append(str(segment))
+	var query: String = input_state.get("query", "")
+
+	_autocomplete_column_states.clear()
+	_autocomplete_active_column_index = committed_segments.size()
+
+	var prefix := ""
+	for column_index in range(_autocomplete_active_column_index + 1):
+		var column_query := query if column_index == _autocomplete_active_column_index else ""
+		var matches := _build_tier_matches(prefix, column_query)
+		if matches.is_empty():
+			_autocomplete_active_column_index = -1
+			return false
+
+		var selected_tier := str(_autocomplete_highlighted_tiers.get(prefix, ""))
+		if column_index < committed_segments.size():
+			selected_tier = prefix + committed_segments[column_index]
+
+		var selected_index := _find_autocomplete_match_index(matches, selected_tier)
+		if selected_index == -1:
+			if column_index < committed_segments.size():
+				_autocomplete_active_column_index = -1
+				return false
+			selected_index = matches.size() - 1
+		_store_autocomplete_highlighted_tier(prefix, matches, selected_index)
+		_autocomplete_column_states.append({
+			"prefix": prefix,
+			"query": column_query,
+			"matches": matches,
+			"selected_index": selected_index,
+			"preview": false,
+			"left_width": 0,
+			"width": 0,
+		})
+
+		if column_index < committed_segments.size():
+			prefix = str(matches[selected_index].get("tier", "")) + "/"
+
+	_refresh_active_preview_column_state()
+	return not _autocomplete_column_states.is_empty()
+
+
+func _refresh_active_preview_column_state() -> void:
+	while _autocomplete_column_states.size() > _autocomplete_active_column_index + 1:
+		_autocomplete_column_states.remove_at(_autocomplete_column_states.size() - 1)
+
+	if _autocomplete_active_column_index < 0 or _autocomplete_active_column_index >= _autocomplete_column_states.size():
+		return
+
+	var active_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+	var selected_index := int(active_state.get("selected_index", -1))
+	var matches: Array = active_state.get("matches", [])
+	if selected_index < 0 or selected_index >= matches.size():
+		return
+
+	var selected_match: Dictionary = matches[selected_index]
+	var selected_tier := str(selected_match.get("tier", ""))
+	if selected_tier.is_empty():
+		return
+
+	if selected_match.get("has_children", false):
+		var preview_prefix := selected_tier + "/"
+		var preview_matches := _build_tier_matches(preview_prefix, "")
+		if not preview_matches.is_empty():
+			var preview_selected_index := _find_setget_preview_option_selected_index(selected_tier, preview_prefix, preview_matches) if _is_setget_command_name(selected_tier) else -1
+			_store_autocomplete_highlighted_tier(preview_prefix, preview_matches, preview_selected_index)
+
+			_autocomplete_column_states.append({
+				"prefix": preview_prefix,
+				"query": "",
+				"matches": preview_matches,
+				"selected_index": preview_selected_index,
+				"preview": true,
+				"preview_parent_command": selected_tier if _is_setget_command_name(selected_tier) else "",
+				"left_width": 0,
+				"width": 0,
+			})
+
+	# Show a dedicated command details column for executable leaf selections.
+	if selected_match.get("has_command", false) and not selected_match.get("has_children", false) and not _is_command_option_subcommand_tier(selected_tier):
+		var option_matches := _build_command_option_matches(selected_tier, 0)
+		var option_selected_index := _find_command_option_match_index(selected_tier, option_matches)
+		if not option_matches.is_empty():
+			_autocomplete_column_states.append({
+				"prefix": selected_tier + "/",
+				"query": "",
+				"matches": option_matches,
+				"selected_index": option_selected_index,
+				"preview": true,
+				"preview_command": selected_tier,
+				"preview_argument_index": 0,
+				"column_name_override": _get_command_autocomplete_column_name(selected_tier + "/"),
+				"column_description_override": _get_command_autocomplete_description(selected_tier),
+				"left_width": 0,
+				"width": 0,
+			})
+			return
+
+		_autocomplete_column_states.append({
+			"prefix": selected_tier + "/",
+			"query": "",
+			"matches": [],
+			"selected_index": -1,
+			"preview": true,
+			"column_description_override": _get_command_autocomplete_description(selected_tier),
+			"left_width": 0,
+			"width": 0,
+		})
+
+
+func _measure_autocomplete_text_width(control: Control, text: String) -> int:
+	var font := control.get_theme_font("font")
+	var font_size := control.get_theme_font_size("font_size")
+	if font == null:
+		return text.length() * 8
+	if font_size <= 0:
+		font_size = 16
+	return int(ceil(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x))
+
+
+func _measure_autocomplete_text_width_with_font_size(control: Control, text: String, font_size: int) -> int:
+	var font := control.get_theme_font("font")
+	if font == null:
+		return text.length() * 8
+	if font_size <= 0:
+		font_size = 16
+	return int(ceil(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x))
+
+
+func _get_command_autocomplete_max_column_width() -> int:
+	var max_width := 0
+	if line_edit:
+		max_width = int(line_edit.size.x)
+		if max_width <= 0:
+			max_width = int(line_edit.get_global_rect().size.x)
+	if max_width <= 0 and _command_autocomplete_popup:
+		max_width = int(_command_autocomplete_popup.size.x)
+	if max_width <= 0:
+		max_width = AUTOCOMPLETE_COLUMN_MAX_FALLBACK_WIDTH
+	max_width = mini(max_width, AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH)
+	return maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+
+
+func _measure_command_autocomplete_column_layout(control: Control, prefix: String, matches: Array, column_name: String, column_description: String) -> Dictionary:
+	var name_width := 0
+	var value_width := 0
+	var action_width := 0
+	for match_data in matches:
+		var row_data := _build_command_autocomplete_row_data(prefix, match_data)
+		name_width = maxi(name_width, _measure_autocomplete_text_width(control, str(row_data.get("label", ""))))
+
+		var value_text := str(row_data.get("value_text", ""))
+		if not value_text.is_empty():
+			value_width = maxi(value_width, _measure_autocomplete_text_width(control, value_text) + AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH)
+
+		var action_count := 0
+		if row_data.get("has_children", false):
+			action_count += 1
+		if row_data.get("can_submit", false):
+			action_count += 1
+		if action_count > 0:
+			var current_action_width := AUTOCOMPLETE_ACTION_ICON_DIAMETER * action_count
+			if action_count > 1:
+				current_action_width += AUTOCOMPLETE_ACTION_ICON_GAP * (action_count - 1)
+			action_width = maxi(action_width, current_action_width)
+
+	value_width = mini(value_width, AUTOCOMPLETE_VALUE_MAX_WIDTH)
+
+	var total_width := AUTOCOMPLETE_COLUMN_PADDING + name_width
+	if value_width > 0:
+		total_width += AUTOCOMPLETE_CELL_GAP + value_width
+	if action_width > 0:
+		total_width += AUTOCOMPLETE_CELL_GAP + action_width
+
+	var base_font_size := control.get_theme_font_size("font_size")
+	if base_font_size <= 0:
+		base_font_size = 16
+	var header_title_size := maxi(20, base_font_size + 6)
+	var header_description_size := maxi(11, base_font_size - 2)
+	var header_content_width := _measure_autocomplete_text_width_with_font_size(control, column_name.to_upper(), header_title_size)
+	if not column_description.strip_edges().is_empty():
+		header_content_width = maxi(header_content_width, _measure_autocomplete_text_width_with_font_size(control, column_description, header_description_size))
+	# Keep a small safety margin because title text is rendered bold via BBCode and can
+	# be a few pixels wider than plain font metrics (which otherwise causes wrap artifacts).
+	var header_total_width := int(ceil(AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + header_content_width + AUTOCOMPLETE_HEADER_WIDTH_BUFFER
+	var preferred_width := maxi(total_width, header_total_width)
+	var max_width := _get_command_autocomplete_max_column_width()
+	total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+
+	return {
+		"name_width": name_width,
+		"value_width": value_width,
+		"action_width": action_width,
+		"width": total_width,
+	}
+
+
+func _create_command_autocomplete_column() -> AutocompleteCommandColumn:
+	var list := AutocompleteCommandColumn.new()
+	if _history_autocomplete_popup:
+		list.configure_theme(_history_autocomplete_popup)
+	return list
+
+
+func _clear_command_autocomplete_columns() -> void:
+	if not _command_autocomplete_columns_container:
+		return
+
+	for child in _command_autocomplete_columns_container.get_children():
+		_command_autocomplete_columns_container.remove_child(child)
+		child.queue_free()
+	_autocomplete_column_nodes.clear()
+
+
+func _position_history_autocomplete_popup() -> void:
+	if not _history_autocomplete_popup or not line_edit:
+		return
+
+	var line_edit_rect := line_edit.get_global_rect()
+	var item_count := mini(_history_autocomplete_popup.item_count, AUTOCOMPLETE_MAX_VISIBLE_ITEMS)
+	var desired_height := item_count * AUTOCOMPLETE_ITEM_HEIGHT + 8
+	var available_height := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP)
+	var popup_height := minf(desired_height, available_height)
+	var popup_y := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP - popup_height)
+	var popup_width := line_edit_rect.size.x
+	if line_edit.size.x > 0.0:
+		popup_width = minf(popup_width, line_edit.size.x)
+	var viewport_rect := get_viewport_rect()
+	var popup_x := clamp(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
+
+	_history_autocomplete_popup.global_position = Vector2(popup_x, popup_y)
+	_history_autocomplete_popup.size = Vector2(popup_width, popup_height)
+
+
+func _position_command_autocomplete_popup() -> void:
+	if not _command_autocomplete_popup or not line_edit:
+		return
+
+	var line_edit_rect := line_edit.get_global_rect()
+	var popup_height := _get_command_autocomplete_target_height()
+	var popup_y := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP - popup_height)
+	var popup_width := line_edit_rect.size.x
+	if line_edit.size.x > 0.0:
+		popup_width = minf(popup_width, line_edit.size.x)
+	var viewport_rect := get_viewport_rect()
+	var popup_x := clamp(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
+
+	_command_autocomplete_popup.global_position = Vector2(popup_x, popup_y)
+	_command_autocomplete_popup.size = Vector2(popup_width, popup_height)
+
+	_debug_command_popup_height("_position_command_autocomplete_popup")
+
+
+func _scroll_command_autocomplete_columns_to_end() -> void:
+	if not _command_autocomplete_scroll or not _command_autocomplete_columns_container:
+		return
+
+	var viewport_width := int(_command_autocomplete_popup.size.x)
+	var content_width := 0
+	for column_state in _autocomplete_column_states:
+		content_width += int(column_state.get("width", 0))
+	var separation := _command_autocomplete_columns_container.get_theme_constant("separation")
+	if _autocomplete_column_states.size() > 1:
+		content_width += separation * (_autocomplete_column_states.size() - 1)
+	var target_scroll := maxi(0, content_width - viewport_width)
+	_command_autocomplete_scroll.scroll_horizontal = target_scroll
+
+
+func _ensure_active_command_column_visible() -> void:
+	if not _command_autocomplete_scroll or _autocomplete_active_column_index < 0:
+		return
+	if _autocomplete_active_column_index >= _autocomplete_column_states.size():
+		return
+
+	var separation := 0
+	if _command_autocomplete_columns_container:
+		separation = _command_autocomplete_columns_container.get_theme_constant("separation")
+
+	var active_start := separation * _autocomplete_active_column_index
+	for i in range(_autocomplete_active_column_index):
+		active_start += int(_autocomplete_column_states[i].get("width", 0))
+
+	var active_width := int(_autocomplete_column_states[_autocomplete_active_column_index].get("width", 0))
+	var active_end := active_start + active_width
+	var viewport_width := int(_command_autocomplete_popup.size.x)
+	var current_scroll := _command_autocomplete_scroll.scroll_horizontal
+	var target_scroll := current_scroll
+
+	if active_start < current_scroll:
+		target_scroll = active_start
+	elif active_end > current_scroll + viewport_width:
+		target_scroll = active_end - viewport_width
+
+	if target_scroll < 0:
+		target_scroll = 0
+	_command_autocomplete_scroll.scroll_horizontal = target_scroll
+
+
+func _queue_command_autocomplete_column_sync(start_index: int) -> void:
+	_debug_autocomplete("_queue_command_autocomplete_column_sync", "start_index=%d" % start_index)
+	if _pending_autocomplete_column_sync_start == -1:
+		_pending_autocomplete_column_sync_start = start_index
+	else:
+		_pending_autocomplete_column_sync_start = mini(_pending_autocomplete_column_sync_start, start_index)
+
+	if _autocomplete_column_sync_queued:
+		return
+
+	_autocomplete_column_sync_queued = true
+	call_deferred("_flush_command_autocomplete_column_sync")
+
+
+func _flush_command_autocomplete_column_sync() -> void:
+	_autocomplete_column_sync_queued = false
+	var start_index := maxi(0, _pending_autocomplete_column_sync_start)
+	_pending_autocomplete_column_sync_start = -1
+	_debug_autocomplete("_flush_command_autocomplete_column_sync", "start_index=%d" % start_index)
+	_sync_visible_command_autocomplete_columns(start_index)
+
+
+func _debug_command_popup_height(source: String) -> void:
+	if not DEBUG_AUTOCOMPLETE:
+		return
+	if not _command_autocomplete_popup:
+		return
+
+	var scroll_size := Vector2.ZERO
+	if _command_autocomplete_scroll:
+		scroll_size = _command_autocomplete_scroll.size
+
+	_debug_autocomplete(
+		source,
+		"popup_height=%.1f popup_size=%s popup_min=%s scroll_size=%s popup_visible=%s in_tree=%s" % [
+			_command_autocomplete_popup.size.y,
+			str(_command_autocomplete_popup.size),
+			str(_command_autocomplete_popup.custom_minimum_size),
+			str(scroll_size),
+			str(_command_autocomplete_popup.visible),
+			str(_command_autocomplete_popup.is_visible_in_tree()),
+		]
+	)
+
+
+func _get_command_autocomplete_popup_height() -> int:
+	return AUTOCOMPLETE_FIXED_VISIBLE_ITEMS * AUTOCOMPLETE_ITEM_HEIGHT + 8
+
+
+func _get_command_autocomplete_target_height() -> int:
+	if not line_edit:
+		return _get_command_autocomplete_popup_height()
+
+	var line_edit_rect := line_edit.get_global_rect()
+	var desired_height := float(_get_command_autocomplete_popup_height())
+	var available_height := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP)
+	return maxi(1, int(floor(minf(desired_height, available_height))))
+
+
+func _refresh_command_preview_option_state(column_state: Dictionary) -> Dictionary:
+	if not column_state.get("preview", false):
+		return column_state
+
+	var preview_parent_command := str(column_state.get("preview_parent_command", ""))
+	if not preview_parent_command.is_empty():
+		var preview_prefix := str(column_state.get("prefix", ""))
+		var preview_matches := _build_tier_matches(preview_prefix, "")
+		column_state["matches"] = preview_matches
+		column_state["selected_index"] = _find_setget_preview_option_selected_index(preview_parent_command, preview_prefix, preview_matches)
+		_store_autocomplete_highlighted_tier(preview_prefix, preview_matches, int(column_state.get("selected_index", -1)))
+		return column_state
+
+	var preview_command := str(column_state.get("preview_command", ""))
+	if preview_command.is_empty():
+		return column_state
+
+	var argument_index := int(column_state.get("preview_argument_index", 0))
+	var option_matches := _build_command_option_matches(preview_command, argument_index)
+	column_state["matches"] = option_matches
+	column_state["selected_index"] = _find_command_option_match_index(preview_command, option_matches)
+	return column_state
+
+
+func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, column_state: Dictionary, column_index: int) -> Dictionary:
+	column_state = _refresh_command_preview_option_state(column_state)
+	var prefix: String = column_state.get("prefix", "")
+	var command_name := prefix.trim_suffix("/")
+	var column_name := str(column_state.get("column_name_override", _get_command_autocomplete_column_name(prefix)))
+	var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
+	var matches: Array = column_state.get("matches", [])
+	var rows: Array[Dictionary] = []
+	for match_data in matches:
+		rows.append(_build_command_autocomplete_row_data(prefix, match_data))
+
+	var layout := _measure_command_autocomplete_column_layout(list, prefix, matches, column_name, column_description)
+	column_state["left_width"] = int(layout.get("name_width", 0))
+	column_state["value_width"] = int(layout.get("value_width", 0))
+	column_state["action_width"] = int(layout.get("action_width", 0))
+	column_state["width"] = int(layout.get("width", 0))
+
+	var column_height := _get_command_autocomplete_target_height()
+	list.custom_minimum_size = Vector2(column_state["width"], column_height)
+	list.size = list.custom_minimum_size
+
+	var selected_index := int(column_state.get("selected_index", -1))
+	var is_active_column := column_index == _autocomplete_active_column_index
+	list.set_column_data(
+		rows,
+		layout,
+		selected_index,
+		column_state.get("preview", false),
+		AUTOCOMPLETE_ITEM_HEIGHT,
+		is_active_column,
+		column_name,
+		column_description
+	)
+
+	return column_state
+
+
+func _sync_visible_command_autocomplete_columns(start_index: int = 0) -> void:
+	_debug_autocomplete("_sync_visible_command_autocomplete_columns", "start_index=%d" % start_index)
+	if not _command_autocomplete_popup or not _command_autocomplete_columns_container:
+		return
+	if _autocomplete_column_states.is_empty():
+		_command_autocomplete_popup.visible = false
+		_debug_autocomplete("_sync_visible_command_autocomplete_columns.empty")
+		return
+
+	_debug_autocomplete(
+		"_sync_visible_command_autocomplete_columns.pre",
+		"start=%d state_columns=%d node_columns=%d child_count=%d popup_visible=%s in_tree=%s" % [
+			start_index,
+			_autocomplete_column_states.size(),
+			_autocomplete_column_nodes.size(),
+			_command_autocomplete_columns_container.get_child_count(),
+			str(_command_autocomplete_popup.visible),
+			str(_command_autocomplete_popup.is_visible_in_tree()),
+		]
+	)
+
+	while _autocomplete_column_nodes.size() > _autocomplete_column_states.size():
+		var node := _autocomplete_column_nodes.pop_back()
+		_command_autocomplete_columns_container.remove_child(node)
+		node.queue_free()
+		_debug_autocomplete(
+			"_sync_visible_command_autocomplete_columns.removed_node",
+			"remaining_nodes=%d child_count=%d" % [
+				_autocomplete_column_nodes.size(),
+				_command_autocomplete_columns_container.get_child_count(),
+			]
+		)
+
+	while _autocomplete_column_nodes.size() < _autocomplete_column_states.size():
+		var new_list := _create_command_autocomplete_column()
+		_command_autocomplete_columns_container.add_child(new_list)
+		_autocomplete_column_nodes.append(new_list)
+		_debug_autocomplete(
+			"_sync_visible_command_autocomplete_columns.added_node",
+			"nodes=%d child_count=%d" % [
+				_autocomplete_column_nodes.size(),
+				_command_autocomplete_columns_container.get_child_count(),
+			]
+		)
+
+	for column_index in range(start_index, _autocomplete_column_states.size()):
+		var list := _autocomplete_column_nodes[column_index] as AutocompleteCommandColumn
+		var column_state: Dictionary = _autocomplete_column_states[column_index]
+		column_state = _configure_command_autocomplete_column(list, column_state, column_index)
+		_autocomplete_column_states[column_index] = column_state
+		_debug_autocomplete(
+			"_sync_visible_command_autocomplete_columns.column",
+			"column=%d items=%d selected=%d preview=%s size=%s min_size=%s" % [
+				column_index,
+				list.get_row_count(),
+				int(column_state.get("selected_index", -1)) if not column_state.get("preview", false) and column_index == _autocomplete_active_column_index else -1,
+				str(column_state.get("preview", false)),
+				str(list.size),
+				str(list.custom_minimum_size),
+			]
+		)
+
+	_position_command_autocomplete_popup()
+	_command_autocomplete_popup.visible = true
+	_ensure_active_command_column_visible()
+	var active_item_count := -1
+	if _autocomplete_active_column_index >= 0 and _autocomplete_active_column_index < _autocomplete_column_states.size():
+		active_item_count = _autocomplete_column_states[_autocomplete_active_column_index].get("matches", []).size()
+	_debug_autocomplete(
+		"_sync_visible_command_autocomplete_columns.post",
+		"active=%d active_items=%d node_columns=%d child_count=%d popup_visible=%s in_tree=%s popup_size=%s popup_pos=%s" % [
+			_autocomplete_active_column_index,
+			active_item_count,
+			_autocomplete_column_nodes.size(),
+			_command_autocomplete_columns_container.get_child_count(),
+			str(_command_autocomplete_popup.visible),
+			str(_command_autocomplete_popup.is_visible_in_tree()),
+			str(_command_autocomplete_popup.size),
+			str(_command_autocomplete_popup.position),
+		]
+	)
+
+
+func _render_command_autocomplete_popup() -> void:
+	if not _command_autocomplete_popup or not _command_autocomplete_columns_container:
+		return
+	if _autocomplete_column_states.is_empty():
+		_command_autocomplete_popup.visible = false
+		return
+
+	_clear_command_autocomplete_columns()
+
+	for column_index in range(_autocomplete_column_states.size()):
+		var list := _create_command_autocomplete_column()
+		var column_state: Dictionary = _autocomplete_column_states[column_index]
+		column_state = _configure_command_autocomplete_column(list, column_state, column_index)
+		_autocomplete_column_states[column_index] = column_state
+
+		_command_autocomplete_columns_container.add_child(list)
+		_autocomplete_column_nodes.append(list)
+
+	_position_command_autocomplete_popup()
+	_command_autocomplete_popup.visible = true
+	_scroll_command_autocomplete_columns_to_end()
+
+
+func _refresh_command_autocomplete_popup_values() -> void:
+	if not _is_command_popup_visible():
+		return
+
+	var needs_layout_refresh := false
+	for column_index in range(mini(_autocomplete_column_states.size(), _autocomplete_column_nodes.size())):
+		var column_state: Dictionary = _refresh_command_preview_option_state(_autocomplete_column_states[column_index])
+		var matches: Array = column_state.get("matches", [])
+		var prefix: String = column_state.get("prefix", "")
+		var command_name := prefix.trim_suffix("/")
+		var column_name := str(column_state.get("column_name_override", _get_command_autocomplete_column_name(prefix)))
+		var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
+		var list := _autocomplete_column_nodes[column_index] as AutocompleteCommandColumn
+		var rows: Array[Dictionary] = []
+		for match_data in matches:
+			rows.append(_build_command_autocomplete_row_data(prefix, match_data))
+
+		var layout := _measure_command_autocomplete_column_layout(list, prefix, matches, column_name, column_description)
+		var new_width := int(layout.get("width", 0))
+		if new_width != int(column_state.get("width", 0)):
+			column_state["left_width"] = int(layout.get("name_width", 0))
+			column_state["value_width"] = int(layout.get("value_width", 0))
+			column_state["action_width"] = int(layout.get("action_width", 0))
+			column_state["width"] = new_width
+			_autocomplete_column_states[column_index] = column_state
+			list.custom_minimum_size = Vector2(new_width, list.custom_minimum_size.y)
+			list.size = list.custom_minimum_size
+			needs_layout_refresh = true
+
+		var selected_index := int(column_state.get("selected_index", -1))
+		var is_active_column := column_index == _autocomplete_active_column_index
+		list.set_column_data(
+			rows,
+			layout,
+			selected_index,
+			column_state.get("preview", false),
+			AUTOCOMPLETE_ITEM_HEIGHT,
+			is_active_column,
+			column_name,
+			column_description
+		)
+		_autocomplete_column_states[column_index] = column_state
+
+	if needs_layout_refresh:
+		_position_command_autocomplete_popup()
+		_ensure_active_command_column_visible()
+
+
+func refresh_setget_option_highlight(command_name: String) -> void:
+	if command_name.is_empty() or not _is_command_popup_visible():
+		return
+
+	var refreshed := false
+	for column_index in range(_autocomplete_column_states.size()):
+		var column_state: Dictionary = _autocomplete_column_states[column_index]
+		var tracked_command := str(column_state.get("preview_parent_command", column_state.get("preview_command", "")))
+		if tracked_command != command_name:
+			continue
+		_autocomplete_column_states[column_index] = _refresh_command_preview_option_state(column_state)
+		refreshed = true
+
+	if refreshed:
+		_queue_command_autocomplete_column_sync(0)
+
+
+func _set_history_autocomplete_selection(index: int) -> void:
+	if not _history_autocomplete_popup:
+		return
+	if index < 0 or index >= _history_autocomplete_popup.item_count:
+		_autocomplete_selected_index = -1
+		_history_autocomplete_popup.deselect_all()
+		return
+
+	_autocomplete_selected_index = index
+	_history_autocomplete_popup.select(_autocomplete_selected_index)
+	_history_autocomplete_popup.ensure_current_is_visible()
+
+
+func _set_active_command_column_selection(index: int) -> void:
+	_debug_autocomplete("_set_active_command_column_selection.begin", "requested_index=%d" % index)
+	if _autocomplete_active_column_index < 0 or _autocomplete_active_column_index >= _autocomplete_column_states.size():
+		_debug_autocomplete("_set_active_command_column_selection.no_active")
+		return
+
+	var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+	var matches: Array = column_state.get("matches", [])
+	if matches.is_empty():
+		_debug_autocomplete("_set_active_command_column_selection.no_matches")
+		return
+
+	if index < 0:
+		index = matches.size() - 1
+	elif index >= matches.size():
+		index = 0
+
+	column_state["selected_index"] = index
+	_autocomplete_column_states[_autocomplete_active_column_index] = column_state
+	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(matches[index].get("tier", ""))
+	_debug_autocomplete("_set_active_command_column_selection.selected", "resolved_index=%d tier=%s" % [index, str(matches[index].get("tier", ""))])
+	_debug_command_popup_height("_set_active_command_column_selection.selected_height")
+	_refresh_active_preview_column_state()
+	_sync_visible_command_autocomplete_columns(0)
+	call_deferred("_debug_command_popup_height", "_set_active_command_column_selection.deferred_height")
+
+
+func _get_active_autocomplete_match() -> Dictionary:
+	if _autocomplete_active_column_index < 0 or _autocomplete_active_column_index >= _autocomplete_column_states.size():
+		return {}
+
+	var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+	var matches: Array = column_state.get("matches", [])
+	var selected_index := int(column_state.get("selected_index", -1))
+	if selected_index < 0 or selected_index >= matches.size():
+		return {}
+
+	return matches[selected_index]
+
+
+func has_active_command_autocomplete_match() -> bool:
+	if not _is_command_popup_visible():
 		return false
-	var remainder := command.substr(prefix.length())
-	return remainder.find("/") != -1
+	return not _get_active_autocomplete_match().is_empty()
+
+
+func is_active_command_match_submittable() -> bool:
+	if not _is_command_popup_visible():
+		return false
+	var match_data := _get_active_autocomplete_match()
+	return not match_data.is_empty() and bool(match_data.get("has_command", false))
+
+
+func get_active_command_submission_text() -> String:
+	if not line_edit:
+		return ""
+
+	var input_text := line_edit.text.strip_edges()
+	if not _is_command_popup_visible():
+		return input_text
+
+	var match_data := _get_active_autocomplete_match()
+	if match_data.is_empty():
+		return input_text
+
+	var tier := str(match_data.get("tier", ""))
+	if tier.is_empty():
+		return input_text
+	return "/" + tier
 
 
 ## Update the autocomplete popup with filtered and sorted suggestions
 func update_autocomplete_popup() -> void:
-	if not _autocomplete_popup or not line_edit:
+	_debug_autocomplete("update_autocomplete_popup.begin")
+	if not _command_autocomplete_popup or not line_edit:
 		return
 
-	var text := line_edit.text
-
-	# Only show autocomplete for commands (starting with /)
-	if not text.begins_with("/"):
+	if not line_edit.text.begins_with("/"):
+		_debug_autocomplete("update_autocomplete_popup.hide_non_command")
 		hide_autocomplete()
 		return
 
-	var full_text := text.substr(1)  # Remove the leading /
-
-	# Determine the current tier prefix and query
-	var prefix := ""
-	var query := full_text
-	var last_slash := full_text.rfind("/")
-	if last_slash != -1:
-		prefix = full_text.substr(0, last_slash + 1)  # Include trailing /
-		query = full_text.substr(last_slash + 1)
-
-	var commands := _get_commands()
-	if commands.is_empty():
+	if _get_registered_addresses().is_empty():
+		_debug_autocomplete("update_autocomplete_popup.hide_no_addresses")
 		hide_autocomplete()
 		return
 
-	# Build list of matching tier suggestions with scores
-	# We collect unique next-tier values instead of full commands
-	var tier_matches: Dictionary = {}  # tier_suggestion -> best_score
-	for command in commands:
-		var cmd_str := str(command)
-
-		# Only consider commands that start with our current prefix
-		if not cmd_str.begins_with(prefix):
-			continue
-
-		# Get the next tier for this command
-		var next_tier := _get_next_tier(cmd_str, prefix)
-		if next_tier.is_empty():
-			continue
-
-		# Calculate score based on the query matching the next tier's final segment
-		var tier_segment := next_tier.substr(prefix.length())  # Just the segment we're completing
-		var score := _calculate_match_score(tier_segment, query)
-		if score >= 0:
-			# Track the best score for each unique tier
-			if not tier_matches.has(next_tier) or tier_matches[next_tier] < score:
-				tier_matches[next_tier] = score
-
-	if tier_matches.is_empty():
+	if not _build_command_autocomplete_state():
+		_debug_autocomplete("update_autocomplete_popup.hide_no_state")
 		hide_autocomplete()
 		return
 
-	# Convert to array and sort by score
-	var matches: Array[Dictionary] = []
-	for tier in tier_matches:
-		matches.append({"tier": tier, "score": tier_matches[tier]})
-
-	# Sort by score (ascending so worst match at top, best at bottom)
-	matches.sort_custom(func(a, b): return a.score < b.score)
-
-	# Populate the ItemList
-	_autocomplete_popup.clear()
-	for match_data in matches:
-		var tier: String = match_data.tier
-		# Check if this tier is just a prefix (has sub-commands under it)
-		# A tier has children if any command starts with "tier/"
-		var has_children := false
-		for command in commands:
-			var cmd_str := str(command)
-			if cmd_str.begins_with(tier + "/"):
-				has_children = true
-				break
-		var display_text := "/" + tier + ("/" if has_children else "")
-		_autocomplete_popup.add_item(display_text)
-		# Store the tier (without leading /) and whether it has children
-		_autocomplete_popup.set_item_metadata(_autocomplete_popup.item_count - 1, {"tier": tier, "has_children": has_children})
-
-	# Position the popup above the input line
-	_position_autocomplete_popup()
-
-	# Show the popup
-	_autocomplete_popup.visible = true
-	_autocomplete_selected_index = -1  # Reset selection
-	_autocomplete_popup.deselect_all()
-
-
-## Position the autocomplete popup above the line edit
-func _position_autocomplete_popup() -> void:
-	if not _autocomplete_popup or not line_edit:
-		return
-
-	# Get the line edit's global position
-	var line_edit_rect := line_edit.get_global_rect()
-
-	# Calculate popup height based on item count (max 10 items visible)
-	var item_count := mini(_autocomplete_popup.item_count, 10)
-	var item_height := 28  # Approximate height per item
-	var popup_height := item_count * item_height + 8  # Add padding
-
-	# Position above the line edit
-	var popup_x := line_edit_rect.position.x
-	var popup_y := line_edit_rect.position.y - popup_height
-
-	# Ensure popup stays within bounds
-	if popup_y < 0:
-		popup_y = 0
-
-	_autocomplete_popup.position = Vector2(popup_x, popup_y)
-	_autocomplete_popup.size = Vector2(line_edit_rect.size.x, popup_height)
+	if _history_autocomplete_popup:
+		_history_autocomplete_popup.visible = false
+	_render_command_autocomplete_popup()
+	_debug_autocomplete("update_autocomplete_popup.end")
 
 
 ## Hide the autocomplete popup
 func hide_autocomplete() -> void:
-	if _autocomplete_popup:
-		_autocomplete_popup.visible = false
+	_debug_autocomplete("hide_autocomplete.begin")
+	if _history_autocomplete_popup:
+		_history_autocomplete_popup.visible = false
+		_history_autocomplete_popup.tooltip_text = ""
 		_autocomplete_selected_index = -1
+		_history_autocomplete_popup.deselect_all()
+
+	if _command_autocomplete_popup:
+		_command_autocomplete_popup.visible = false
+
+	_history_can_switch_to_commands = false
+	_autocomplete_column_states.clear()
+	_autocomplete_column_nodes.clear()
+	_autocomplete_active_column_index = -1
+	_pending_autocomplete_column_sync_start = -1
+	_autocomplete_column_sync_queued = false
+	_debug_autocomplete("hide_autocomplete.end")
 
 
 ## Check if autocomplete popup is visible
 func is_autocomplete_visible() -> bool:
-	return _autocomplete_popup and _autocomplete_popup.visible
+	return _is_history_popup_visible() or _is_command_popup_visible()
+
+
+func _is_command_popup_visible() -> bool:
+	return _command_autocomplete_popup and _command_autocomplete_popup.visible and not _autocomplete_column_states.is_empty()
+
+
+func _is_history_popup_visible() -> bool:
+	return _history_autocomplete_popup and _history_autocomplete_popup.visible and _history_autocomplete_popup.item_count > 0
+
+
+func _should_show_recent_history() -> bool:
+	if not line_edit:
+		return false
+
+	var input_text := line_edit.text.strip_edges()
+	return input_text.is_empty() or input_text == "/"
+
+
+func _show_command_popup_for_default_input() -> void:
+	if not line_edit:
+		return
+
+	_history_can_switch_to_commands = false
+	if line_edit.text.strip_edges().is_empty():
+		line_edit.text = "/"
+		line_edit.caret_column = line_edit.text.length()
+
+	update_autocomplete_popup()
+
+
+func _show_root_command_popup() -> void:
+	if not line_edit:
+		return
+
+	_history_can_switch_to_commands = false
+	line_edit.text = "/"
+	line_edit.caret_column = line_edit.text.length()
+	update_autocomplete_popup()
+
+
+func _show_recent_history_popup(query: String = "", allow_switch_to_commands: bool = false) -> void:
+	_history_can_switch_to_commands = allow_switch_to_commands
+	if _history_autocomplete_popup:
+		_history_autocomplete_popup.tooltip_text = AUTOCOMPLETE_HISTORY_HINT if allow_switch_to_commands else ""
+	_update_history_popup(query)
+	if _history_autocomplete_popup and _history_autocomplete_popup.visible and _history_autocomplete_popup.item_count > 0:
+		_set_history_autocomplete_selection(0)
 
 
 ## Select the previous item in the autocomplete (moving up visually)
 func autocomplete_select_prev() -> void:
-	if not _autocomplete_popup:
-		return
+	_debug_autocomplete("autocomplete_select_prev.begin")
+	if line_edit and line_edit.text.strip_edges().is_empty():
+		if not is_autocomplete_visible():
+			_show_command_popup_for_default_input()
+			return
+	elif line_edit and line_edit.text == "/":
+		if not _is_command_popup_visible():
+			update_autocomplete_popup()
+			return
 
 	# If input doesn't start with /, show command history
 	if line_edit and not line_edit.text.begins_with("/"):
-		if not _autocomplete_popup.visible:
-			# Show history popup, filtering by current text
-			_update_history_popup(line_edit.text)
-			if _autocomplete_popup.visible and _autocomplete_popup.item_count > 0:
-				# Select the most recent (bottom) item
-				_autocomplete_selected_index = _autocomplete_popup.item_count - 1
-				_autocomplete_popup.select(_autocomplete_selected_index)
-				_autocomplete_popup.ensure_current_is_visible()
-				_apply_selected_autocomplete()
+		if not _is_history_popup_visible():
+			_show_recent_history_popup(line_edit.text, false)
 			return
 
-	if not _autocomplete_popup.visible:
-		return
-	if _autocomplete_popup.item_count == 0:
+	if _is_command_popup_visible():
+		var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+		var selected_index := int(column_state.get("selected_index", -1)) - 1
+		_debug_autocomplete("autocomplete_select_prev.command", "next_index=%d" % selected_index)
+		_set_active_command_column_selection(selected_index)
 		return
 
-	if _autocomplete_selected_index <= 0:
-		_autocomplete_selected_index = _autocomplete_popup.item_count - 1
-	else:
-		_autocomplete_selected_index -= 1
+	if not _is_history_popup_visible() or not _history_autocomplete_popup:
+		return
+	if _history_autocomplete_popup.item_count == 0:
+		return
 
-	_autocomplete_popup.select(_autocomplete_selected_index)
-	_autocomplete_popup.ensure_current_is_visible()
-	_apply_selected_autocomplete()
+	var next_index := _autocomplete_selected_index - 1
+	if _autocomplete_selected_index < 0 or next_index < 0:
+		if _history_can_switch_to_commands:
+			_show_root_command_popup()
+			return
+		next_index = _history_autocomplete_popup.item_count - 1
+
+	_set_history_autocomplete_selection(next_index)
 
 
 ## Select the next item in the autocomplete (moving down visually)
 func autocomplete_select_next() -> void:
-	if not _autocomplete_popup or not _autocomplete_popup.visible:
-		return
-	if _autocomplete_popup.item_count == 0:
+	_debug_autocomplete("autocomplete_select_next.begin")
+	if _should_show_recent_history() and not _is_history_popup_visible() and not _is_command_popup_visible():
+		_show_recent_history_popup("", true)
 		return
 
-	if _autocomplete_selected_index < 0 or _autocomplete_selected_index >= _autocomplete_popup.item_count - 1:
-		# Start from bottom (best match) when pressing up initially
-		_autocomplete_selected_index = _autocomplete_popup.item_count - 1
+	if _is_command_popup_visible():
+		var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+		var matches: Array = column_state.get("matches", [])
+		if matches.is_empty():
+			_debug_autocomplete("autocomplete_select_next.command_no_matches")
+			return
+		var selected_index := int(column_state.get("selected_index", -1))
+		if str(column_state.get("prefix", "")).is_empty() and selected_index >= matches.size() - 1:
+			_show_recent_history_popup("", true)
+			return
+		var next_index := selected_index + 1
+		_debug_autocomplete("autocomplete_select_next.command", "next_index=%d" % next_index)
+		_set_active_command_column_selection(next_index)
+		return
+
+	if not _is_history_popup_visible() or not _history_autocomplete_popup:
+		return
+	if _history_autocomplete_popup.item_count == 0:
+		return
+
+	var next_index := _autocomplete_selected_index + 1
+	if _autocomplete_selected_index < 0:
+		next_index = _history_autocomplete_popup.item_count - 1
+	elif next_index >= _history_autocomplete_popup.item_count:
+		next_index = 0
+
+	_set_history_autocomplete_selection(next_index)
+
+
+func get_selected_history_command() -> String:
+	if not _is_history_popup_visible() or not _history_autocomplete_popup:
+		return ""
+	if _autocomplete_selected_index < 0 or _autocomplete_selected_index >= _history_autocomplete_popup.item_count:
+		return ""
+
+	var metadata = _history_autocomplete_popup.get_item_metadata(_autocomplete_selected_index)
+	if metadata is Dictionary and metadata.get("history", false):
+		return str(metadata.get("command", "")).strip_edges()
+	return _history_autocomplete_popup.get_item_text(_autocomplete_selected_index).strip_edges()
+
+
+func _reveal_selected_history_command_path() -> bool:
+	if not line_edit:
+		return false
+
+	var selected_command := get_selected_history_command()
+	if selected_command.is_empty() or not selected_command.begins_with("/"):
+		return false
+
+	var command_path := selected_command.substr(1)
+	var first_space := command_path.find(" ")
+	if first_space != -1:
+		command_path = command_path.substr(0, first_space)
+	command_path = command_path.strip_edges()
+	while command_path.ends_with("/"):
+		command_path = command_path.left(command_path.length() - 1)
+
+	var segments := _split_autocomplete_segments(command_path)
+	if segments.is_empty():
+		line_edit.text = "/"
+		line_edit.caret_column = line_edit.text.length()
+		update_autocomplete_popup()
+		return true
+
+	var prefix := ""
+	for segment_index in range(segments.size()):
+		var tier := prefix + segments[segment_index]
+		_autocomplete_highlighted_tiers[prefix] = tier
+		if segment_index < segments.size() - 1:
+			prefix = tier + "/"
+
+	if segments.size() == 1:
+		line_edit.text = "/"
 	else:
-		_autocomplete_selected_index += 1
-
-	_autocomplete_popup.select(_autocomplete_selected_index)
-	_autocomplete_popup.ensure_current_is_visible()
-	_apply_selected_autocomplete()
-
-
-## Apply the currently selected autocomplete suggestion to the line edit
-func _apply_selected_autocomplete() -> void:
-	if _autocomplete_selected_index < 0 or _autocomplete_selected_index >= _autocomplete_popup.item_count:
-		return
-
-	var metadata = _autocomplete_popup.get_item_metadata(_autocomplete_selected_index)
-	if metadata is Dictionary:
-		# Check if this is a history item
-		if metadata.get("history", false):
-			line_edit.text = metadata.get("command", "")
-		else:
-			var tier: String = metadata.get("tier", "")
-			var has_children: bool = metadata.get("has_children", false)
-			# If it has children, add trailing / to allow further completion
-			line_edit.text = "/" + tier + ("/" if has_children else "")
-	else:
-		# Fallback for old-style string metadata
-		var selected_text := _autocomplete_popup.get_item_text(_autocomplete_selected_index)
-		line_edit.text = selected_text
+		var committed_segments := segments.slice(0, segments.size() - 1)
+		line_edit.text = "/" + "/".join(committed_segments) + "/"
 	line_edit.caret_column = line_edit.text.length()
+	update_autocomplete_popup()
+	return true
+
+
+func autocomplete_move_right() -> void:
+	if _is_history_popup_visible():
+		_reveal_selected_history_command_path()
+		return
+
+	if not line_edit or not _is_command_popup_visible():
+		return
+
+	var match_data := _get_active_autocomplete_match()
+	if match_data.is_empty() or not match_data.get("has_children", false):
+		return
+
+	line_edit.text = "/" + str(match_data.get("tier", "")) + "/"
+	line_edit.caret_column = line_edit.text.length()
+	update_autocomplete_popup()
+
+
+func autocomplete_move_left() -> void:
+	if not line_edit or not line_edit.text.begins_with("/"):
+		return
+
+	var input_state := _get_autocomplete_input_state()
+	var committed_segments: Array[String] = []
+	for segment in input_state.get("segments", []):
+		committed_segments.append(str(segment))
+	if committed_segments.is_empty():
+		return
+
+	committed_segments.remove_at(committed_segments.size() - 1)
+	if committed_segments.is_empty():
+		line_edit.text = "/"
+	else:
+		line_edit.text = "/" + "/".join(committed_segments) + "/"
+	line_edit.caret_column = line_edit.text.length()
+	update_autocomplete_popup()
 
 
 ## Confirm the autocomplete selection and close the popup
-## If the selected tier has children, show the next level instead of closing
 func confirm_autocomplete() -> void:
-	if _autocomplete_selected_index >= 0:
-		var metadata = _autocomplete_popup.get_item_metadata(_autocomplete_selected_index)
-		_apply_selected_autocomplete()
-
-		# History items just close the popup
-		if metadata is Dictionary and metadata.get("history", false):
-			hide_autocomplete()
+	if _is_history_popup_visible():
+		autocomplete_move_right()
+		if line_edit:
 			line_edit.grab_focus()
-			return
+		return
 
-		# If this tier has children, update the popup to show next level
-		if metadata is Dictionary and metadata.get("has_children", false):
-			update_autocomplete_popup()
+	if _is_command_popup_visible():
+		autocomplete_move_right()
+		if line_edit:
 			line_edit.grab_focus()
-			return
+		return
 
 	hide_autocomplete()
-	line_edit.grab_focus()
+	if line_edit:
+		line_edit.grab_focus()
 
 
 ## Handle autocomplete via Tab key (legacy behavior + popup support)
 func autocomplete() -> void:
-	if _autocomplete_popup and _autocomplete_popup.visible:
-		# If popup is visible and something is selected, confirm it
-		if _autocomplete_selected_index >= 0:
-			confirm_autocomplete()
-		else:
-			# Select the bottom item (best match) and confirm
-			if _autocomplete_popup.item_count > 0:
-				_autocomplete_selected_index = _autocomplete_popup.item_count - 1
-				confirm_autocomplete()
+	if is_autocomplete_visible():
+		confirm_autocomplete()
 		return
 
 	# Legacy behavior for when popup is not used (updated for multi-tier)
-	var commands := _get_commands()
-	if commands.is_empty():
+	var addresses := _get_registered_addresses()
+	if addresses.is_empty():
 		return
 
 	var text := line_edit.text
@@ -1324,27 +3126,9 @@ func autocomplete() -> void:
 				return
 	else:
 		_suggesting = true
-		# Build tier-based suggestions
-		var tier_matches: Dictionary = {}
-		for command in commands:
-			var cmd_str := str(command)
-			if not cmd_str.begins_with(prefix):
-				continue
-			var next_tier := _get_next_tier(cmd_str, prefix)
-			if next_tier.is_empty():
-				continue
-			if not tier_matches.has(next_tier):
-				var has_children := false
-				for c in commands:
-					if str(c).begins_with(next_tier + "/"):
-						has_children = true
-						break
-				tier_matches[next_tier] = {"tier": next_tier, "has_children": has_children}
+		_suggestions = _build_tier_matches(prefix, "")
 
-		for tier in tier_matches:
-			_suggestions.append(tier_matches[tier])
-
-		_suggestions.sort_custom(func(a, b): return a.tier < b.tier)
+		_suggestions.sort_custom(func(a, b): return str(a.get("tier", "")) < str(b.get("tier", "")))
 		autocomplete()
 
 
@@ -1371,9 +3155,14 @@ func add_to_command_history(command: String) -> void:
 		_command_history.remove_at(0)
 
 
+func clear_command_history() -> void:
+	_command_history.clear()
+	hide_autocomplete()
+
+
 ## Update autocomplete popup to show command history
 func _update_history_popup(query: String = "") -> void:
-	if not _autocomplete_popup or not line_edit:
+	if not _history_autocomplete_popup or not line_edit:
 		return
 
 	if _command_history.is_empty():
@@ -1391,23 +3180,31 @@ func _update_history_popup(query: String = "") -> void:
 		hide_autocomplete()
 		return
 
-	# Populate the ItemList (oldest first, newest at bottom)
-	_autocomplete_popup.clear()
-	for cmd in filtered_history:
-		_autocomplete_popup.add_item(cmd)
-		_autocomplete_popup.set_item_metadata(_autocomplete_popup.item_count - 1, {"history": true, "command": cmd})
+	# Populate newest first so Down walks older commands.
+	_history_autocomplete_popup.clear()
+	for i in range(filtered_history.size() - 1, -1, -1):
+		var cmd := filtered_history[i]
+		_history_autocomplete_popup.add_item(cmd)
+		_history_autocomplete_popup.set_item_metadata(_history_autocomplete_popup.item_count - 1, {
+			"history": true,
+			"command": cmd,
+			"has_children": true,
+			"has_command": true,
+		})
 
 	# Position the popup above the input line
-	_position_autocomplete_popup()
+	_position_history_autocomplete_popup()
 
 	# Show the popup
-	_autocomplete_popup.visible = true
-	_autocomplete_selected_index = -1
-	_autocomplete_popup.deselect_all()
+	if _command_autocomplete_popup:
+		_command_autocomplete_popup.visible = false
+	_history_autocomplete_popup.visible = true
+	_set_history_autocomplete_selection(0)
 
 
 ## Handle text changes for autocomplete
 func on_text_changed_autocomplete(new_text: String) -> void:
+	_debug_autocomplete("on_text_changed_autocomplete.begin", "new_text=%s" % new_text)
 	# Reset old autocomplete state
 	_suggestions.clear()
 	_current_suggest = 0
@@ -1419,6 +3216,8 @@ func on_text_changed_autocomplete(new_text: String) -> void:
 			_search_filter = ""
 			_rebuild_display()
 		update_autocomplete_popup()
+	elif _command_entry_mode:
+		hide_autocomplete()
 	else:
 		# Apply search filter and hide autocomplete
 		hide_autocomplete()
