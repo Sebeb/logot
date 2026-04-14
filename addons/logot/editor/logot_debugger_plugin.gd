@@ -9,6 +9,7 @@ signal instance_stopped(session_id: int)
 signal log_received(session_id: int, entry_data: Dictionary)
 signal channel_discovered(session_id: int, channel: String)
 signal logs_cleared(session_id: int)
+signal restart_requested(session_id: int)
 
 # Track active sessions
 var _active_sessions: Dictionary = {}  # {session_id: {connected: bool, name: String}}
@@ -43,6 +44,9 @@ func _capture(message: String, data: Array, session_id: int) -> bool:
 			return true
 		"logot:logs_cleared":
 			logs_cleared.emit(session_id)
+			return true
+		"logot:restart":
+			restart_requested.emit(session_id)
 			return true
 		"logot:hello":
 			# Game instance says hello when it starts

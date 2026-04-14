@@ -111,6 +111,11 @@ func _ready() -> void:
 		_connect_debugger_plugin()
 
 
+func _exit_tree() -> void:
+	if _logot and _display and _logot.has_method("unregister_external_display"):
+		_logot.unregister_external_display(_display)
+
+
 ## Set the debugger plugin reference (called from logot_plugin.gd)
 func set_debugger_plugin(plugin) -> void:
 	_debugger_plugin = plugin
@@ -140,6 +145,10 @@ func _get_log_entries() -> Array:
 	# Get editor instance entries (mark with editor session ID)
 	if _logot and _logot.has_method("get_log_entries"):
 		for entry in _logot.get_log_entries():
+			if entry == null:
+				continue
+			if not (entry is LogotDisplay.LogEntry):
+				continue
 			# Mark editor entries with the editor session ID if not already set
 			if entry.session_id == -1:
 				entry.session_id = EDITOR_SESSION_ID
@@ -150,6 +159,10 @@ func _get_log_entries() -> Array:
 		if session_id == EDITOR_SESSION_ID:
 			continue  # Skip editor entries (already added above)
 		for entry in _instance_log_entries[session_id]:
+			if entry == null:
+				continue
+			if not (entry is LogotDisplay.LogEntry):
+				continue
 			all_entries.append(entry)
 
 	# Sort by ID to maintain chronological order
@@ -268,6 +281,9 @@ func _get_logot():
 
 func _sync_existing_entries() -> void:
 	if _logot and _display:
+		if _logot.has_method("register_external_display"):
+			_logot.register_external_display(_display)
+
 		if _logot.has_method("get_known_channels"):
 			for channel in _logot.get_known_channels():
 				_display._ensure_channel_exists(channel)
@@ -325,7 +341,7 @@ func _register_editor_instance() -> void:
 		_display._sidebar.instance_visibility_changed.connect(_on_instance_visibility_changed)
 
 	# Log the editor instance registration
-	_log_instance_event("[color=cyan]Instance connected:[/color] Editor")
+	_log_instance_event("[color=cyan]Instance connected:[/color] Editor", EDITOR_SESSION_ID)
 
 
 func _get_commands() -> Dictionary:
@@ -439,7 +455,7 @@ func _on_instance_started(session_id: int) -> void:
 
 	# Log the connection
 	var instance_name := _instance_names.get(session_id, "Unknown")
-	_log_instance_event("[color=cyan]Instance connected:[/color] %s" % instance_name)
+	_log_instance_event("[color=cyan]Instance connected:[/color] %s" % instance_name, session_id)
 
 
 ## Register a game instance with a generated name and initialize storage
@@ -479,7 +495,7 @@ func _on_instance_stopped(session_id: int) -> void:
 		_display._sidebar.remove_instance(session_id)
 
 	# Log the disconnection
-	_log_instance_event("[color=orange]Instance disconnected:[/color] %s" % instance_name)
+	_log_instance_event("[color=orange]Instance disconnected:[/color] %s" % instance_name, session_id)
 
 
 ## Generate a meaningful name for an instance
@@ -499,22 +515,25 @@ func _generate_instance_name(session_id: int, instance_number: int) -> String:
 
 func _get_instance_label(session_id: int) -> String:
 	var instance_number: int = _instance_numbers.get(session_id, -1)
-	if instance_number < 0:
-		return ""
-	return str(instance_number)
+	if instance_number >= 0:
+		return str(instance_number)
+	if session_id == EDITOR_SESSION_ID:
+		return "0"
+	return str(session_id)
 
 
 ## Log an instance connection/disconnection event
-func _log_instance_event(message: String) -> void:
+func _log_instance_event(message: String, session_id: int = EDITOR_SESSION_ID) -> void:
 	if not _display or not _display.rich_label:
 		return
 
 	# Get current timestamp
 	var time := Time.get_time_dict_from_system()
 	var timestamp := "%02d:%02d:%02d" % [time.hour, time.minute, time.second]
+	var instance_label := _get_instance_label(session_id)
 
 	# Format and display the message
-	var formatted := "[color=dim_gray]%s[/color] %s\n" % [timestamp, message]
+	var formatted := "[color=dim_gray]%s[/color] [color=dim_gray][%s][/color] %s\n" % [timestamp, instance_label, message]
 	_display.rich_label.append_text(formatted)
 
 

@@ -7,6 +7,7 @@ const LogotDebuggerPlugin = preload("res://addons/logot/editor/logot_debugger_pl
 var _editor_panel: Control
 var _editor_dock: EditorDock
 var _debugger_plugin: EditorDebuggerPlugin
+var _restart_in_progress := false
 
 
 func _enter_tree() -> void:
@@ -16,6 +17,10 @@ func _enter_tree() -> void:
 	# Create and register the debugger plugin for game instance communication
 	_debugger_plugin = LogotDebuggerPlugin.new()
 	add_debugger_plugin(_debugger_plugin)
+	if _debugger_plugin.has_signal("restart_requested"):
+		var restart_callable := Callable(self, "_on_restart_requested")
+		if not _debugger_plugin.is_connected("restart_requested", restart_callable):
+			_debugger_plugin.connect("restart_requested", restart_callable)
 
 	# Create editor panel - it instantiates logot.tscn internally
 	# No inheritance issues since logot_editor_panel.gd extends Control directly
@@ -80,3 +85,50 @@ func _check_play_state() -> void:
 			_editor_panel.on_game_started()
 
 	_was_playing = is_playing
+
+
+func _on_restart_requested(_session_id: int) -> void:
+	if _restart_in_progress:
+		return
+	_restart_in_progress = true
+	call_deferred("_restart_editor_play_session")
+
+
+func _restart_editor_play_session() -> void:
+	var editor_interface := get_editor_interface()
+	if not editor_interface:
+		_restart_in_progress = false
+		return
+
+	var playing_scene_path := ""
+	if editor_interface.has_method("get_playing_scene"):
+		playing_scene_path = str(editor_interface.call("get_playing_scene"))
+
+	if editor_interface.is_playing_scene() and editor_interface.has_method("stop_playing_scene"):
+		editor_interface.call("stop_playing_scene")
+
+	var wait_frames := 0
+	while get_tree() and editor_interface.is_playing_scene() and wait_frames < 30:
+		await get_tree().process_frame
+		wait_frames += 1
+
+	editor_interface = get_editor_interface()
+	if not editor_interface:
+		_restart_in_progress = false
+		return
+
+	var started := false
+	if not playing_scene_path.is_empty() and editor_interface.has_method("play_custom_scene"):
+		editor_interface.call("play_custom_scene", playing_scene_path)
+		started = true
+	elif editor_interface.has_method("play_current_scene"):
+		editor_interface.call("play_current_scene")
+		started = true
+	elif editor_interface.has_method("play_main_scene"):
+		editor_interface.call("play_main_scene")
+		started = true
+
+	if not started:
+		push_warning("Logot: Failed to restart play session in editor (no play method available).")
+
+	_restart_in_progress = false

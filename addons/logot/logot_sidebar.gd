@@ -575,7 +575,7 @@ func _add_instance_tree_item(instance_id: int) -> void:
 
 func _format_instance_display_name(instance_name: String, instance_number: int) -> String:
 	if instance_number >= 0:
-		return "%s [%d]" % [instance_name, instance_number]
+		return "[%d] %s" % [instance_number, instance_name]
 	return instance_name
 
 
