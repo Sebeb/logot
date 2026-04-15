@@ -556,7 +556,9 @@ const AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX := "__global_search__"
 const AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND := "search"
 const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
 const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
-const DEBUG_AUTOCOMPLETE := true
+const DEBUG_AUTOCOMPLETE_DEFAULT := false
+const DEBUG_AUTOCOMPLETE_ENV := "LOGOT_DEBUG_AUTOCOMPLETE"
+const DEBUG_AUTOCOMPLETE_SETTING := "debug/logot/autocomplete_trace"
 
 
 # =============================================================================
@@ -1965,8 +1967,21 @@ func _get_display_variable_display_text(address: String, single_line: bool = tru
 	return text
 
 
+func _is_debug_autocomplete_enabled() -> bool:
+	var env_toggle := OS.get_environment(DEBUG_AUTOCOMPLETE_ENV).strip_edges().to_lower()
+	if env_toggle in ["1", "true", "yes", "on"]:
+		return true
+	if env_toggle in ["0", "false", "no", "off"]:
+		return false
+
+	if ProjectSettings.has_setting(DEBUG_AUTOCOMPLETE_SETTING):
+		return bool(ProjectSettings.get_setting(DEBUG_AUTOCOMPLETE_SETTING))
+
+	return DEBUG_AUTOCOMPLETE_DEFAULT
+
+
 func _debug_autocomplete(message: String, extra: String = "") -> void:
-	if not DEBUG_AUTOCOMPLETE:
+	if not _is_debug_autocomplete_enabled():
 		return
 
 	var input_text := line_edit.text if line_edit else "<no line edit>"
@@ -3231,7 +3246,7 @@ func _flush_command_autocomplete_column_sync() -> void:
 
 
 func _debug_command_popup_height(source: String) -> void:
-	if not DEBUG_AUTOCOMPLETE:
+	if not _is_debug_autocomplete_enabled():
 		return
 	if not _command_autocomplete_popup:
 		return
