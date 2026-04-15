@@ -96,6 +96,7 @@ const MAX_LOG_ENTRIES := 1000
 const SIDEBAR_BREAKPOINT := 800
 const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
 const SETTINGS_FILE := "user://console_filters.cfg"
+const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -145,7 +146,6 @@ var theme: Theme = preload("res://addons/logot/logot_theme.tres")
 var console_commands := {}
 var display_variables := {}
 var console_history := []
-var console_history_index := 0
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _external_displays: Array = []
@@ -1454,9 +1454,10 @@ func _ready() -> void:
 	add_command("console/commands", commands_list, 0, 0, "Lists all commands and their descriptions.")
 	add_command("console/calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
 
-	add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
-	add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
-	add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
+	if _are_test_commands_enabled():
+		add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
+		add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
+		add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
 	_register_console_setting_commands()
 	_register_pin_commands()
 
@@ -1682,9 +1683,18 @@ func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bo
 	return LogotCommandInput.resolve_submitted_text(raw_text, prefer_autocomplete_selection, _display)
 
 
-func _is_valid_command_input(command_input: String) -> bool:
-	var command_name := _extract_command_name(command_input)
-	return not command_name.is_empty() and can_execute_console_command(command_name)
+func _are_test_commands_enabled() -> bool:
+	var env_value := OS.get_environment("LOGOT_ENABLE_TEST_COMMANDS").strip_edges().to_lower()
+	match env_value:
+		"1", "true", "yes", "on":
+			return true
+		"0", "false", "no", "off":
+			return false
+
+	if ProjectSettings.has_setting(TEST_COMMANDS_SETTING):
+		return bool(ProjectSettings.get_setting(TEST_COMMANDS_SETTING))
+
+	return OS.is_debug_build()
 
 
 func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_autocomplete_selection: bool = false) -> bool:
@@ -1851,7 +1861,6 @@ func clear() -> void:
 
 func delete_history() -> void:
 	console_history.clear()
-	console_history_index = 0
 	if _display:
 		_display.clear_command_history()
 	DirAccess.remove_absolute("user://console_history.txt")
@@ -2062,7 +2071,6 @@ func commands_list() -> void:
 func add_input_history(text : String) -> void:
 	if !console_history.size() or text != console_history.back():
 		console_history.append(text)
-	console_history_index = console_history.size()
 
 
 func set_enable_on_release_build(enable : bool):
