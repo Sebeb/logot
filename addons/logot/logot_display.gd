@@ -746,7 +746,8 @@ func set_command_autocomplete_popup(popup: PanelContainer, scroll: ScrollContain
 func add_custom_setting(name: String, label: String, default: bool) -> void:
 	_custom_settings.append({"name": name, "label": label, "default": default})
 	if _sidebar:
-		_sidebar.add_setting(name, label, default)
+		_sidebar.configure_settings(_build_sidebar_settings())
+		_sync_sidebar_state()
 
 
 func set_custom_setting(name: String, value: bool) -> void:
@@ -854,6 +855,17 @@ func _get_entry_display_text(entry, truncate: bool, count: int = 1) -> String:
 ## Return additional sidebar settings
 func _get_sidebar_settings() -> Array:
 	return []
+
+
+func _build_sidebar_settings() -> Array:
+	var settings := [
+		{"name": "collapse_duplicates", "label": "Collapse duplicates", "default": false},
+		{"name": "wrap_text", "label": "Wrap text", "default": false},
+		{"name": "truncate_multiline", "label": "Truncate multiline logs", "default": true},
+	]
+	settings.append_array(_get_sidebar_settings())
+	settings.append_array(_custom_settings)
+	return settings
 
 
 ## Return logot commands dictionary
@@ -1032,15 +1044,7 @@ func _setup_sidebar() -> void:
 	if not _sidebar:
 		return
 
-	var settings := [
-		{"name": "collapse_duplicates", "label": "Collapse duplicates", "default": false},
-		{"name": "wrap_text", "label": "Wrap text", "default": false},
-		{"name": "truncate_multiline", "label": "Truncate multiline logs", "default": true},
-	]
-	settings.append_array(_get_sidebar_settings())
-	settings.append_array(_custom_settings)
-
-	_sidebar.configure_settings(settings)
+	_sidebar.configure_settings(_build_sidebar_settings())
 	_sidebar.level_visibility_changed.connect(_on_level_visibility_changed)
 	_sidebar.channel_visibility_changed.connect(_on_channel_visibility_changed)
 	_sidebar.channel_deleted.connect(_on_channel_deleted)
