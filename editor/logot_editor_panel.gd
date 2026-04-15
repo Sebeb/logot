@@ -77,11 +77,7 @@ func _ready() -> void:
 	_display.display_rebuilt.connect(_on_display_rebuilt)
 
 	# Initialize the display
-	_display._init_base()
-	_display._setup_ui_nodes()
-	_display._connect_ui_signals()
-	_display._setup_sidebar()
-	_display._init_display()
+	_display.initialize_display()
 
 	# Load our settings
 	_load_settings()
@@ -173,13 +169,13 @@ func _get_log_entries() -> Array:
 
 
 func _get_entry_display_text(entry, truncate: bool) -> String:
-	var full_text = _display._format_objects(entry.objects) if _display else str(entry.objects)
+	var full_text = _display.format_objects_for_display(entry.objects) if _display else str(entry.objects)
 	var instance_label := _get_instance_label(entry.session_id)
 
 	if entry.expanded:
 		var formatted_trace := ""
 		if _display and entry.stack_trace != "":
-			formatted_trace = _display._format_stack_trace(entry.stack_trace)
+			formatted_trace = _display.format_stack_trace_for_display(entry.stack_trace)
 		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace, instance_label)
 
 	# Collapsed view
@@ -285,17 +281,17 @@ func _sync_existing_entries() -> void:
 		if _logot.has_method("register_external_display"):
 			_logot.register_external_display(_display)
 
-		if _logot.has_method("get_known_channels"):
-			for channel in _logot.get_known_channels():
-				_display._ensure_channel_exists(channel)
+			if _logot.has_method("get_known_channels"):
+				for channel in _logot.get_known_channels():
+					_display.ensure_channel(channel)
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
 		_display.set_display_variables_provider(_get_display_variables)
 
 		# Before setting up providers, capture the loaded visibility settings from display
 		# These were loaded from config in _init_base() before providers were set
-		var loaded_level_visibility: Dictionary = _display._level_visibility.duplicate()
-		var loaded_channel_visibility: Dictionary = _display._channel_visibility.duplicate()
+			var loaded_level_visibility: Dictionary = _display.get_level_visibility_snapshot()
+			var loaded_channel_visibility: Dictionary = _display.get_channel_visibility_snapshot()
 
 		# Set up visibility providers to use logot's visibility dictionaries
 		if _logot.has_method("get_level_visibility") and _logot.has_method("set_level_visibility"):
@@ -322,12 +318,12 @@ func _sync_existing_entries() -> void:
 		# Add "Editor" as the first instance
 		_register_editor_instance()
 
-		_display._rebuild_display()
+			_display.rebuild_display()
 
 
 ## Register the Editor as a special instance
 func _register_editor_instance() -> void:
-	if not _display or not _display._sidebar:
+	if not _display or not _display.has_sidebar():
 		return
 
 	_instance_names[EDITOR_SESSION_ID] = "Editor"
@@ -335,11 +331,8 @@ func _register_editor_instance() -> void:
 	_instance_log_entries[EDITOR_SESSION_ID] = []
 	_instance_stats[EDITOR_SESSION_ID] = {"level": {}, "channel": {}}
 
-	_display._sidebar.add_instance(EDITOR_SESSION_ID, "Editor", 0)
-
-	# Connect to instance visibility changes
-	if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
-		_display._sidebar.instance_visibility_changed.connect(_on_instance_visibility_changed)
+	_display.add_instance(EDITOR_SESSION_ID, "Editor", 0)
+	_display.connect_instance_visibility_changed(_on_instance_visibility_changed)
 
 	# Log the editor instance registration
 	_log_instance_event("[color=cyan]Instance connected:[/color] Editor", EDITOR_SESSION_ID)
@@ -359,8 +352,8 @@ func _get_display_variables() -> Dictionary:
 
 ## Get instance visibility mode for a session_id (used as provider for display)
 func _get_instance_visibility(session_id: int) -> int:
-	if _display and _display._sidebar:
-		return _display._sidebar.get_instance_visibility(session_id)
+	if _display:
+		return _display.get_instance_sidebar_visibility(session_id)
 	return LogotDisplay.VisibilityMode.SHOWN
 
 
@@ -376,8 +369,8 @@ func _on_log_entry_added(entry) -> void:
 	entry.session_id = EDITOR_SESSION_ID
 
 	# Check if Editor instance is OFF (don't even track the entry)
-	if _display._sidebar:
-		var instance_mode = _display._sidebar.get_instance_visibility(EDITOR_SESSION_ID)
+	if _display.has_sidebar():
+		var instance_mode = _display.get_instance_sidebar_visibility(EDITOR_SESSION_ID)
 		if instance_mode == LogotDisplay.VisibilityMode.OFF:
 			_update_instance_off_stats(EDITOR_SESSION_ID, {
 				"level": entry.level,
@@ -385,15 +378,15 @@ func _on_log_entry_added(entry) -> void:
 			})
 			return
 
-	_display._ensure_channel_exists(entry.channel)
-	_display._update_stats_for_entry(entry)
+	_display.ensure_channel(entry.channel)
+	_display.update_stats_for_entry(entry)
 	_update_instance_stats(EDITOR_SESSION_ID, entry)
 
 	# _should_display now handles level, channel, AND instance visibility
-	if _display._should_display(entry):
-		_display._display_entry(entry)
+	if _display.should_display_entry(entry):
+		_display.display_entry(entry)
 
-	_display._update_sidebar_stats()
+	_display.update_sidebar_statistics()
 	_update_sidebar_instance_stats()
 
 
@@ -403,36 +396,34 @@ func _on_logs_cleared() -> void:
 		return
 	_clearing = true
 	if _display:
-		_display._clear_logs()
+		_display.clear_logs()
 	_clearing = false
 
 
 func _on_channel_discovered(channel: String) -> void:
 	if _display:
-		_display._ensure_channel_exists(channel)
+		_display.ensure_channel(channel)
 
 
 func _on_off_log_tracked(level: int, channel: String) -> void:
 	if _display:
-		_display._ensure_level_exists(level)
-		_display._ensure_channel_exists(channel)
-		_display._update_sidebar_stats()
+		_display.ensure_level(level)
+		_display.ensure_channel(channel)
+		_display.update_sidebar_statistics()
 
 
 func _on_level_visibility_changed(level: int, mode: int) -> void:
 	if _logot and _logot.has_method("set_level_visibility"):
 		_logot.set_level_visibility(level, mode)
-		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
-		if "_display" in _logot and _logot._display:
-			_logot._display._rebuild_display()
+		if _logot.has_method("rebuild_display_view"):
+			_logot.rebuild_display_view()
 
 
 func _on_channel_visibility_changed(channel: String, mode: int) -> void:
 	if _logot and _logot.has_method("set_channel_visibility"):
 		_logot.set_channel_visibility(channel, mode)
-		# Rebuild in-game display if it exists (it uses providers, so just rebuild)
-		if "_display" in _logot and _logot._display:
-			_logot._display._rebuild_display()
+		if _logot.has_method("rebuild_display_view"):
+			_logot.rebuild_display_view()
 
 
 func _on_display_rebuilt() -> void:
@@ -476,12 +467,9 @@ func _register_game_instance(session_id: int) -> void:
 	_instance_stats[session_id] = {"level": {}, "channel": {}}
 
 	# Add instance to sidebar
-	if _display and _display._sidebar:
-		_display._sidebar.add_instance(session_id, instance_name, instance_number)
-
-		# Connect to instance visibility changes
-		if not _display._sidebar.instance_visibility_changed.is_connected(_on_instance_visibility_changed):
-			_display._sidebar.instance_visibility_changed.connect(_on_instance_visibility_changed)
+	if _display and _display.has_sidebar():
+		_display.add_instance(session_id, instance_name, instance_number)
+		_display.connect_instance_visibility_changed(_on_instance_visibility_changed)
 
 
 func _on_instance_stopped(session_id: int) -> void:
@@ -492,8 +480,8 @@ func _on_instance_stopped(session_id: int) -> void:
 	var instance_name := _instance_names.get(session_id, "Unknown")
 
 	# Mark instance as inactive in sidebar (keeps stats visible)
-	if _display._sidebar:
-		_display._sidebar.remove_instance(session_id)
+	if _display.has_sidebar():
+		_display.remove_instance(session_id)
 
 	# Log the disconnection
 	_log_instance_event("[color=orange]Instance disconnected:[/color] %s" % instance_name, session_id)
@@ -547,8 +535,8 @@ func _on_instance_log_received(session_id: int, entry_data: Dictionary) -> void:
 		_register_game_instance(session_id)
 
 	# Check if this instance is OFF (don't even track the entry)
-	if _display._sidebar:
-		var instance_mode = _display._sidebar.get_instance_visibility(session_id)
+	if _display.has_sidebar():
+		var instance_mode = _display.get_instance_sidebar_visibility(session_id)
 		if instance_mode == LogotDisplay.VisibilityMode.OFF:
 			_update_instance_off_stats(session_id, entry_data)
 			return
@@ -559,21 +547,21 @@ func _on_instance_log_received(session_id: int, entry_data: Dictionary) -> void:
 	# Store in instance log entries
 	_instance_log_entries[session_id].append(entry)
 
-	_display._ensure_channel_exists(entry.channel)
-	_display._update_stats_for_entry(entry)
+	_display.ensure_channel(entry.channel)
+	_display.update_stats_for_entry(entry)
 	_update_instance_stats(session_id, entry)
 
 	# _should_display now handles level, channel, AND instance visibility
-	if _display._should_display(entry):
-		_display._display_entry(entry)
+	if _display.should_display_entry(entry):
+		_display.display_entry(entry)
 
-	_display._update_sidebar_stats()
+	_display.update_sidebar_statistics()
 	_update_sidebar_instance_stats()
 
 
 func _on_instance_channel_discovered(session_id: int, channel: String) -> void:
 	if _display:
-		_display._ensure_channel_exists(channel)
+		_display.ensure_channel(channel)
 
 
 func _on_instance_logs_cleared(session_id: int) -> void:
@@ -583,14 +571,14 @@ func _on_instance_logs_cleared(session_id: int) -> void:
 		_instance_stats[session_id] = {"level": {}, "channel": {}}
 	# Instance stats will be updated via display_rebuilt signal
 	if _display:
-		_display._rebuild_display()
+		_display.rebuild_display()
 
 
 func _on_instance_visibility_changed(instance_id: int, mode: int) -> void:
 	# Rebuild display to reflect visibility change
 	# Instance stats will be updated via the display_rebuilt signal
 	if _display:
-		_display._rebuild_display()
+		_display.rebuild_display()
 
 
 ## Create a LogEntry from serialized data received from game instance
@@ -655,7 +643,7 @@ func _update_instance_off_stats(session_id: int, entry_data: Dictionary) -> void
 ## Update sidebar with instance statistics
 ## Recalculates shown/hidden counts based on current visibility state of all filters
 func _update_sidebar_instance_stats() -> void:
-	if not _display or not _display._sidebar:
+	if not _display or not _display.has_sidebar():
 		return
 
 	# Recalculate stats for each instance based on current visibility
@@ -677,8 +665,8 @@ func _update_sidebar_instance_stats() -> void:
 		if session_id not in instance_counts:
 			instance_counts[session_id] = {"shown": 0, "hidden": 0, "off": 0}
 
-		# Use _should_display which checks all visibility filters (level, channel, instance)
-		if _display._should_display(entry):
+		# Use display visibility checks for level, channel, and instance filters.
+		if _display.should_display_entry(entry):
 			instance_counts[session_id].shown += 1
 		else:
 			instance_counts[session_id].hidden += 1
@@ -686,7 +674,7 @@ func _update_sidebar_instance_stats() -> void:
 	# Update sidebar with recalculated stats
 	for session_id in instance_counts:
 		var counts = instance_counts[session_id]
-		_display._sidebar.set_instance_stats(session_id, counts.shown, counts.hidden, counts.off)
+		_display.set_instance_sidebar_stats(session_id, counts.shown, counts.hidden, counts.off)
 
 
 # =============================================================================
@@ -734,11 +722,11 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 			_display.line_edit.clear()
 			_display.line_edit.grab_focus()
 
-		if _display:
-			_display._search_filter = ""
-			_display._rebuild_display()
-			if _display.is_command_entry_mode():
-				_display.hide_command_entry_mode(false)
+			if _display:
+				_display.set_search_filter("")
+				_display.rebuild_display()
+				if _display.is_command_entry_mode():
+					_display.hide_command_entry_mode(false)
 	else:
 		if _display and _display.line_edit:
 			_display.line_edit.grab_focus()
@@ -810,4 +798,4 @@ func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
 
 func on_game_started() -> void:
 	if _clear_on_play and _display:
-		_display._clear_logs()
+		_display.clear_logs()

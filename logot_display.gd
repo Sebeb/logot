@@ -755,6 +755,110 @@ func set_custom_setting(name: String, value: bool) -> void:
 		_sidebar.set_setting(name, value)
 
 
+func initialize_display() -> void:
+	_init_base()
+	_setup_ui_nodes()
+	_connect_ui_signals()
+	_setup_sidebar()
+	_init_display()
+
+
+func ensure_channel(channel: String) -> void:
+	_ensure_channel_exists(channel)
+
+
+func ensure_level(level: int) -> void:
+	_ensure_level_exists(level)
+
+
+func update_stats_for_entry(entry) -> void:
+	_update_stats_for_entry(entry)
+
+
+func should_display_entry(entry) -> bool:
+	return _should_display(entry)
+
+
+func display_entry(entry) -> void:
+	_display_entry(entry)
+
+
+func update_sidebar_statistics() -> void:
+	_update_sidebar_stats()
+
+
+func rebuild_display() -> void:
+	_rebuild_display()
+
+
+func clear_logs() -> void:
+	_clear_logs()
+
+
+func format_objects_for_display(objects: Array) -> String:
+	return _format_objects(objects)
+
+
+func format_stack_trace_for_display(stack_trace: String) -> String:
+	return _format_stack_trace(stack_trace)
+
+
+func set_search_filter(text: String) -> void:
+	_search_filter = text
+
+
+func get_level_visibility_snapshot() -> Dictionary:
+	return _level_visibility.duplicate()
+
+
+func get_channel_visibility_snapshot() -> Dictionary:
+	return _channel_visibility.duplicate()
+
+
+func get_setting(name: String, fallback: bool = false) -> bool:
+	if _sidebar:
+		return _sidebar.get_setting(name)
+	return fallback
+
+
+func apply_setting(name: String, value: bool) -> void:
+	if _sidebar:
+		_sidebar.set_setting(name, value)
+	_on_setting_changed(name, value)
+
+
+func has_sidebar() -> bool:
+	return _sidebar != null
+
+
+func add_instance(instance_id: int, instance_name: String, instance_number: int = -1) -> void:
+	if _sidebar:
+		_sidebar.add_instance(instance_id, instance_name, instance_number)
+
+
+func remove_instance(instance_id: int) -> void:
+	if _sidebar:
+		_sidebar.remove_instance(instance_id)
+
+
+func get_instance_sidebar_visibility(instance_id: int) -> int:
+	if _sidebar:
+		return _sidebar.get_instance_visibility(instance_id)
+	return VisibilityMode.SHOWN
+
+
+func connect_instance_visibility_changed(callback: Callable) -> void:
+	if not _sidebar or not callback.is_valid():
+		return
+	if not _sidebar.instance_visibility_changed.is_connected(callback):
+		_sidebar.instance_visibility_changed.connect(callback)
+
+
+func set_instance_sidebar_stats(instance_id: int, shown: int, hidden: int, off: int) -> void:
+	if _sidebar:
+		_sidebar.set_instance_stats(instance_id, shown, hidden, off)
+
+
 func is_command_entry_mode() -> bool:
 	return _command_entry_mode
 

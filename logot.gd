@@ -216,12 +216,12 @@ func log(objects: Array, level: int = LogLevel.MESSAGE, channel: String = "", st
 
 	# Update display if available
 	if _display:
-		_display._ensure_channel_exists(channel)
-		_display._update_stats_for_entry(entry)
-		if _display._should_display(entry):
-			_display._display_entry(entry)
+		_display.ensure_channel(channel)
+		_display.update_stats_for_entry(entry)
+		if _display.should_display_entry(entry):
+			_display.display_entry(entry)
 			entry.visible = true
-		_display._update_sidebar_stats()
+		_display.update_sidebar_statistics()
 
 	_trim_old_entries()
 
@@ -279,7 +279,7 @@ func _create_log_entry(objects: Array, level: int, channel: String, stack_trace:
 ## Format objects array to string (delegates to display if available)
 func _format_objects(objects: Array) -> String:
 	if _display:
-		return _display._format_objects(objects)
+		return _display.format_objects_for_display(objects)
 	var parts: PackedStringArray = []
 	for obj in objects:
 		parts.append(str(obj))
@@ -331,11 +331,11 @@ func _ensure_channel_exists(channel: String) -> void:
 				# Recursively ensure parent exists
 				_ensure_channel_exists(parent_path)
 
-		_known_channels.append(channel)
-		if channel not in _channel_visibility:
-			_channel_visibility[channel] = VisibilityMode.SHOWN
-		if _display:
-			_display._ensure_channel_exists(channel)
+			_known_channels.append(channel)
+			if channel not in _channel_visibility:
+				_channel_visibility[channel] = VisibilityMode.SHOWN
+			if _display:
+				_display.ensure_channel(channel)
 		# Notify editor via debugger
 		_send_debugger_message("channel_discovered", [channel])
 		channel_discovered.emit(channel)
@@ -361,9 +361,9 @@ func _track_off_log(level: int, channel: String) -> void:
 	# Update sidebar stats if display is available
 	if _display:
 		# Ensure the display knows about this level/channel so stats are shown
-		_display._ensure_level_exists(level)
-		_display._ensure_channel_exists(channel)
-		_display._update_sidebar_stats()
+		_display.ensure_level(level)
+		_display.ensure_channel(channel)
+		_display.update_sidebar_statistics()
 
 	# Emit signal for editor panel to update its stats
 	off_log_tracked.emit(level, channel)
@@ -436,7 +436,7 @@ func _clear_logs() -> void:
 	_off_level_counts.clear()
 	_off_channel_counts.clear()
 	if _display:
-		_display._clear_logs()
+		_display.clear_logs()
 	# Notify editor via debugger
 	_send_debugger_message("logs_cleared", [])
 	logs_cleared.emit()
@@ -1121,6 +1121,11 @@ func get_display_variables() -> Dictionary:
 	return display_variables
 
 
+func rebuild_display_view() -> void:
+	if _display:
+		_display.rebuild_display()
+
+
 # =============================================================================
 # LIFECYCLE
 # =============================================================================
@@ -1168,13 +1173,13 @@ func _on_debugger_message(message: String, data: Array) -> bool:
 			if data.size() >= 2:
 				set_level_visibility(int(data[0]), int(data[1]))
 				if _display:
-					_display._rebuild_display()
+					_display.rebuild_display()
 			return true
 		"logot:set_channel_visibility":
 			if data.size() >= 2:
 				set_channel_visibility(str(data[0]), int(data[1]))
 				if _display:
-					_display._rebuild_display()
+					_display.rebuild_display()
 			return true
 		"logot:clear":
 			_clear_logs()
@@ -1254,11 +1259,7 @@ func _setup_game_ui() -> void:
 	_display.channel_deleted.connect(_on_channel_deleted)
 
 	# Initialize the display
-	_display._init_base()
-	_display._setup_ui_nodes()
-	_display._connect_ui_signals()
-	_display._setup_sidebar()
-	_display._init_display()
+	_display.initialize_display()
 	_sync_console_setting_cache_from_display()
 
 	# Get references to UI nodes from display
@@ -1360,8 +1361,8 @@ func _sync_console_setting_cache_from_display() -> void:
 
 
 func _get_console_setting_value(setting_name: String, fallback: bool) -> bool:
-	if _display and _display._sidebar:
-		return _display._sidebar.get_setting(setting_name)
+	if _display:
+		return _display.get_setting(setting_name, fallback)
 	return fallback
 
 
@@ -1375,9 +1376,7 @@ func _set_console_setting_value(setting_name: String, value: bool) -> void:
 			_truncate_multiline = value
 
 	if _display:
-		if _display._sidebar:
-			_display._sidebar.set_setting(setting_name, value)
-		_display._on_setting_changed(setting_name, value)
+		_display.apply_setting(setting_name, value)
 
 
 func _get_setting_collapse_duplicates() -> bool:
@@ -1706,8 +1705,8 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 				line_edit.grab_focus()
 
 		if _display:
-			_display._search_filter = ""
-			_display._rebuild_display()
+			_display.set_search_filter("")
+			_display.rebuild_display()
 
 		if _display and _display.is_command_entry_mode():
 			_close_command_entry_view()
