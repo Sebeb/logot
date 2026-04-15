@@ -12,7 +12,6 @@ var _restart_in_progress := false
 
 func _enter_tree() -> void:
 	print("Logot plugin activated.")
-	add_autoload_singleton("Console", "res://addons/logot/logot.gd")
 
 	# Create and register the debugger plugin for game instance communication
 	_debugger_plugin = LogotDebuggerPlugin.new()
@@ -58,8 +57,6 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
-	remove_autoload_singleton("Console")
-
 	if _debugger_plugin:
 		remove_debugger_plugin(_debugger_plugin)
 		_debugger_plugin = null
