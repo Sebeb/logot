@@ -10,6 +10,8 @@ signal log_received(session_id: int, entry_data: Dictionary)
 signal channel_discovered(session_id: int, channel: String)
 signal logs_cleared(session_id: int)
 signal restart_requested(session_id: int)
+signal command_result_received(session_id: int, result: Dictionary)
+signal command_output_received(session_id: int, request_id: String, entry_data: Dictionary)
 
 # Track active sessions
 var _active_sessions: Dictionary = {}  # {session_id: {connected: bool, name: String}}
@@ -47,6 +49,18 @@ func _capture(message: String, data: Array, session_id: int) -> bool:
 			return true
 		"logot:restart":
 			restart_requested.emit(session_id)
+			return true
+		"logot:command_result":
+			if data.size() >= 1 and data[0] is Dictionary:
+				command_result_received.emit(session_id, data[0])
+			return true
+		"logot:command_output":
+			if data.size() >= 1 and data[0] is Dictionary:
+				var payload := data[0] as Dictionary
+				var request_id := str(payload.get("request_id", ""))
+				var entry_data = payload.get("entry", {})
+				if entry_data is Dictionary:
+					command_output_received.emit(session_id, request_id, entry_data as Dictionary)
 			return true
 		"logot:hello":
 			# Game instance says hello when it starts
@@ -119,3 +133,12 @@ func send_channel_visibility(session_id: int, channel: String, mode: int) -> voi
 ## Send clear command to game instance
 func send_clear(session_id: int) -> void:
 	send_to_instance(session_id, "clear", [])
+
+
+## Send a console command to a running game instance.
+func send_execute_command(session_id: int, command: String, request_id: String = "", stream_output := false) -> void:
+	send_to_instance(session_id, "execute_command", [{
+		"request_id": request_id,
+		"command": command,
+		"stream_output": stream_output,
+	}])

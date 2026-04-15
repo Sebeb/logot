@@ -97,6 +97,8 @@ const SIDEBAR_BREAKPOINT := 800
 const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
 const SETTINGS_FILE := "user://console_filters.cfg"
 const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
+const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_interfacing/console_interfacing_commands.gd"
+const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -149,6 +151,7 @@ var console_history := []
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _external_displays: Array = []
+var _console_interfacing_test_commands: RefCounted = null
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -446,20 +449,20 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "") -> void:
+func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0) -> void:
 	if arguments is int:
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority)
 
 
-func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable()) -> void:
+func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0) -> void:
 	var str_args: PackedStringArray = PackedStringArray()
 	for argument in arguments:
 		str_args.append(str(argument))
@@ -470,11 +473,13 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		description,
 		[],
 		argument_options_provider,
-		value_getter
+		value_getter,
+		group_name,
+		group_priority
 	)
 
 
-func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable()) -> void:
+func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0) -> void:
 	if not setter.is_valid():
 		push_warning("Cannot add set/get command '%s': invalid setter." % command_name)
 		return
@@ -495,9 +500,11 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		description,
 		[],
 		argument_options_provider,
-		getter
+		getter,
+		group_name,
+		group_priority
 	)
-	add_display_variable(command_name, getter)
+	add_display_variable(command_name, getter, inline_color_provider)
 
 
 func _resolve_setget_option_values(getter: Callable, options_provider: Callable = Callable()) -> Array:
@@ -714,7 +721,8 @@ func _find_setget_option_index(current_value: Variant, options: Array) -> int:
 	var current_text := str(current_value)
 	for option_index in range(options.size()):
 		var option_value = _extract_setget_option_value(options[option_index])
-		if option_value == current_value:
+		var exact_match: bool = typeof(option_value) == typeof(current_value) and option_value == current_value
+		if exact_match:
 			return option_index
 		if str(option_value) == current_text:
 			return option_index
@@ -1035,12 +1043,43 @@ func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
 
 
-func add_display_variable(address: String, getter: Callable) -> void:
-	display_variables[address] = LogotDisplayVariable.new(getter)
+func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable()) -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider)
 
 
 func remove_display_variable(address: String) -> void:
 	display_variables.erase(address)
+
+
+func pin(key: String, value_or_getter: Variant) -> void:
+	var address := key.strip_edges()
+	if address.is_empty():
+		print_error("Pin key cannot be empty.")
+		return
+
+	var getter: Callable
+	if value_or_getter is Callable:
+		getter = value_or_getter as Callable
+		if not getter.is_valid():
+			print_error("Pin getter for '%s' is not valid." % address)
+			return
+	else:
+		var pinned_value := value_or_getter
+		getter = func() -> Variant:
+			return pinned_value
+
+	add_display_variable(address, getter)
+	pin_display_variable(address)
+
+
+func unpin(key: String) -> void:
+	var address := key.strip_edges()
+	if address.is_empty():
+		print_error("Pin key cannot be empty.")
+		return
+
+	unpin_display_variable(address)
+	remove_display_variable(address)
 
 
 func register_external_display(display: LogotDisplay) -> void:
@@ -1184,6 +1223,24 @@ func _on_debugger_message(message: String, data: Array) -> bool:
 		"logot:clear":
 			_clear_logs()
 			return true
+		"logot:execute_command":
+			var request_id := ""
+			var command_text := ""
+			var stream_output := false
+			if data.size() >= 1 and data[0] is Dictionary:
+				var payload := data[0] as Dictionary
+				request_id = str(payload.get("request_id", ""))
+				command_text = str(payload.get("command", ""))
+				stream_output = bool(payload.get("stream_output", false))
+			elif data.size() >= 2:
+				request_id = str(data[0])
+				command_text = str(data[1])
+				if data.size() >= 3:
+					stream_output = bool(data[2])
+
+			var command_result := execute_console_command(command_text, request_id, stream_output)
+			_send_debugger_message("command_result", [command_result])
+			return true
 	return false
 
 
@@ -1199,8 +1256,12 @@ func _send_log_entry_to_editor(entry: LogEntry) -> void:
 	if not _debugger_connected:
 		return
 
-	# Serialize entry data for transmission
-	var entry_data := {
+	var entry_data := _serialize_log_entry(entry)
+	_send_debugger_message("log_entry", [entry_data])
+
+
+func _serialize_log_entry(entry: LogEntry) -> Dictionary:
+	return {
 		"id": entry.id,
 		"level": entry.level,
 		"channel": entry.channel,
@@ -1211,7 +1272,52 @@ func _send_log_entry_to_editor(entry: LogEntry) -> void:
 		"extra_line_count": entry.extra_line_count,
 		"timestamp": entry.timestamp,
 	}
-	_send_debugger_message("log_entry", [entry_data])
+
+
+func execute_console_command(command_input: String, request_id: String = "", stream_output := false) -> Dictionary:
+	var normalized_command := command_input.strip_edges()
+	if normalized_command.is_empty():
+		return {
+			"request_id": request_id,
+			"command": "",
+			"ok": false,
+			"error": "Command is empty.",
+			"output_entries": [],
+		}
+	if not normalized_command.begins_with("/"):
+		normalized_command = "/" + normalized_command
+
+	var start_entry_index := _log_entries.size()
+	var execution_result := _execute_command(normalized_command)
+	var output_entries: Array = []
+	for index in range(start_entry_index, _log_entries.size()):
+		output_entries.append(_serialize_log_entry(_log_entries[index]))
+
+	var has_error_output := false
+	for entry_data in output_entries:
+		if int((entry_data as Dictionary).get("level", 0)) == LogLevel.ERROR:
+			has_error_output = true
+			break
+
+	if stream_output:
+		for entry_data in output_entries:
+			_send_debugger_message("command_output", [{
+				"request_id": request_id,
+				"entry": entry_data,
+			}])
+
+	var is_ok := bool(execution_result.get("ok", false)) and not has_error_output
+	var error_text := str(execution_result.get("error", ""))
+	if not is_ok and error_text.is_empty() and has_error_output:
+		error_text = "Command emitted error output."
+
+	return {
+		"request_id": request_id,
+		"command": normalized_command,
+		"ok": is_ok,
+		"error": error_text,
+		"output_entries": output_entries,
+	}
 
 
 ## Set up the in-game console overlay UI (only called when running as game)
@@ -1426,9 +1532,7 @@ func _register_console_setting_commands() -> void:
 
 func _register_pin_commands() -> void:
 	add_command("pins/view", _command_view_pins, [], 0, "Shows currently pinned display variables and their pin/unpin commands.")
-	add_command("view/pins", _command_view_pins, [], 0, "Alias for /pins/view.")
 	add_command("pins/clear", _command_clear_pins, [], 0, "Clears all pinned display variables.")
-	add_command("clear/pins", _command_clear_pins, [], 0, "Alias for /pins/clear.")
 	add_command_with_options(
 		"pins/save",
 		_command_save_pins_overlay,
@@ -1447,17 +1551,43 @@ func _register_pin_commands() -> void:
 	)
 
 
+func _register_bridge_commands() -> void:
+	add_command(
+		"bridge/screenshot",
+		_command_bridge_screenshot,
+		["path"],
+		0,
+		"Captures the current viewport to PNG. Defaults to user://artifacts/screenshots/"
+	)
+
+
+func _register_console_interfacing_test_commands() -> void:
+	if not ResourceLoader.exists(CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH):
+		return
+
+	var test_commands_script = load(CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH)
+	if test_commands_script == null:
+		print_error("Failed to load %s" % CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH)
+		return
+
+	_console_interfacing_test_commands = test_commands_script.new(self)
+	if _console_interfacing_test_commands != null and _console_interfacing_test_commands.has_method("register"):
+		_console_interfacing_test_commands.register()
+
+
 func _ready() -> void:
 	# Commands available in both editor and game
 	add_command("console/clear", clear, 0, 0, "Clears the text on the console.")
 	add_command("console/help", help, 0, 0, "Displays instructions on how to use the console.")
 	add_command("console/commands", commands_list, 0, 0, "Lists all commands and their descriptions.")
 	add_command("console/calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
+	_register_bridge_commands()
 
 	if _are_test_commands_enabled():
 		add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
 		add_command("console/test_off_tracking", _cmd_test_off_tracking, [], 0, "Test OFF visibility tracking")
 		add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
+		_register_console_interfacing_test_commands()
 	_register_console_setting_commands()
 	_register_pin_commands()
 
@@ -1484,14 +1614,14 @@ func _input(event : InputEvent) -> void:
 			return
 		if event.get_physical_keycode_with_modifiers() == KEY_QUOTELEFT:
 			if event.pressed:
-				toggle_console()
+				toggle_console(false)
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_QUOTELEFT and event.is_command_or_control_pressed():
 			if event.pressed:
 				if control.visible:
 					toggle_size()
 				else:
-					toggle_console()
+					toggle_console(false)
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
@@ -1499,10 +1629,7 @@ func _input(event : InputEvent) -> void:
 			get_tree().get_root().set_input_as_handled()
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and control.visible:
 			if event.pressed:
-				if _display and _display.is_command_entry_mode():
-					_close_command_entry_view()
-				else:
-					toggle_console()
+				_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
 		if control.visible and event.pressed:
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
@@ -1518,6 +1645,11 @@ func _input(event : InputEvent) -> void:
 
 
 func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
+	if event and event.pressed and not event.echo and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
+		if control and control.visible and line_edit and line_edit.has_focus():
+			_handle_escape_input()
+			return true
+
 	return LogotCommandInput.handle_autocomplete_navigation(
 		event,
 		_display,
@@ -1568,26 +1700,25 @@ func toggle_size() -> void:
 
 func disable():
 	enabled = false
-	toggle_console()
+	toggle_console(true)
 
 
 func enable():
 	enabled = true
 
 
-func toggle_console() -> void:
-	if enabled:
-		control.visible = !control.visible
-	else:
-		control.visible = false
-
-	if control.visible:
+func toggle_console(reset_on_hide: bool = true) -> void:
+	if enabled and not control.visible:
+		control.visible = true
 		_restore_full_console_after_command_entry = false
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
 		line_edit.grab_focus()
 		console_opened.emit()
-	else:
+		return
+
+	control.visible = false
+	if reset_on_hide:
 		if _display and _display.is_command_entry_mode():
 			_display.hide_command_entry_mode()
 		_restore_full_console_after_command_entry = false
@@ -1595,9 +1726,37 @@ func toggle_console() -> void:
 		scroll_to_bottom()
 		if _display:
 			_display.reset_autocomplete()
-		if pause_enabled and !was_paused_already:
-			get_tree().paused = false
-		console_closed.emit()
+			_display.clear_autocomplete_highlight_memory()
+	if pause_enabled and !was_paused_already:
+		get_tree().paused = false
+	console_closed.emit()
+
+
+func _handle_escape_input() -> void:
+	if _is_escape_close_state():
+		toggle_console(true)
+		return
+
+	_reset_console_for_escape()
+
+
+func _is_escape_close_state() -> bool:
+	if not line_edit:
+		return true
+	var normalized_text := line_edit.text.strip_edges()
+	return normalized_text.is_empty() or normalized_text == "/"
+
+
+func _reset_console_for_escape() -> void:
+	if not line_edit:
+		return
+
+	line_edit.text = "/"
+	line_edit.caret_column = line_edit.text.length()
+	line_edit.grab_focus()
+	if _display:
+		_display.clear_autocomplete_highlight_memory()
+		_display.on_text_changed_autocomplete(line_edit.text)
 
 
 func is_visible():
@@ -1732,7 +1891,7 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 
 
 ## Execute a command string (must start with /)
-func _execute_command(command_input: String) -> void:
+func _execute_command(command_input: String) -> Dictionary:
 	var command_text := command_input.substr(1)  # Remove the leading /
 	add_input_history(command_input)
 	if _display:
@@ -1740,21 +1899,21 @@ func _execute_command(command_input: String) -> void:
 	self.log(["[i]> " + command_input + "[/i]"], LogLevel.COMMAND, "")
 	var text_split := parse_line_input(command_text)
 	if text_split.is_empty():
-		return
+		return {"ok": false, "error": "Command is empty."}
 
 	var requested_command := str(text_split[0]).strip_edges()
 	var command_resolution := _resolve_console_command_path(requested_command)
 	if not command_resolution.get("valid", false):
 		console_unknown_command.emit(requested_command)
 		print_error("Command not found: /%s" % requested_command)
-		return
+		return {"ok": false, "error": "Command not found: /%s" % requested_command}
 
 	if command_resolution.get("is_display_variable_pin_action", false):
 		_execute_display_variable_pin_action(
 			str(command_resolution.get("display_variable_address", "")),
 			bool(command_resolution.get("display_variable_pin_state", false))
 		)
-		return
+		return {"ok": true}
 
 	var text_command := str(command_resolution.get("command_name", ""))
 	var arguments: Array = text_split.slice(1)
@@ -1766,19 +1925,20 @@ func _execute_command(command_input: String) -> void:
 		for word in arguments:
 			expression += word
 		console_commands[text_command].function.callv([expression])
-		return
+		return {"ok": true}
 
 	if arguments.size() < console_commands[text_command].required:
 		print_error("Too few arguments! Required < %d >" % console_commands[text_command].required)
-		return
+		return {"ok": false, "error": "Too few arguments."}
 	elif arguments.size() > console_commands[text_command].arguments.size():
 		print_error("Too many arguments! < %d > Max" % console_commands[text_command].arguments.size())
-		return
+		return {"ok": false, "error": "Too many arguments."}
 
 	while arguments.size() < console_commands[text_command].arguments.size():
 		arguments.append("")
 
 	console_commands[text_command].function.callv(arguments)
+	return {"ok": true}
 
 
 func on_line_edit_text_changed(new_text: String) -> void:
@@ -1813,6 +1973,8 @@ func _close_command_entry_view() -> void:
 		control.visible = false
 		control.anchor_bottom = 1.0
 		scroll_to_bottom()
+		if _display:
+			_display.clear_autocomplete_highlight_memory()
 		if pause_enabled and !was_paused_already:
 			get_tree().paused = false
 		console_closed.emit()
@@ -1864,6 +2026,67 @@ func delete_history() -> void:
 	if _display:
 		_display.clear_command_history()
 	DirAccess.remove_absolute("user://console_history.txt")
+
+
+func _resolve_bridge_screenshot_output_path(path_text: String) -> String:
+	var normalized_path := path_text.strip_edges()
+	if normalized_path.is_empty():
+		var now := Time.get_datetime_dict_from_system()
+		normalized_path = "%s/logot_%04d%02d%02d_%02d%02d%02d.png" % [
+			DEFAULT_BRIDGE_SCREENSHOT_DIR,
+			int(now.get("year", 1970)),
+			int(now.get("month", 1)),
+			int(now.get("day", 1)),
+			int(now.get("hour", 0)),
+			int(now.get("minute", 0)),
+			int(now.get("second", 0)),
+		]
+
+	if not normalized_path.to_lower().ends_with(".png"):
+		normalized_path += ".png"
+
+	if normalized_path.begins_with("res://") or normalized_path.begins_with("user://"):
+		return ProjectSettings.globalize_path(normalized_path)
+
+	if normalized_path.is_absolute_path():
+		return normalized_path
+
+	return ProjectSettings.globalize_path("%s/%s" % [DEFAULT_BRIDGE_SCREENSHOT_DIR, normalized_path])
+
+
+func _command_bridge_screenshot(path: String = "") -> void:
+	if DisplayServer.get_name() == "headless":
+		print_error("Screenshot capture is not available in headless mode.")
+		return
+
+	var viewport := get_viewport()
+	if viewport == null:
+		print_error("No viewport is available for screenshot capture.")
+		return
+
+	var viewport_texture := viewport.get_texture()
+	if viewport_texture == null:
+		print_error("No viewport texture is available for screenshot capture.")
+		return
+
+	var screenshot_image := viewport_texture.get_image()
+	if screenshot_image == null or screenshot_image.is_empty():
+		print_error("Screenshot capture returned an empty image.")
+		return
+
+	var output_path := _resolve_bridge_screenshot_output_path(path)
+	var output_dir := output_path.get_base_dir()
+	var mkdir_err := DirAccess.make_dir_recursive_absolute(output_dir)
+	if mkdir_err != OK:
+		print_error("Failed to create screenshot directory '%s' (error %d)." % [output_dir, mkdir_err])
+		return
+
+	var save_err := screenshot_image.save_png(output_path)
+	if save_err != OK:
+		print_error("Failed to save screenshot '%s' (error %d)." % [output_path, save_err])
+		return
+
+	print_line("Screenshot saved to %s" % output_path)
 
 
 func _escape_bbcode_text(text: String) -> String:
@@ -2033,7 +2256,8 @@ func help() -> void:
 	lines.append("		[color=light_blue]Down[/color] from an empty input box or bare [color=light_blue]/[/color] to browse recent commands")
 	lines.append("		[color=light_blue]PageUp[/color] and [color=light_blue]PageDown[/color] to scroll registry")
 	lines.append("		[[color=light_blue]Ctrl[/color] + [color=light_blue]~[/color]] to change console size between half screen and full screen")
-	lines.append("		[color=light_blue]~[/color] or [color=light_blue]Esc[/color] key to close the console")
+	lines.append("		[color=light_blue]~[/color] hides/restores the console without resetting state")
+	lines.append("		[color=light_blue]Esc[/color] resets to root [color=light_blue]/[/color], then closes on a second press")
 	lines.append("		[color=light_blue]Up[/color] and [color=light_blue]Down[/color] move within the active autocomplete column")
 	lines.append("		[color=light_blue]Right[/color] or [color=light_blue]Tab[/color] commits the highlighted branch to the next column")
 	lines.append("		[color=light_blue]Left[/color] moves back to the previous autocomplete column")

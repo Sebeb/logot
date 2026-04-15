@@ -67,12 +67,10 @@ var _context_item_value = null  # Can be int (level/instance) or String (channel
 var _levels_root: TreeItem
 var _channels_root: TreeItem
 var _instances_root: TreeItem
-var _settings_root: TreeItem
 
 var _level_items: Dictionary = {}    # {LogLevel.X: TreeItem}
 var _channel_items: Dictionary = {}  # {"channel": TreeItem}
 var _instance_items: Dictionary = {}  # {instance_id: TreeItem}
-var _settings_items: Dictionary = {}  # {"setting_name": TreeItem}
 
 # Hierarchical channel tracking
 var _channel_children: Dictionary = {}  # {"parent_channel": ["child1", "child2"]}
@@ -130,7 +128,6 @@ func _setup_tree() -> void:
 	_tree.set_column_clip_content(COL_SHOWN, false)
 	_tree.set_column_clip_content(COL_ICON, true)
 	_tree.set_column_custom_minimum_width(COL_ICON, 50)
-	_tree.item_edited.connect(_on_tree_item_edited)
 	_tree.button_clicked.connect(_on_tree_button_clicked)
 	_tree.gui_input.connect(_on_tree_gui_input)
 	_tree.item_collapsed.connect(_on_tree_item_collapsed)
@@ -157,11 +154,6 @@ func _setup_tree() -> void:
 	_instances_root.set_text(COL_NAME, "Instances")
 	_set_item_not_selectable(_instances_root)
 	_instances_root.visible = false  # Hidden until instances are detected
-
-	_settings_root = _tree.create_item(root)
-	_settings_root.set_text(COL_NAME, "Settings")
-	_set_item_not_selectable(_settings_root)
-
 
 ## Helper to set all columns as not selectable
 func _set_item_not_selectable(item: TreeItem) -> void:
@@ -201,8 +193,6 @@ func configure_settings(settings_config: Array) -> void:
 		if config.name not in _settings:
 			_settings[config.name] = config.get("default", false)
 
-	_rebuild_settings_items()
-
 
 ## Get a setting value
 func get_setting(name: String) -> bool:
@@ -212,8 +202,6 @@ func get_setting(name: String) -> bool:
 ## Set a setting value
 func set_setting(name: String, value: bool) -> void:
 	_settings[name] = value
-	if _settings_items.has(name):
-		_settings_items[name].set_checked(COL_NAME, value)
 
 
 ## Add a channel if not already known
@@ -469,33 +457,6 @@ func _rebuild_ui() -> void:
 	_update_ui()
 
 
-func _rebuild_settings_items() -> void:
-	if not _tree or not _settings_root:
-		return
-
-	# Clear existing settings items
-	var settings_child := _settings_root.get_first_child()
-	while settings_child:
-		var next := settings_child.get_next()
-		_settings_root.remove_child(settings_child)
-		settings_child.free()
-		settings_child = next
-
-	_settings_items.clear()
-
-	# Build settings items
-	for setting in _available_settings:
-		var item := _tree.create_item(_settings_root)
-		# Use checkbox mode in the name column so checkbox appears next to text
-		item.set_cell_mode(COL_NAME, TreeItem.CELL_MODE_CHECK)
-		item.set_text(COL_NAME, setting.get("label", setting.name))
-		item.set_editable(COL_NAME, true)
-		item.set_checked(COL_NAME, _settings.get(setting.name, setting.get("default", false)))
-		_set_item_not_selectable(item)
-		item.set_metadata(COL_NAME, {"type": "setting", "name": setting.name})
-		_settings_items[setting.name] = item
-
-
 func _add_level_tree_item(level: int) -> void:
 	var item := _tree.create_item(_levels_root)
 	var level_name: String = LogLevel.names.get(level, "UNKNOWN").capitalize()
@@ -683,10 +644,6 @@ func _update_ui() -> void:
 		var base_color := Color.WHITE if is_active else COLOR_HIDDEN
 		_update_tree_item_style(item, mode, base_color)
 
-	# Update settings items (checkbox in name column)
-	for setting_name in _settings_items:
-		_settings_items[setting_name].set_checked(COL_NAME, _settings.get(setting_name, false))
-
 	_update_stats_display()
 
 
@@ -753,28 +710,6 @@ func _set_item_stats(item: TreeItem, stats: Dictionary, mode: int, is_collapsed_
 	else:
 		item.set_text(COL_OFF, "")
 	item.set_tooltip_text(COL_OFF, "Off Logs Count")
-
-
-# =============================================================================
-# EVENT HANDLERS
-# =============================================================================
-
-func _on_tree_item_edited() -> void:
-	var item := _tree.get_edited()
-	if item == null:
-		return
-
-	var metadata = item.get_metadata(COL_NAME)
-	if not metadata is Dictionary:
-		return
-
-	var item_type: String = metadata.get("type", "")
-
-	# Only settings use checkboxes (in name column)
-	if item_type == "setting":
-		var setting_name: String = metadata.get("name", "")
-		_settings[setting_name] = item.is_checked(COL_NAME)
-		setting_changed.emit(setting_name, _settings[setting_name])
 
 
 ## Handle button clicks on tree items (left-click on visibility icons)
@@ -1006,4 +941,3 @@ func _cycle_instance_visibility(instance_id: int) -> void:
 	_instance_visibility[instance_id] = next_mode
 	_update_ui()
 	instance_visibility_changed.emit(instance_id, next_mode)
-
