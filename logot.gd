@@ -1670,10 +1670,12 @@ func parse_line_input(text : String) -> PackedStringArray:
 	var out_array : PackedStringArray
 	var in_quotes := false
 	var escaped := false
+	var token_started := false
 	var token : String
 	for c in text:
 		if c == '\\':
 			escaped = true
+			token_started = true
 			continue
 		elif escaped:
 			if c == 'n':
@@ -1691,14 +1693,22 @@ func parse_line_input(text : String) -> PackedStringArray:
 			escaped = false
 		elif c == '\"':
 			in_quotes = !in_quotes
+			token_started = true
 			continue
 		elif c == ' ' or c == '\t':
 			if !in_quotes:
-				out_array.push_back(token)
-				token = ""
+				if token_started:
+					out_array.push_back(token)
+					token = ""
+					token_started = false
 				continue
 		token += c
-	out_array.push_back(token)
+		token_started = true
+	if escaped:
+		token += "\\"
+		token_started = true
+	if token_started:
+		out_array.push_back(token)
 	return out_array
 
 
