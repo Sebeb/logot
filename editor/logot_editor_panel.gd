@@ -743,8 +743,6 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 		return false
 
 	var is_command_input := submitted_text.begins_with("/")
-	if is_command_input and not _is_valid_command_input(submitted_text):
-		return false
 
 	if not keep_input:
 		if _display:
