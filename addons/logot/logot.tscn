@@ -136,6 +136,11 @@ size_flags_horizontal = 3
 theme = ExtResource("1_theme")
 placeholder_text = "Search logs or type /console/help for commands"
 
+[node name="CollapsedLevelButtons" type="VBoxContainer" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=486786432]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 2
+
 [node name="ClearButton" type="Button" parent="MainContainer/LogotContainer/VBoxContainer/InputRow" unique_id=2127237980]
 layout_mode = 2
 theme = ExtResource("1_theme")

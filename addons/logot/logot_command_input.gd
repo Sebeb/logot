@@ -61,7 +61,7 @@ static func handle_autocomplete_navigation(event: InputEventKey, display, line_e
 				display.autocomplete_select_prev()
 				return true
 			KEY_RIGHT:
-				display.autocomplete_move_right()
+				display.autocomplete_move_right(true)
 				return true
 			KEY_LEFT:
 				display.autocomplete_move_left()

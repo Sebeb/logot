@@ -75,6 +75,8 @@ class LogotCommand:
 	var argument_options: Array
 	var argument_options_provider: Callable
 	var value_getter: Callable
+	var group_name: String
+	var group_priority: int
 
 	func _init(
 		in_function: Callable,
@@ -83,7 +85,9 @@ class LogotCommand:
 		in_description: String = "",
 		in_argument_options: Array = [],
 		in_argument_options_provider: Callable = Callable(),
-		in_value_getter: Callable = Callable()
+		in_value_getter: Callable = Callable(),
+		in_group_name: String = "",
+		in_group_priority: int = 0
 	):
 		function = in_function
 		arguments = in_arguments
@@ -92,13 +96,17 @@ class LogotCommand:
 		argument_options = in_argument_options
 		argument_options_provider = in_argument_options_provider
 		value_getter = in_value_getter
+		group_name = in_group_name.strip_edges()
+		group_priority = in_group_priority if not group_name.is_empty() else 0
 
 
 class LogotDisplayVariable:
 	var getter: Callable
+	var inline_color_provider: Callable
 
-	func _init(in_getter: Callable):
+	func _init(in_getter: Callable, in_inline_color_provider: Callable = Callable()):
 		getter = in_getter
+		inline_color_provider = in_inline_color_provider
 
 
 class AutocompleteCommandColumn:
@@ -113,6 +121,10 @@ class AutocompleteCommandColumn:
 	const VALUE_PILL_HEIGHT := 20.0
 	const ACTION_ICON_DIAMETER := 18.0
 	const ACTION_ICON_GAP := 6.0
+	const CUSTOM_VALUE_PILL_MIN_CONTRAST := 4.5
+	const GROUP_BOX_INSET_X := 6.0
+	const GROUP_BOX_INSET_Y := 2.0
+	const GROUP_HEADER_FONT_SIZE_REDUCTION := 3
 
 	var _rows: Array[Dictionary] = []
 	var _metrics: Dictionary = {"name_width": 0, "value_width": 0, "action_width": 0, "width": 0}
@@ -136,12 +148,16 @@ class AutocompleteCommandColumn:
 	var _inactive_selected_font_color := Color(0.88, 0.88, 0.9, 1.0)
 	var _header_title_color := Color(0.92, 0.92, 0.95, 1.0)
 	var _header_description_color := Color(0.62, 0.62, 0.68, 1.0)
+	var _search_match_text_color := Color(0.36, 0.67, 1.0, 1.0)
 	var _value_pill_color := Color(0.19, 0.2, 0.24, 0.95)
 	var _value_pill_border_color := Color(0.38, 0.4, 0.48, 1.0)
 	var _selected_value_pill_color := Color(0.24, 0.34, 0.48, 0.98)
 	var _selected_value_pill_border_color := Color(0.55, 0.7, 0.9, 1.0)
 	var _inactive_selected_value_pill_color := Color(0.22, 0.27, 0.34, 0.96)
 	var _inactive_selected_value_pill_border_color := Color(0.44, 0.52, 0.64, 1.0)
+	var _group_header_color := Color(0.72, 0.74, 0.8, 1.0)
+	var _group_box_fill_color := Color(0.2, 0.23, 0.3, 0.2)
+	var _group_box_border_color := Color(0.44, 0.5, 0.62, 0.55)
 	var _action_circle_color := Color(0.18, 0.19, 0.22, 0.95)
 	var _action_circle_border_color := Color(0.42, 0.44, 0.5, 1.0)
 	var _selected_action_circle_color := Color(0.21, 0.32, 0.46, 0.98)
@@ -154,6 +170,7 @@ class AutocompleteCommandColumn:
 	var _value_pill_style := StyleBoxFlat.new()
 	var _selected_value_pill_style := StyleBoxFlat.new()
 	var _inactive_selected_value_pill_style := StyleBoxFlat.new()
+	var _custom_value_pill_style := StyleBoxFlat.new()
 
 	func _init() -> void:
 		clip_contents = true
@@ -163,7 +180,7 @@ class AutocompleteCommandColumn:
 		_header_label.bbcode_enabled = true
 		_header_label.fit_content = true
 		_header_label.scroll_active = false
-		_header_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		_header_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_header_label.focus_mode = Control.FOCUS_NONE
 		add_child(_header_label)
@@ -184,6 +201,11 @@ class AutocompleteCommandColumn:
 		_preview_font_color = _font_color.lerp(Color(0.5, 0.5, 0.55, 1.0), 0.35)
 		_header_title_color = _font_color.lerp(_selected_font_color, 0.25)
 		_header_description_color = _font_color.lerp(Color(0.55, 0.55, 0.62, 1.0), 0.35)
+		_group_header_color = _font_color.lerp(_selected_font_color, 0.18)
+		_group_box_fill_color = _font_color
+		_group_box_fill_color.a = 0.08
+		_group_box_border_color = _font_color.lerp(_selected_font_color, 0.2)
+		_group_box_border_color.a = 0.32
 		_selected_stylebox = theme_source.get_theme_stylebox("selected")
 		_selected_focus_stylebox = theme_source.get_theme_stylebox("selected_focus")
 		_configure_inactive_selection_styles()
@@ -292,11 +314,50 @@ class AutocompleteCommandColumn:
 			maxf(0.0, size.y - HEADER_TOP_PADDING)
 		)
 
-		var content_height := float(_header_label.get_content_height())
+		var available_width := maxf(1.0, _header_label.size.x)
+		var fallback_content_height := _estimate_header_content_height(header_title.to_upper(), header_description, available_width)
+		var content_height := maxf(float(_header_label.get_content_height()), fallback_content_height)
 		_header_height = HEADER_TOP_PADDING + content_height + HEADER_BOTTOM_PADDING + HEADER_CONTENT_GAP
 
 	func _escape_bbcode(text: String) -> String:
 		return text.replace("[", "[lb]").replace("]", "[rb]")
+
+	func _estimate_header_content_height(title_text: String, description_text: String, available_width: float) -> float:
+		var title_lines := _estimate_wrapped_line_count(title_text, _header_title_font_size, available_width)
+		var content_height := float(title_lines) * _get_line_height(_header_title_font_size)
+		if not description_text.is_empty():
+			var description_lines := _estimate_wrapped_line_count(description_text, _header_description_font_size, available_width)
+			content_height += float(description_lines) * _get_line_height(_header_description_font_size)
+		return content_height
+
+	func _estimate_wrapped_line_count(text: String, font_size: int, available_width: float) -> int:
+		var normalized_text := text.strip_edges()
+		if normalized_text.is_empty():
+			return 0
+		if available_width <= 0.0:
+			return 1
+
+		var line_count := 0
+		for paragraph in normalized_text.split("\n"):
+			var paragraph_text := str(paragraph)
+			if paragraph_text.is_empty():
+				line_count += 1
+				continue
+			var paragraph_width := _measure_text_width(paragraph_text, font_size)
+			line_count += maxi(1, int(ceil(paragraph_width / available_width)))
+		return maxi(1, line_count)
+
+	func _measure_text_width(text: String, font_size: int) -> float:
+		if text.is_empty():
+			return 0.0
+		if _font != null:
+			return _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		return float(text.length() * maxi(1, font_size)) * 0.5
+
+	func _get_line_height(font_size: int) -> float:
+		if _font != null:
+			return _font.get_height(font_size)
+		return float(maxi(1, font_size))
 
 	func _get_row_selection_state(row_index: int) -> int:
 		if row_index != _selected_index:
@@ -308,6 +369,8 @@ class AutocompleteCommandColumn:
 		return 1
 
 	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
+		if bool(row_data.get("group_box", false)):
+			_draw_group_box(row_rect, row_data)
 		if selection_state != 0:
 			var stylebox: StyleBox = _inactive_selected_stylebox if selection_state == 1 else (_selected_focus_stylebox if _selected_focus_stylebox != null else _selected_stylebox)
 			if stylebox != null:
@@ -318,6 +381,9 @@ class AutocompleteCommandColumn:
 
 	func _draw_row_content(row_rect: Rect2, row_data: Dictionary, selection_state: int, baseline_offset: float) -> void:
 		if _font == null:
+			return
+		if bool(row_data.get("is_group_header", false)):
+			_draw_group_header_label(row_rect, str(row_data.get("label", "")))
 			return
 
 		var value_width := float(_metrics.get("value_width", 0))
@@ -343,18 +409,36 @@ class AutocompleteCommandColumn:
 			)
 			info_cursor_x = value_rect.position.x - CELL_GAP
 
+		var raw_label_text := str(row_data.get("label", ""))
 		var label_max_width := maxf(0.0, info_cursor_x - content_left)
-		var label_text := _fit_text_to_width(str(row_data.get("label", "")), label_max_width)
+		var label_text := _fit_text_to_width(raw_label_text, label_max_width)
 		if not label_text.is_empty():
-			draw_string(_font, Vector2(content_left, text_baseline), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+			var label_highlight_ranges_variant = row_data.get("label_highlight_ranges", [])
+			if label_highlight_ranges_variant is Array and not (label_highlight_ranges_variant as Array).is_empty():
+				_draw_highlighted_label(
+					content_left,
+					text_baseline,
+					raw_label_text,
+					label_text,
+					label_highlight_ranges_variant as Array,
+					text_color
+				)
+			else:
+				draw_string(_font, Vector2(content_left, text_baseline), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
 
 		var value_text := str(row_data.get("value_text", ""))
 		if not value_text.is_empty() and value_rect.size.x > 0.0:
 			var value_text_max_width := maxf(0.0, value_rect.size.x - VALUE_PILL_PADDING_X * 2.0)
 			var fitted_value_text := _fit_text_to_width(value_text, value_text_max_width)
-			draw_style_box(_resolve_value_pill_style(selection_state), value_rect)
+			var value_text_color := text_color
+			var custom_value_text_color := row_data.get("value_text_color", null)
+			var value_pill_style := _resolve_value_pill_style(selection_state)
+			if custom_value_text_color is Color:
+				value_text_color = custom_value_text_color as Color
+				value_pill_style = _resolve_custom_value_pill_style(selection_state, custom_value_text_color)
+			draw_style_box(value_pill_style, value_rect)
 			if not fitted_value_text.is_empty():
-				draw_string(_font, Vector2(value_rect.position.x + VALUE_PILL_PADDING_X, text_baseline), fitted_value_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+				draw_string(_font, Vector2(value_rect.position.x + VALUE_PILL_PADDING_X, text_baseline), fitted_value_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, value_text_color)
 
 		if action_rect.size.x > 0.0:
 			_draw_action_icons(
@@ -364,6 +448,36 @@ class AutocompleteCommandColumn:
 				selection_state,
 				text_color
 			)
+
+	func _draw_group_header_label(row_rect: Rect2, label_text: String) -> void:
+		var header_text := label_text.strip_edges().to_upper()
+		if header_text.is_empty():
+			return
+		var font_size: int = maxi(10, _font_size - GROUP_HEADER_FONT_SIZE_REDUCTION)
+		var baseline: float = row_rect.position.y + floor((row_rect.size.y - float(_font.get_height(font_size))) * 0.5) + float(_font.get_ascent(font_size))
+		draw_string(_font, Vector2(row_rect.position.x + CONTENT_PADDING_X, baseline), header_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _group_header_color)
+
+	func _draw_group_box(row_rect: Rect2, row_data: Dictionary) -> void:
+		var box_rect := Rect2(
+			row_rect.position.x + GROUP_BOX_INSET_X,
+			row_rect.position.y + GROUP_BOX_INSET_Y,
+			maxf(0.0, row_rect.size.x - GROUP_BOX_INSET_X * 2.0),
+			maxf(0.0, row_rect.size.y - GROUP_BOX_INSET_Y * 2.0)
+		)
+		if box_rect.size.x <= 0.0 or box_rect.size.y <= 0.0:
+			return
+
+		draw_rect(box_rect, _group_box_fill_color, true)
+		var left := box_rect.position.x
+		var right := box_rect.position.x + box_rect.size.x
+		var top := box_rect.position.y
+		var bottom := box_rect.position.y + box_rect.size.y
+		draw_line(Vector2(left, top), Vector2(left, bottom), _group_box_border_color, 1.0)
+		draw_line(Vector2(right, top), Vector2(right, bottom), _group_box_border_color, 1.0)
+		if bool(row_data.get("group_box_start", false)):
+			draw_line(Vector2(left, top), Vector2(right, top), _group_box_border_color, 1.0)
+		if bool(row_data.get("group_box_end", false)):
+			draw_line(Vector2(left, bottom), Vector2(right, bottom), _group_box_border_color, 1.0)
 
 	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, selection_state: int, icon_color: Color) -> void:
 		if action_rect.size.x <= 0.0:
@@ -410,6 +524,79 @@ class AutocompleteCommandColumn:
 		)
 		draw_string(_font, draw_position, symbol, HORIZONTAL_ALIGNMENT_LEFT, -1, symbol_font_size, icon_color)
 
+	func _draw_highlighted_label(
+		start_x: float,
+		baseline_y: float,
+		full_text: String,
+		display_text: String,
+		highlight_ranges: Array,
+		base_color: Color
+	) -> void:
+		if _font == null or display_text.is_empty():
+			return
+
+		var draw_runs := _build_highlighted_label_runs(full_text, display_text, highlight_ranges)
+		var cursor_x := start_x
+		for run in draw_runs:
+			var run_text := str(run.get("text", ""))
+			if run_text.is_empty():
+				continue
+
+			var run_color := _search_match_text_color if bool(run.get("highlighted", false)) else base_color
+			draw_string(_font, Vector2(cursor_x, baseline_y), run_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, run_color)
+			cursor_x += _measure_text(run_text)
+
+	func _build_highlighted_label_runs(full_text: String, display_text: String, highlight_ranges: Array) -> Array[Dictionary]:
+		var runs: Array[Dictionary] = []
+		if display_text.is_empty():
+			return runs
+
+		var visible_char_count := display_text.length()
+		var has_ellipsis := display_text.ends_with("...") and full_text.length() > display_text.length()
+		if has_ellipsis:
+			visible_char_count = maxi(0, visible_char_count - 3)
+
+		var visible_text := full_text.substr(0, visible_char_count)
+		if visible_text.is_empty():
+			if has_ellipsis:
+				runs.append({"text": "...", "highlighted": false})
+			return runs
+
+		var highlight_flags := PackedByteArray()
+		highlight_flags.resize(visible_text.length())
+		for index in range(highlight_flags.size()):
+			highlight_flags[index] = 0
+
+		for range_data in highlight_ranges:
+			if not (range_data is Dictionary):
+				continue
+			var range_dict := range_data as Dictionary
+			var start_index := maxi(0, int(range_dict.get("start", -1)))
+			var end_index := maxi(start_index, int(range_dict.get("end", start_index)))
+			if start_index >= visible_text.length():
+				continue
+			end_index = mini(end_index, visible_text.length())
+			for mark_index in range(start_index, end_index):
+				highlight_flags[mark_index] = 1
+
+		var run_start := 0
+		var current_highlighted := highlight_flags[0] == 1
+		for index in range(1, visible_text.length() + 1):
+			var next_highlighted := false
+			if index < visible_text.length():
+				next_highlighted = highlight_flags[index] == 1
+			if index == visible_text.length() or next_highlighted != current_highlighted:
+				runs.append({
+					"text": visible_text.substr(run_start, index - run_start),
+					"highlighted": current_highlighted,
+				})
+				run_start = index
+				current_highlighted = next_highlighted
+
+		if has_ellipsis:
+			runs.append({"text": "...", "highlighted": false})
+		return runs
+
 	func _get_baseline_offset() -> float:
 		if _font == null:
 			return float(_row_height) * 0.7
@@ -438,7 +625,7 @@ class AutocompleteCommandColumn:
 		return truncated + ellipsis
 
 	func _configure_value_pill_styles() -> void:
-		for stylebox in [_value_pill_style, _selected_value_pill_style, _inactive_selected_value_pill_style]:
+		for stylebox in [_value_pill_style, _selected_value_pill_style, _inactive_selected_value_pill_style, _custom_value_pill_style]:
 			stylebox.corner_radius_top_left = 8
 			stylebox.corner_radius_top_right = 8
 			stylebox.corner_radius_bottom_right = 8
@@ -504,6 +691,57 @@ class AutocompleteCommandColumn:
 			return _inactive_selected_value_pill_style
 		return _value_pill_style
 
+	func _resolve_custom_value_pill_style(selection_state: int, custom_text_color: Variant) -> StyleBoxFlat:
+		var base_style := _resolve_value_pill_style(selection_state)
+		if not (custom_text_color is Color):
+			return base_style
+		var text_color := custom_text_color as Color
+		var text_color_opaque := Color(text_color.r, text_color.g, text_color.b, 1.0)
+		var background_color := _get_custom_value_pill_background_color(text_color_opaque)
+		background_color.a = base_style.bg_color.a
+		var border_color := background_color.lerp(text_color_opaque, 0.35).lerp(base_style.border_color, 0.25)
+		border_color.a = base_style.border_color.a
+		_custom_value_pill_style.bg_color = background_color
+		_custom_value_pill_style.border_color = border_color
+		return _custom_value_pill_style
+
+	func _get_custom_value_pill_background_color(text_color: Color) -> Color:
+		var dark_candidate := text_color.lerp(Color(0.0, 0.0, 0.0, 1.0), 0.68)
+		var light_candidate := text_color.lerp(Color(1.0, 1.0, 1.0, 1.0), 0.68)
+		var dark_contrast := _get_color_contrast_ratio(text_color, dark_candidate)
+		var light_contrast := _get_color_contrast_ratio(text_color, light_candidate)
+		var use_dark := dark_contrast >= light_contrast
+		var selected_candidate := dark_candidate if use_dark else light_candidate
+		var selected_contrast := dark_contrast if use_dark else light_contrast
+		if selected_contrast >= CUSTOM_VALUE_PILL_MIN_CONTRAST:
+			return selected_candidate
+		var contrast_target := Color(0.0, 0.0, 0.0, 1.0) if use_dark else Color(1.0, 1.0, 1.0, 1.0)
+		for _step in range(6):
+			selected_candidate = selected_candidate.lerp(contrast_target, 0.22)
+			selected_contrast = _get_color_contrast_ratio(text_color, selected_candidate)
+			if selected_contrast >= CUSTOM_VALUE_PILL_MIN_CONTRAST:
+				break
+		return selected_candidate
+
+	func _get_color_contrast_ratio(color_a: Color, color_b: Color) -> float:
+		var luminance_a := _get_relative_luminance(color_a)
+		var luminance_b := _get_relative_luminance(color_b)
+		var lighter := maxf(luminance_a, luminance_b)
+		var darker := minf(luminance_a, luminance_b)
+		return (lighter + 0.05) / (darker + 0.05)
+
+	func _get_relative_luminance(color: Color) -> float:
+		return (
+			0.2126 * _get_linear_luminance_channel(color.r) +
+			0.7152 * _get_linear_luminance_channel(color.g) +
+			0.0722 * _get_linear_luminance_channel(color.b)
+		)
+
+	func _get_linear_luminance_channel(channel: float) -> float:
+		if channel <= 0.03928:
+			return channel / 12.92
+		return pow((channel + 0.055) / 1.055, 2.4)
+
 	func _resolve_action_circle_color(selection_state: int) -> Color:
 		if selection_state == 2:
 			return _selected_action_circle_color
@@ -534,9 +772,23 @@ const LEVEL_COLORS := {
 	LogLevel.VERBOSE: Color8(210, 180, 162),
 	LogLevel.DEBUG: Color8(128, 128, 128),
 }
+const ICON_VISIBLE := preload("res://addons/logot/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://addons/logot/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://addons/logot/assets/channel_off.svg")
+const LOG_LEVELS := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
+					 LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
+const LEVEL_BUTTON_LABELS := {
+	LogLevel.ERROR: "ERR",
+	LogLevel.WARN: "WRN",
+	LogLevel.COMMAND: "CMD",
+	LogLevel.MESSAGE: "MSG",
+	LogLevel.INFO: "INF",
+	LogLevel.VERBOSE: "VRB",
+	LogLevel.DEBUG: "DBG",
+}
 const AUTOCOMPLETE_ITEM_HEIGHT := 28
 const AUTOCOMPLETE_MAX_VISIBLE_ITEMS := 10
-const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 10
+const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 40
 const AUTOCOMPLETE_COLUMN_PADDING := 24
 const AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH := 20
 const AUTOCOMPLETE_ACTION_ICON_DIAMETER := 18
@@ -545,7 +797,7 @@ const AUTOCOMPLETE_CELL_GAP := 12
 const AUTOCOMPLETE_POPUP_GAP := 4
 const AUTOCOMPLETE_COLUMN_MAX_FALLBACK_WIDTH := 480
 const AUTOCOMPLETE_COLUMN_MIN_WIDTH := 180
-const AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH := 320
+const AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH := 380
 const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
 const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
 const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
@@ -553,6 +805,8 @@ const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
 const AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX := "__global_search__"
 const AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND := "search"
 const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
+const ROOT_COMMAND_GROUP_PINNED_NAME := "pined commands"
+const ROOT_COMMAND_GROUP_PINNED_PRIORITY := -1
 const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
 const DEBUG_AUTOCOMPLETE_DEFAULT := false
 const DEBUG_AUTOCOMPLETE_ENV := "LOGOT_DEBUG_AUTOCOMPLETE"
@@ -568,6 +822,8 @@ var line_edit: LineEdit
 var _sidebar  # LogotSidebar - type removed to avoid circular dependency
 var _sidebar_toggle_btn: Button
 var _clear_btn: Button
+var _collapsed_level_buttons_container: VBoxContainer
+var _collapsed_level_buttons_row: HBoxContainer
 var _main_container: Control
 var _logot_container: VBoxContainer
 var _input_row: HBoxContainer
@@ -588,6 +844,7 @@ var _collapse_duplicates := false
 var _wrap_text := false
 var _truncate_multiline := true
 var _sidebar_visible := false
+var _collapsed_level_buttons: Dictionary = {}  # {level: Dictionary}
 
 var _last_displayed_entry = null
 var _last_displayed_count: int = 0
@@ -619,6 +876,7 @@ var _autocomplete_column_states: Array[Dictionary] = []
 var _autocomplete_column_nodes: Array[Control] = []
 var _autocomplete_active_column_index := -1
 var _autocomplete_highlighted_tiers: Dictionary = {}
+var _autocomplete_pre_filter_highlighted_tiers: Dictionary = {}
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
 var _autocomplete_global_search_mode := false
@@ -871,6 +1129,16 @@ func show_command_entry_mode(prefill_text: String = "/") -> void:
 	line_edit.caret_column = line_edit.text.length()
 	line_edit.grab_focus()
 	on_text_changed_autocomplete(line_edit.text)
+	# Refresh once more next frame so popup geometry is correct on first open.
+	call_deferred("_refresh_command_entry_autocomplete_deferred")
+
+
+func _refresh_command_entry_autocomplete_deferred() -> void:
+	if not _command_entry_mode or not line_edit:
+		return
+	if not line_edit.text.begins_with("/"):
+		return
+	update_autocomplete_popup()
 
 
 func hide_command_entry_mode(clear_input: bool = true) -> void:
@@ -902,6 +1170,8 @@ func _update_command_entry_mode_visibility() -> void:
 
 	if _sidebar:
 		_sidebar.visible = _sidebar_visible and not _command_entry_mode
+
+	_update_collapsed_level_buttons_visibility()
 
 	_refresh_pinned_display_variables()
 
@@ -1121,6 +1391,8 @@ func _setup_ui_nodes() -> void:
 			_clear_btn = _input_row.get_node("ClearButton")
 		if _input_row.has_node("SidebarToggleButton"):
 			_sidebar_toggle_btn = _input_row.get_node("SidebarToggleButton")
+		if _input_row.has_node("CollapsedLevelButtons"):
+			_collapsed_level_buttons_container = _input_row.get_node("CollapsedLevelButtons") as VBoxContainer
 	if _main_container and _main_container.has_node("Sidebar"):
 		_sidebar = _main_container.get_node("Sidebar")
 
@@ -1141,6 +1413,8 @@ func _connect_ui_signals() -> void:
 	if _sidebar:
 		_sidebar.visible = _sidebar_visible and not _command_entry_mode
 
+	_setup_collapsed_level_buttons()
+
 
 func _setup_sidebar() -> void:
 	if not _sidebar:
@@ -1153,6 +1427,279 @@ func _setup_sidebar() -> void:
 	_sidebar.setting_changed.connect(_on_setting_changed)
 
 	_sync_sidebar_state()
+
+
+func _setup_collapsed_level_buttons() -> void:
+	if not _collapsed_level_buttons_container:
+		return
+
+	for child in _collapsed_level_buttons_container.get_children():
+		child.queue_free()
+	_collapsed_level_buttons.clear()
+	_collapsed_level_buttons_row = HBoxContainer.new()
+	_collapsed_level_buttons_row.name = "ButtonsRow"
+	_collapsed_level_buttons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_collapsed_level_buttons_row.add_theme_constant_override("separation", 2)
+	_collapsed_level_buttons_container.add_child(_collapsed_level_buttons_row)
+
+	for level in LOG_LEVELS:
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(72, 28)
+		button.focus_mode = Control.FOCUS_NONE
+		button.text = ""
+		button.clip_contents = true
+		_style_collapsed_level_button(button, level)
+
+		var content := HBoxContainer.new()
+		content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.alignment = BoxContainer.ALIGNMENT_CENTER
+		content.add_theme_constant_override("separation", 4)
+		content.set_anchors_preset(Control.PRESET_FULL_RECT)
+		content.offset_left = 5
+		content.offset_top = 3
+		content.offset_right = -5
+		content.offset_bottom = -3
+		button.add_child(content)
+
+		var state_icon := _create_collapsed_icon(_get_visibility_icon(_get_level_visibility(level)))
+		content.add_child(state_icon)
+
+		var counts := HBoxContainer.new()
+		counts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		counts.add_theme_constant_override("separation", 2)
+		content.add_child(counts)
+
+		var shown_count := _create_collapsed_count_widget(ICON_VISIBLE)
+		var hidden_count := _create_collapsed_count_widget(ICON_HIDDEN)
+		var off_count := _create_collapsed_count_widget(ICON_OFF)
+		counts.add_child(shown_count["container"])
+		counts.add_child(hidden_count["container"])
+		counts.add_child(off_count["container"])
+
+		button.pressed.connect(_on_collapsed_level_button_pressed.bind(level))
+		_collapsed_level_buttons_row.add_child(button)
+		_collapsed_level_buttons[level] = {
+			"button": button,
+			"state_icon": state_icon,
+			"shown_container": shown_count["container"],
+			"shown_label": shown_count["label"],
+			"shown_icon": shown_count["icon"],
+			"hidden_container": hidden_count["container"],
+			"hidden_label": hidden_count["label"],
+			"hidden_icon": hidden_count["icon"],
+			"off_container": off_count["container"],
+			"off_label": off_count["label"],
+			"off_icon": off_count["icon"],
+		}
+
+	_refresh_collapsed_level_buttons()
+	_update_collapsed_level_buttons_visibility()
+
+
+func _style_collapsed_level_button(button: Button, level: int) -> void:
+	var level_color: Color = LEVEL_COLORS.get(level, Color.WHITE)
+
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.12)
+	normal.border_color = Color(level_color.r, level_color.g, level_color.b, 0.45)
+	normal.border_width_left = 1
+	normal.border_width_top = 1
+	normal.border_width_right = 1
+	normal.border_width_bottom = 1
+	normal.corner_radius_top_left = 4
+	normal.corner_radius_top_right = 4
+	normal.corner_radius_bottom_right = 4
+	normal.corner_radius_bottom_left = 4
+	normal.content_margin_left = 4
+	normal.content_margin_right = 4
+	normal.content_margin_top = 2
+	normal.content_margin_bottom = 2
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.2)
+	hover.border_color = Color(level_color.r, level_color.g, level_color.b, 0.65)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.3)
+	pressed.border_color = Color(level_color.r, level_color.g, level_color.b, 0.8)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+
+
+func _create_collapsed_icon(texture: Texture2D) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.texture = texture
+	icon.custom_minimum_size = Vector2(11, 11)
+	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	return icon
+
+
+func _create_collapsed_count_widget(icon_texture: Texture2D) -> Dictionary:
+	var container := HBoxContainer.new()
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.add_theme_constant_override("separation", 2)
+	container.custom_minimum_size = Vector2(18, 0)
+
+	var icon := _create_collapsed_icon(icon_texture)
+	container.add_child(icon)
+
+	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.text = "0"
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", Color(0.92, 0.92, 0.92, 0.95))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	container.add_child(label)
+
+	return {"container": container, "label": label, "icon": icon}
+
+
+func _update_collapsed_level_buttons_visibility() -> void:
+	if not _collapsed_level_buttons_container:
+		return
+	_collapsed_level_buttons_container.visible = not _command_entry_mode and not _sidebar_visible
+
+
+func _refresh_collapsed_level_buttons() -> void:
+	if _collapsed_level_buttons.is_empty():
+		return
+
+	for level in LOG_LEVELS:
+		var controls: Dictionary = _collapsed_level_buttons.get(level, {})
+		if controls.is_empty():
+			continue
+
+		var button := controls.get("button") as Button
+		var state_icon := controls.get("state_icon") as TextureRect
+		var shown_container := controls.get("shown_container") as HBoxContainer
+		var shown_label := controls.get("shown_label") as Label
+		var shown_icon := controls.get("shown_icon") as TextureRect
+		var hidden_container := controls.get("hidden_container") as HBoxContainer
+		var hidden_label := controls.get("hidden_label") as Label
+		var hidden_icon := controls.get("hidden_icon") as TextureRect
+		var off_container := controls.get("off_container") as HBoxContainer
+		var off_label := controls.get("off_label") as Label
+		var off_icon := controls.get("off_icon") as TextureRect
+		if not button:
+			continue
+
+		var mode := _get_level_visibility(level)
+		var stats: FilterStats = _level_stats.get(level)
+		var shown_count := stats.shown_count if stats != null else 0
+		var hidden_count := stats.hidden_count if stats != null else 0
+		var off_count := _get_rejected_level_count(level)
+
+		if state_icon:
+			state_icon.texture = _get_visibility_icon(mode)
+		_set_collapsed_count_widget_state(shown_container, shown_label, shown_count, shown_count > 0)
+		_set_collapsed_count_widget_state(hidden_container, hidden_label, hidden_count, hidden_count > 0)
+		_set_collapsed_count_widget_state(off_container, off_label, off_count, off_count > 0)
+		_set_collapsed_count_group_style(shown_label, shown_icon, Color(0.86, 0.86, 0.86, 0.72))
+		_set_collapsed_count_group_style(hidden_label, hidden_icon, Color(0.82, 0.82, 0.82, 0.62))
+		_set_collapsed_count_group_style(off_label, off_icon, Color(0.74, 0.74, 0.74, 0.5))
+		button.custom_minimum_size = Vector2(_calculate_collapsed_level_button_min_width(shown_count, hidden_count, off_count), 28)
+
+		button.tooltip_text = _build_level_button_tooltip(level, mode, shown_count, hidden_count, off_count)
+
+
+func _set_collapsed_count_widget_state(container: HBoxContainer, label: Label, count: int, visible: bool) -> void:
+	if container:
+		container.visible = visible
+	if label:
+		label.text = str(count)
+
+
+func _set_collapsed_count_group_style(label: Label, icon: TextureRect, color: Color) -> void:
+	if label:
+		label.add_theme_color_override("font_color", color)
+	if icon:
+		icon.modulate = color
+
+
+func _calculate_collapsed_level_button_min_width(shown_count: int, hidden_count: int, off_count: int) -> float:
+	var width := 20.0  # left state icon + inner spacing
+	var counts_width := 0.0
+	var group_count := 0
+	if shown_count > 0:
+		counts_width += _estimate_collapsed_count_group_width(shown_count)
+		group_count += 1
+	if hidden_count > 0:
+		counts_width += _estimate_collapsed_count_group_width(hidden_count)
+		group_count += 1
+	if off_count > 0:
+		counts_width += _estimate_collapsed_count_group_width(off_count)
+		group_count += 1
+	if group_count > 1:
+		counts_width += float(group_count - 1) * 2.0
+	width += counts_width
+	return maxf(72.0, width + 10.0)
+
+
+func _estimate_collapsed_count_group_width(count: int) -> float:
+	var digits := str(count).length()
+	return 13.0 + maxf(7.0, float(digits) * 7.0)
+
+
+func _build_level_button_tooltip(level: int, mode: int, shown_count: int, hidden_count: int, off_count: int) -> String:
+	var parts := PackedStringArray()
+	parts.append("shown:%d" % shown_count)
+	if hidden_count > 0:
+		parts.append("hidden:%d" % hidden_count)
+	if off_count > 0:
+		parts.append("off:%d" % off_count)
+	return "%s is %s (%s). Click to cycle shown -> hidden -> off." % [
+		LogLevel.names.get(level, str(level)),
+		_get_visibility_mode_label(mode),
+		", ".join(parts)
+	]
+
+
+func _get_visibility_icon(mode: int) -> Texture2D:
+	match mode:
+		VisibilityMode.HIDDEN:
+			return ICON_HIDDEN
+		VisibilityMode.OFF:
+			return ICON_OFF
+		_:
+			return ICON_VISIBLE
+
+
+func _get_level_button_label(level: int) -> String:
+	return str(LEVEL_BUTTON_LABELS.get(level, str(level)))
+
+
+func _get_visibility_mode_label(mode: int) -> String:
+	match mode:
+		VisibilityMode.HIDDEN:
+			return "hidden"
+		VisibilityMode.OFF:
+			return "off"
+		_:
+			return "shown"
+
+
+func _get_rejected_level_count(level: int) -> int:
+	if _rejected_level_count_provider.is_valid():
+		return int(_rejected_level_count_provider.call(level))
+	return 0
+
+
+func _on_collapsed_level_button_pressed(level: int) -> void:
+	var current_mode := _get_level_visibility(level)
+	var next_mode := VisibilityMode.SHOWN
+	match current_mode:
+		VisibilityMode.SHOWN:
+			next_mode = VisibilityMode.HIDDEN
+		VisibilityMode.HIDDEN:
+			next_mode = VisibilityMode.OFF
+		_:
+			next_mode = VisibilityMode.SHOWN
+	_apply_level_visibility_change(level, next_mode, true, true)
 
 
 func _init_display() -> void:
@@ -1195,8 +1742,14 @@ func _refresh_pinned_display_variables() -> void:
 	for address in _pinned_display_variables:
 		if not _has_display_variable(address):
 			continue
-		var row_text := "%s: %s" % [address, _get_display_variable_display_text(address, true)]
-		lines.append("[bgcolor=#1a202acc]  %s  [/bgcolor]" % [_escape_overlay_bbcode(row_text)])
+		var value_text := _get_display_variable_display_text(address, true)
+		var escaped_address := _escape_overlay_bbcode(address)
+		var escaped_value := _escape_overlay_bbcode(value_text)
+		var value_markup := escaped_value
+		var value_color := _get_display_variable_inline_color(address)
+		if value_color.a > 0.0:
+			value_markup = "[color=#%s]%s[/color]" % [value_color.to_html(false), escaped_value]
+		lines.append("[bgcolor=#1a202acc]  %s: %s  [/bgcolor]" % [escaped_address, value_markup])
 
 	_pinned_overlay_label.clear()
 	if lines.is_empty():
@@ -1212,9 +1765,7 @@ func _escape_overlay_bbcode(text: String) -> String:
 
 
 func _init_default_levels() -> void:
-	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
-				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
-	for level in levels:
+	for level in LOG_LEVELS:
 		# Only initialize local dictionary if no provider is set
 		if not _level_visibility_getter.is_valid() and level not in _level_visibility:
 			_level_visibility[level] = VisibilityMode.SHOWN
@@ -1529,24 +2080,21 @@ func _reset_stats() -> void:
 
 
 func _update_sidebar_stats() -> void:
-	if not _sidebar:
-		return
+	if _sidebar:
+		for level in _level_stats:
+			var stats: FilterStats = _level_stats[level]
+			var rejected_count := _get_rejected_level_count(level)
+			_sidebar.set_level_stats(level, stats.shown_count, stats.hidden_count, rejected_count)
 
-	for level in _level_stats:
-		var stats: FilterStats = _level_stats[level]
-		# Get rejected count from provider (logs that were never created due to can_log failing)
-		var rejected_count := 0
-		if _rejected_level_count_provider.is_valid():
-			rejected_count = _rejected_level_count_provider.call(level)
-		_sidebar.set_level_stats(level, stats.shown_count, stats.hidden_count, rejected_count)
+		for channel in _channel_stats:
+			var stats: FilterStats = _channel_stats[channel]
+			# Get rejected count from provider (logs that were never created due to can_log failing)
+			var rejected_count := 0
+			if _rejected_channel_count_provider.is_valid():
+				rejected_count = _rejected_channel_count_provider.call(channel)
+			_sidebar.set_channel_stats(channel, stats.shown_count, stats.hidden_count, rejected_count)
 
-	for channel in _channel_stats:
-		var stats: FilterStats = _channel_stats[channel]
-		# Get rejected count from provider (logs that were never created due to can_log failing)
-		var rejected_count := 0
-		if _rejected_channel_count_provider.is_valid():
-			rejected_count = _rejected_channel_count_provider.call(channel)
-		_sidebar.set_channel_stats(channel, stats.shown_count, stats.hidden_count, rejected_count)
+	_refresh_collapsed_level_buttons()
 
 
 # =============================================================================
@@ -1561,10 +2109,18 @@ func can_log(level: int, channel: String = "") -> bool:
 	return true
 
 
-func set_level_visibility(level: int, mode: int) -> void:
+func _apply_level_visibility_change(level: int, mode: int, emit_change_signal: bool, sync_sidebar_state: bool = false) -> void:
 	_set_level_visibility(level, mode)
+	if sync_sidebar_state and _sidebar:
+		_sidebar.set_level_visibility(level, mode)
 	_save_filter_settings()
 	_rebuild_display()
+	if emit_change_signal:
+		level_visibility_changed.emit(level, mode)
+
+
+func set_level_visibility(level: int, mode: int) -> void:
+	_apply_level_visibility_change(level, mode, false, true)
 
 
 func set_channel_visibility(channel: String, mode: int) -> void:
@@ -1578,10 +2134,7 @@ func set_channel_visibility(channel: String, mode: int) -> void:
 # =============================================================================
 
 func _on_level_visibility_changed(level: int, mode: int) -> void:
-	_set_level_visibility(level, mode)
-	_save_filter_settings()
-	_rebuild_display()
-	level_visibility_changed.emit(level, mode)
+	_apply_level_visibility_change(level, mode, true, false)
 
 
 func _on_channel_visibility_changed(channel: String, mode: int) -> void:
@@ -1626,7 +2179,8 @@ func _on_setting_changed(setting_name: String, value: bool) -> void:
 func _on_sidebar_toggle(toggled_on: bool) -> void:
 	_sidebar_visible = toggled_on
 	if _sidebar:
-		_sidebar.visible = _sidebar_visible
+		_sidebar.visible = _sidebar_visible and not _command_entry_mode
+	_update_collapsed_level_buttons_visibility()
 	_save_filter_settings()
 
 
@@ -1676,6 +2230,7 @@ func _clear_logs() -> void:
 		rich_label.append_text(_get_welcome_message())
 	if _sidebar:
 		_sidebar.reset_stats()
+	_refresh_collapsed_level_buttons()
 	_on_cleared()
 
 
@@ -1691,9 +2246,7 @@ func _save_filter_settings() -> void:
 	var config := ConfigFile.new()
 
 	# Save level visibility - use local dictionary or query provider for known levels
-	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
-				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
-	for level in levels:
+	for level in LOG_LEVELS:
 		config.set_value("levels", str(level), _get_level_visibility(level))
 
 	# Save channel visibility
@@ -1800,9 +2353,7 @@ func _sync_sidebar_state() -> void:
 	if not _sidebar:
 		return
 
-	var levels := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
-				   LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
-	for level in levels:
+	for level in LOG_LEVELS:
 		_sidebar.set_level_visibility(level, _get_level_visibility(level))
 
 	for channel in _known_channels:
@@ -1812,6 +2363,7 @@ func _sync_sidebar_state() -> void:
 	_sidebar.set_setting("collapse_duplicates", _collapse_duplicates)
 	_sidebar.set_setting("wrap_text", _wrap_text)
 	_sidebar.set_setting("truncate_multiline", _truncate_multiline)
+	_refresh_collapsed_level_buttons()
 
 
 func _append_unique_address(addresses: Array[String], address: String) -> void:
@@ -2028,6 +2580,160 @@ func _get_registered_addresses() -> Array[String]:
 	return _get_menu_hierarchy_addresses("")
 
 
+func _normalize_command_group_data(raw_name: Variant, raw_priority: Variant) -> Dictionary:
+	var group_name := str(raw_name).strip_edges()
+	var group_priority := int(raw_priority)
+	if group_name.is_empty():
+		group_priority = 0
+	return {"name": group_name, "priority": group_priority}
+
+
+func _get_command_group_data(command_name: String) -> Dictionary:
+	var command_data = _get_command_data(command_name)
+	if command_data == null:
+		return {"name": "", "priority": 0}
+	if command_data is LogotCommand:
+		var logot_command := command_data as LogotCommand
+		return _normalize_command_group_data(logot_command.group_name, logot_command.group_priority)
+	if command_data is Dictionary:
+		var command_dict := command_data as Dictionary
+		var nested_group = command_dict.get("group", null)
+		if nested_group is Dictionary:
+			var group_dict := nested_group as Dictionary
+			return _normalize_command_group_data(group_dict.get("name", ""), group_dict.get("priority", 0))
+		return _normalize_command_group_data(command_dict.get("group_name", ""), command_dict.get("group_priority", 0))
+	return {"name": "", "priority": 0}
+
+
+func _get_tier_command_group_data(tier: String) -> Dictionary:
+	var resolved_tier := _resolve_alias_command_path(tier)
+	var direct_group := _get_command_group_data(resolved_tier)
+	var direct_group_name := str(direct_group.get("name", "")).strip_edges()
+	if not direct_group_name.is_empty():
+		return direct_group
+
+	var separator := resolved_tier.rfind("/")
+	if separator > 0:
+		var parent_command := resolved_tier.substr(0, separator)
+		if _get_command_data_direct(parent_command) != null:
+			return _get_command_group_data(parent_command)
+	return {"name": "", "priority": 0}
+
+
+func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Dictionary:
+	var has_children := false
+	for address in _get_menu_hierarchy_addresses(tier_text):
+		if str(address).begins_with(tier_text + "/"):
+			has_children = true
+			break
+
+	if not has_children and not _get_command_option_subcommand_addresses(tier_text, 0).is_empty():
+		has_children = true
+	if not has_children and not _get_display_variable_pin_action_subcommand_addresses(tier_text).is_empty():
+		has_children = true
+	if not has_children and _is_setget_command_name(tier_text):
+		has_children = true
+	if not has_children and _is_text_input_command_path(tier_text):
+		has_children = true
+
+	var has_option_command := _is_command_option_subcommand_tier(tier_text) or _is_display_variable_pin_action_subcommand_tier(tier_text) or _is_text_input_option_subcommand_tier(tier_text)
+	var resolved_tier := _resolve_alias_command_path(tier_text)
+	var has_direct_command := _get_commands().has(resolved_tier)
+	var tier_label_override := ""
+	if prefix == PINS_VIEW_ALIAS_PREFIX and tier_text.begins_with(PINS_VIEW_ALIAS_PREFIX):
+		var alias_token := tier_text.substr(PINS_VIEW_ALIAS_PREFIX.length())
+		var token_target := _resolve_pins_view_alias_token_target(alias_token)
+		if not token_target.is_empty():
+			tier_label_override = token_target
+
+	var match_data := {
+		"tier": tier_text,
+		"score": score,
+		"has_children": has_children,
+		"has_command": has_direct_command or has_option_command,
+		"has_display_variable": _has_display_variable(tier_text),
+	}
+	if not tier_label_override.is_empty():
+		match_data["tier_label_override"] = tier_label_override
+
+	var command_group := _get_tier_command_group_data(tier_text)
+	var group_name := str(command_group.get("name", "")).strip_edges()
+	if not group_name.is_empty():
+		match_data["group_name"] = group_name
+		match_data["group_priority"] = int(command_group.get("priority", 0))
+
+	return match_data
+
+
+func _merge_tier_match(matches: Array[Dictionary], candidate: Dictionary) -> void:
+	var candidate_tier := str(candidate.get("tier", ""))
+	if candidate_tier.is_empty():
+		return
+
+	for match_index in range(matches.size()):
+		var existing_match := matches[match_index]
+		if str(existing_match.get("tier", "")) != candidate_tier:
+			continue
+
+		existing_match["score"] = maxi(int(existing_match.get("score", 0)), int(candidate.get("score", 0)))
+		existing_match["has_children"] = bool(existing_match.get("has_children", false)) or bool(candidate.get("has_children", false))
+		existing_match["has_command"] = bool(existing_match.get("has_command", false)) or bool(candidate.get("has_command", false))
+		existing_match["has_display_variable"] = bool(existing_match.get("has_display_variable", false)) or bool(candidate.get("has_display_variable", false))
+
+		var candidate_group_name := str(candidate.get("group_name", "")).strip_edges()
+		if not candidate_group_name.is_empty():
+			var existing_group_name := str(existing_match.get("group_name", "")).strip_edges()
+			var existing_group_priority := int(existing_match.get("group_priority", 0))
+			var candidate_group_priority := int(candidate.get("group_priority", 0))
+			if existing_group_name.is_empty() or candidate_group_priority < existing_group_priority:
+				existing_match["group_name"] = candidate_group_name
+				existing_match["group_priority"] = candidate_group_priority
+
+		var candidate_label_override := str(candidate.get("tier_label_override", "")).strip_edges()
+		if not candidate_label_override.is_empty():
+			existing_match["tier_label_override"] = candidate_label_override
+
+		matches[match_index] = existing_match
+		return
+
+	matches.append(candidate)
+
+
+func _append_root_group_direct_matches(prefix: String, query: String, matches: Array[Dictionary]) -> void:
+	if not prefix.is_empty():
+		return
+
+	for pinned_address in _get_available_pinned_display_variables():
+		var score := _calculate_match_score(pinned_address, query)
+		if score < 0:
+			continue
+		var pinned_match := _build_tier_match_data(pinned_address, score, prefix)
+		pinned_match["group_name"] = ROOT_COMMAND_GROUP_PINNED_NAME
+		pinned_match["group_priority"] = ROOT_COMMAND_GROUP_PINNED_PRIORITY
+		_merge_tier_match(matches, pinned_match)
+
+
+func _sort_tier_matches(matches: Array[Dictionary], apply_group_sorting: bool) -> void:
+	matches.sort_custom(func(a, b):
+		if apply_group_sorting:
+			var group_priority_a := int(a.get("group_priority", 0))
+			var group_priority_b := int(b.get("group_priority", 0))
+			if group_priority_a != group_priority_b:
+				return group_priority_a < group_priority_b
+			var group_name_a := str(a.get("group_name", "")).strip_edges()
+			var group_name_b := str(b.get("group_name", "")).strip_edges()
+			if group_name_a != group_name_b:
+				return group_name_a.nocasecmp_to(group_name_b) < 0
+
+		var score_a := int(a.get("score", 0))
+		var score_b := int(b.get("score", 0))
+		if score_a != score_b:
+			return score_a < score_b
+
+		return str(a.get("tier", "")).nocasecmp_to(str(b.get("tier", ""))) < 0
+	)
+
+
 func _has_display_variable_direct(address: String) -> bool:
 	return _get_display_variables().has(address)
 
@@ -2051,6 +2757,41 @@ func _get_display_variable_value(address: String) -> Variant:
 			return getter.call()
 
 	return null
+
+
+func _resolve_display_variable_inline_color(raw_color: Variant) -> Color:
+	if raw_color is Color:
+		return raw_color as Color
+	if raw_color is String:
+		var parsed := Color.from_string(str(raw_color), Color.TRANSPARENT)
+		return parsed
+	return Color.TRANSPARENT
+
+
+func _get_default_display_variable_inline_color(value: Variant) -> Color:
+	if (typeof(value) == TYPE_BOOL and bool(value)) or (value is String and str(value).strip_edges().to_lower() == "true"):
+		return Color(0.42, 0.9, 0.42, 1.0)
+	return Color.TRANSPARENT
+
+
+func _get_display_variable_inline_color(address: String) -> Color:
+	var custom_color := _get_display_variable_custom_inline_color(address)
+	if custom_color.a > 0.0:
+		return custom_color
+	var value := _get_display_variable_value(address)
+	return _get_default_display_variable_inline_color(value)
+
+
+func _get_display_variable_custom_inline_color(address: String) -> Color:
+	var resolved_address := _resolve_alias_command_path(address)
+	var display_variable = _get_display_variables().get(resolved_address)
+	if display_variable is LogotDisplayVariable:
+		var display_variable_object := display_variable as LogotDisplayVariable
+		if display_variable_object.inline_color_provider.is_valid():
+			var custom_color := _resolve_display_variable_inline_color(display_variable_object.inline_color_provider.call())
+			if custom_color.a > 0.0:
+				return custom_color
+	return Color.TRANSPARENT
 
 
 func _get_display_variable_value_text(address: String, single_line: bool = true) -> String:
@@ -2132,42 +2873,13 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 	var matches: Array[Dictionary] = []
 	for tier in tier_matches:
 		var tier_text := str(tier)
-		var has_children := false
-		for address in _get_menu_hierarchy_addresses(tier_text):
-			if str(address).begins_with(tier_text + "/"):
-				has_children = true
-				break
+		_merge_tier_match(matches, _build_tier_match_data(tier_text, int(tier_matches[tier]), prefix))
 
-		if not has_children and not _get_command_option_subcommand_addresses(tier_text, 0).is_empty():
-			has_children = true
-		if not has_children and not _get_display_variable_pin_action_subcommand_addresses(tier_text).is_empty():
-			has_children = true
-		if not has_children and _is_setget_command_name(tier_text):
-			has_children = true
-		if not has_children and _is_text_input_command_path(tier_text):
-			has_children = true
-		var has_option_command := _is_command_option_subcommand_tier(tier_text) or _is_display_variable_pin_action_subcommand_tier(tier_text) or _is_text_input_option_subcommand_tier(tier_text)
-		var resolved_tier := _resolve_alias_command_path(tier_text)
-		var has_direct_command := _get_commands().has(resolved_tier)
-		var tier_label_override := ""
-		if prefix == PINS_VIEW_ALIAS_PREFIX and tier_text.begins_with(PINS_VIEW_ALIAS_PREFIX):
-			var alias_token := tier_text.substr(PINS_VIEW_ALIAS_PREFIX.length())
-			var token_target := _resolve_pins_view_alias_token_target(alias_token)
-			if not token_target.is_empty():
-				tier_label_override = token_target
-
-		matches.append({
-			"tier": tier_text,
-			"score": int(tier_matches[tier]),
-			"has_children": has_children,
-			"has_command": has_direct_command or has_option_command,
-			"has_display_variable": _has_display_variable(str(tier)),
-			"tier_label_override": tier_label_override,
-		})
+	_append_root_group_direct_matches(prefix, query, matches)
 
 	var text_input_match := _build_text_input_tier_match(prefix, query)
 	if not text_input_match.is_empty():
-		matches.append(text_input_match)
+		_merge_tier_match(matches, text_input_match)
 	if prefix.is_empty():
 		var existing_search_index := -1
 		for row_index in range(matches.size()):
@@ -2180,7 +2892,7 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 		else:
 			var search_score := _calculate_match_score(AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND, query)
 			if search_score >= 0:
-				matches.append({
+				_merge_tier_match(matches, {
 					"tier": AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND,
 					"score": search_score,
 					"has_children": true,
@@ -2188,7 +2900,7 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 					"has_display_variable": false,
 				})
 
-	matches.sort_custom(func(a, b): return int(a.get("score", 0)) < int(b.get("score", 0)))
+	_sort_tier_matches(matches, prefix.is_empty() and query.is_empty())
 	return matches
 
 
@@ -2243,58 +2955,42 @@ func _calculate_global_command_search_match_score(tier: String, query: String) -
 	if query.is_empty():
 		return 0
 
-	var tier_lower := tier.to_lower()
+	var leaf_segment := tier.get_slice("/", tier.get_slice_count("/") - 1)
+	var leaf_lower := leaf_segment.to_lower()
 	var query_lower := query.to_lower()
+	var depth_penalty := maxi(0, tier.get_slice_count("/") - 1) * 20
 
-	if tier_lower == query_lower:
-		return 5000
-	if tier_lower.begins_with(query_lower):
-		return 4500 - tier.length()
+	if leaf_lower == query_lower:
+		return 5000 - depth_penalty
+	if leaf_lower.begins_with(query_lower):
+		return 4500 - leaf_segment.length() - depth_penalty
 
-	var best_score := -1
-	var segments := _split_autocomplete_segments(tier)
-	for segment_index in range(segments.size()):
-		var segment := segments[segment_index]
-		var segment_score := _calculate_match_score(segment, query)
-		if segment_score >= 0:
-			best_score = maxi(best_score, 3000 + segment_score - segment_index * 20)
-
-		var contains_index := segment.to_lower().find(query_lower)
-		if contains_index != -1:
-			best_score = maxi(best_score, 2500 - segment_index * 20 - contains_index)
-
-	if best_score >= 0:
-		return best_score
-
-	var full_path_index := tier_lower.find(query_lower)
-	if full_path_index != -1:
-		return 2000 - full_path_index
-	return -1
+	var leaf_score := _calculate_match_score(leaf_segment, query)
+	if leaf_score < 0:
+		return -1
+	return 3000 + leaf_score - depth_penalty
 
 
-func _highlight_search_match_text(text: String, query: String) -> String:
+func _collect_search_match_ranges(text: String, query: String) -> Array[Dictionary]:
+	var ranges: Array[Dictionary] = []
 	if query.is_empty():
-		return text
+		return ranges
 
 	var query_lower := query.to_lower()
 	var query_len := query_lower.length()
 	if query_len <= 0:
-		return text
+		return ranges
 
 	var lower_text := text.to_lower()
-	var highlighted := ""
 	var cursor := 0
 	while cursor < text.length():
 		var match_index := lower_text.find(query_lower, cursor)
 		if match_index == -1:
-			highlighted += text.substr(cursor)
 			break
-
-		highlighted += text.substr(cursor, match_index - cursor)
-		highlighted += "[" + text.substr(match_index, query_len) + "]"
+		ranges.append({"start": match_index, "end": match_index + query_len})
 		cursor = match_index + query_len
 
-	return highlighted
+	return ranges
 
 
 func _build_global_command_search_matches(query: String) -> Array[Dictionary]:
@@ -2312,13 +3008,15 @@ func _build_global_command_search_matches(query: String) -> Array[Dictionary]:
 		var has_option_command := _is_command_option_subcommand_tier(tier) or _is_display_variable_pin_action_subcommand_tier(tier) or _is_text_input_option_subcommand_tier(tier)
 		var resolved_tier := _resolve_alias_command_path(tier)
 		var has_direct_command := _get_commands().has(resolved_tier)
+		var full_label := "/" + tier
 		matches.append({
 			"tier": tier,
 			"score": score,
 			"has_children": _has_autocomplete_tier_children(tier, all_tiers),
 			"has_command": has_direct_command or has_option_command,
 			"has_display_variable": _has_display_variable(tier),
-			"full_label_override": _highlight_search_match_text("/" + tier, query),
+			"full_label_override": full_label,
+			"label_highlight_ranges": _collect_search_match_ranges(full_label, query),
 			"suppress_value_text": true,
 		})
 
@@ -2353,6 +3051,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 	if match_data.get("is_text_input", false):
 		return {
 			"label": _get_autocomplete_tier_label(prefix, match_data),
+			"label_highlight_ranges": [],
 			"value_text": "",
 			"has_children": false,
 			"can_submit": match_data.get("has_command", false),
@@ -2362,16 +3061,92 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 	if match_data.get("is_option", false):
 		return {
 			"label": str(match_data.get("option_label", "")),
+			"label_highlight_ranges": [],
 			"value_text": "",
 			"has_children": false,
 			"can_submit": false,
 		}
 
+	var value_data := _get_autocomplete_display_variable_value_data(match_data)
+	var value_text_color := value_data.get("color", null)
 	return {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
-		"value_text": "" if match_data.get("suppress_value_text", false) else _get_autocomplete_display_variable_value_text(match_data),
+		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
+		"value_text": "" if match_data.get("suppress_value_text", false) else str(value_data.get("text", "")),
+		"value_text_color": value_text_color,
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
+	}
+
+
+func _should_show_command_groups(prefix: String, query: String, is_preview: bool) -> bool:
+	if is_preview or _autocomplete_global_search_mode:
+		return false
+	if not prefix.is_empty():
+		return false
+	return query.strip_edges().is_empty()
+
+
+func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_match_index: int, show_groups: bool) -> Dictionary:
+	var rows: Array[Dictionary] = []
+	var selected_row_index := -1
+	var open_group_last_row := -1
+	var active_group := ""
+
+	for match_index in range(matches.size()):
+		var match_data: Dictionary = matches[match_index]
+		var group_name := str(match_data.get("group_name", "")).strip_edges() if show_groups else ""
+
+		if group_name != active_group:
+			if open_group_last_row >= 0:
+				var closing_row: Dictionary = rows[open_group_last_row]
+				closing_row["group_box_end"] = true
+				rows[open_group_last_row] = closing_row
+			active_group = group_name
+			open_group_last_row = -1
+			if not active_group.is_empty():
+				rows.append({
+					"is_group_header": true,
+					"label": active_group,
+					"has_children": false,
+					"can_submit": false,
+					"value_text": "",
+				})
+
+		var row := _build_command_autocomplete_row_data(prefix, match_data)
+		if not active_group.is_empty():
+			row["group_box"] = true
+			if open_group_last_row == -1:
+				row["group_box_start"] = true
+			open_group_last_row = rows.size()
+		rows.append(row)
+
+		if match_index == selected_match_index:
+			selected_row_index = rows.size() - 1
+
+	if open_group_last_row >= 0:
+		var final_row: Dictionary = rows[open_group_last_row]
+		final_row["group_box_end"] = true
+		rows[open_group_last_row] = final_row
+
+	return {
+		"rows": rows,
+		"selected_row_index": selected_row_index,
+	}
+
+
+func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Dictionary:
+	if not match_data.get("has_display_variable", false):
+		return {"text": "", "color": null}
+
+	var tier := str(match_data.get("tier", ""))
+	if tier.is_empty():
+		return {"text": "", "color": null}
+
+	var inline_color := _get_display_variable_inline_color(tier)
+	return {
+		"text": _get_display_variable_display_text(tier, true),
+		"color": inline_color if inline_color.a > 0.0 else null,
 	}
 
 
@@ -2564,7 +3339,8 @@ func _get_command_option_label_for_value(command_name: String, value: Variant, a
 	var value_text := str(value)
 	for option_entry in options:
 		var option_value := _get_command_option_entry_value(option_entry)
-		if option_value == value or str(option_value) == value_text:
+		var exact_match: bool = typeof(option_value) == typeof(value) and option_value == value
+		if exact_match or str(option_value) == value_text:
 			return _get_command_option_entry_label(option_entry)
 	return ""
 
@@ -2810,7 +3586,8 @@ func _find_setget_preview_option_selected_index(command_name: String, preview_pr
 		if not option_match.get("matched", false):
 			continue
 		var option_value = option_match.get("value")
-		if option_value == current_value or str(option_value) == current_text:
+		var exact_match: bool = typeof(option_value) == typeof(current_value) and option_value == current_value
+		if exact_match or str(option_value) == current_text:
 			return option_index
 
 	if _has_display_variable(command_name):
@@ -2854,9 +3631,8 @@ func _find_command_option_match_index(command_name: String, option_matches: Arra
 	for option_index in range(option_matches.size()):
 		var option_data := option_matches[option_index]
 		var option_value = option_data.get("option_value")
-		if option_value == current_value:
-			return option_index
-		if str(option_value) == current_text:
+		var exact_match: bool = typeof(option_value) == typeof(current_value) and option_value == current_value
+		if exact_match or str(option_value) == current_text:
 			return option_index
 	return -1
 
@@ -2935,6 +3711,27 @@ func _store_autocomplete_highlighted_tier(prefix: String, matches: Array, select
 	_autocomplete_highlighted_tiers[prefix] = selected_tier
 
 
+func _cache_pre_filter_autocomplete_highlight(prefix: String, fallback_tier: String = "") -> void:
+	if _autocomplete_pre_filter_highlighted_tiers.has(prefix):
+		return
+
+	var cached_tier := str(_autocomplete_highlighted_tiers.get(prefix, ""))
+	if cached_tier.is_empty():
+		cached_tier = fallback_tier
+	if cached_tier.is_empty():
+		return
+	_autocomplete_pre_filter_highlighted_tiers[prefix] = cached_tier
+
+
+func _consume_pre_filter_autocomplete_highlight(prefix: String) -> String:
+	if not _autocomplete_pre_filter_highlighted_tiers.has(prefix):
+		return ""
+
+	var cached_tier := str(_autocomplete_pre_filter_highlighted_tiers.get(prefix, ""))
+	_autocomplete_pre_filter_highlighted_tiers.erase(prefix)
+	return cached_tier
+
+
 func _split_autocomplete_segments(path: String) -> Array[String]:
 	var segments: Array[String] = []
 	if path.is_empty():
@@ -2958,9 +3755,24 @@ func _get_autocomplete_input_state() -> Dictionary:
 	if not text.begins_with("/"):
 		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
 
+	# "//" is a shorthand entry for global command search mode.
+	if text.begins_with("//"):
+		committed_segments.append(AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND)
+		committed_prefix = AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND + "/"
+		query = text.substr(2)
+		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
+
 	var raw_full_text := text.substr(1)
 	var had_trailing_separator := raw_full_text.ends_with("/")
 	var normalized_full_text := _get_internal_alias_command_path(raw_full_text.trim_suffix("/"))
+
+	# Keep "/search" working as an entry point to global search mode.
+	if normalized_full_text == AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND and not had_trailing_separator:
+		committed_segments.append(AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND)
+		committed_prefix = AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND + "/"
+		query = ""
+		return {"segments": committed_segments, "prefix": committed_prefix, "query": query}
+
 	var full_text := normalized_full_text + ("/" if had_trailing_separator and not normalized_full_text.is_empty() else "")
 	query = full_text
 
@@ -3017,12 +3829,25 @@ func _build_command_autocomplete_state() -> bool:
 		if column_index < committed_segments.size():
 			selected_tier = prefix + committed_segments[column_index]
 
-		var selected_index := _find_autocomplete_match_index(matches, selected_tier)
-		if selected_index == -1:
-			if column_index < committed_segments.size():
-				_autocomplete_active_column_index = -1
-				return false
+		var selected_index := -1
+		var is_active_column := column_index == _autocomplete_active_column_index
+		var is_filtering_active_column := is_active_column and not column_query.is_empty()
+		if is_filtering_active_column:
+			_cache_pre_filter_autocomplete_highlight(prefix, selected_tier)
 			selected_index = matches.size() - 1
+		else:
+			if is_active_column and column_query.is_empty():
+				var restored_tier := _consume_pre_filter_autocomplete_highlight(prefix)
+				if not restored_tier.is_empty():
+					selected_tier = restored_tier
+
+			selected_index = _find_autocomplete_match_index(matches, selected_tier)
+			if selected_index == -1:
+				if column_index < committed_segments.size():
+					_autocomplete_active_column_index = -1
+					return false
+				selected_index = matches.size() - 1
+
 		_store_autocomplete_highlighted_tier(prefix, matches, selected_index)
 		_autocomplete_column_states.append({
 			"prefix": prefix,
@@ -3051,9 +3876,18 @@ func _build_global_command_autocomplete_state(query: String) -> bool:
 	_autocomplete_active_column_index = 0
 
 	var selected_tier := str(_autocomplete_highlighted_tiers.get(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX, ""))
-	var selected_index := _find_autocomplete_match_index(matches, selected_tier)
-	if selected_index == -1:
+	var selected_index := -1
+	if query.is_empty():
+		var restored_tier := _consume_pre_filter_autocomplete_highlight(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX)
+		if not restored_tier.is_empty():
+			selected_tier = restored_tier
+		selected_index = _find_autocomplete_match_index(matches, selected_tier)
+		if selected_index == -1:
+			selected_index = matches.size() - 1
+	else:
+		_cache_pre_filter_autocomplete_highlight(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX, selected_tier)
 		selected_index = matches.size() - 1
+
 	_store_autocomplete_highlighted_tier(AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX, matches, selected_index)
 
 	_autocomplete_column_states.append({
@@ -3174,12 +4008,14 @@ func _get_command_autocomplete_max_column_width() -> int:
 	return maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
 
 
-func _measure_command_autocomplete_column_layout(control: Control, prefix: String, matches: Array, column_name: String, column_description: String) -> Dictionary:
+func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String) -> Dictionary:
 	var name_width := 0
 	var value_width := 0
 	var action_width := 0
-	for match_data in matches:
-		var row_data := _build_command_autocomplete_row_data(prefix, match_data)
+	for row_data in rows:
+		if bool(row_data.get("is_group_header", false)):
+			name_width = maxi(name_width, _measure_autocomplete_text_width(control, str(row_data.get("label", ""))))
+			continue
 		name_width = maxi(name_width, _measure_autocomplete_text_width(control, str(row_data.get("label", ""))))
 
 		var value_text := str(row_data.get("value_text", ""))
@@ -3217,8 +4053,11 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	# be a few pixels wider than plain font metrics (which otherwise causes wrap artifacts).
 	var header_total_width := int(ceil(AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + header_content_width + AUTOCOMPLETE_HEADER_WIDTH_BUFFER
 	var preferred_width := maxi(total_width, header_total_width)
-	var max_width := _get_command_autocomplete_max_column_width()
-	total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+	if prefix == AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX:
+		total_width = maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, preferred_width)
+	else:
+		var max_width := _get_command_autocomplete_max_column_width()
+		total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
 
 	return {
 		"name_width": name_width,
@@ -3419,11 +4258,16 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	var column_name := str(column_state.get("column_name_override", _get_command_autocomplete_column_name(prefix)))
 	var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
 	var matches: Array = column_state.get("matches", [])
+	var selected_match_index := int(column_state.get("selected_index", -1))
+	var show_groups := _should_show_command_groups(prefix, str(column_state.get("query", "")), bool(column_state.get("preview", false)))
+	var row_build_result := _build_command_autocomplete_rows(prefix, matches, selected_match_index, show_groups)
 	var rows: Array[Dictionary] = []
-	for match_data in matches:
-		rows.append(_build_command_autocomplete_row_data(prefix, match_data))
+	for row_variant in row_build_result.get("rows", []):
+		if row_variant is Dictionary:
+			rows.append(row_variant as Dictionary)
+	var selected_row_index := int(row_build_result.get("selected_row_index", -1))
 
-	var layout := _measure_command_autocomplete_column_layout(list, prefix, matches, column_name, column_description)
+	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
 	column_state["left_width"] = int(layout.get("name_width", 0))
 	column_state["value_width"] = int(layout.get("value_width", 0))
 	column_state["action_width"] = int(layout.get("action_width", 0))
@@ -3433,12 +4277,11 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
 
-	var selected_index := int(column_state.get("selected_index", -1))
 	var is_active_column := column_index == _autocomplete_active_column_index
 	list.set_column_data(
 		rows,
 		layout,
-		selected_index,
+		selected_row_index,
 		column_state.get("preview", false),
 		AUTOCOMPLETE_ITEM_HEIGHT,
 		is_active_column,
@@ -3568,11 +4411,16 @@ func _refresh_command_autocomplete_popup_values() -> void:
 		var column_name := str(column_state.get("column_name_override", _get_command_autocomplete_column_name(prefix)))
 		var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
 		var list := _autocomplete_column_nodes[column_index] as AutocompleteCommandColumn
+		var selected_match_index := int(column_state.get("selected_index", -1))
+		var show_groups := _should_show_command_groups(prefix, str(column_state.get("query", "")), bool(column_state.get("preview", false)))
+		var row_build_result := _build_command_autocomplete_rows(prefix, matches, selected_match_index, show_groups)
 		var rows: Array[Dictionary] = []
-		for match_data in matches:
-			rows.append(_build_command_autocomplete_row_data(prefix, match_data))
+		for row_variant in row_build_result.get("rows", []):
+			if row_variant is Dictionary:
+				rows.append(row_variant as Dictionary)
+		var selected_row_index := int(row_build_result.get("selected_row_index", -1))
 
-		var layout := _measure_command_autocomplete_column_layout(list, prefix, matches, column_name, column_description)
+		var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
 		var new_width := int(layout.get("width", 0))
 		if new_width != int(column_state.get("width", 0)):
 			column_state["left_width"] = int(layout.get("name_width", 0))
@@ -3584,12 +4432,11 @@ func _refresh_command_autocomplete_popup_values() -> void:
 			list.size = list.custom_minimum_size
 			needs_layout_refresh = true
 
-		var selected_index := int(column_state.get("selected_index", -1))
 		var is_active_column := column_index == _autocomplete_active_column_index
 		list.set_column_data(
 			rows,
 			layout,
-			selected_index,
+			selected_row_index,
 			column_state.get("preview", false),
 			AUTOCOMPLETE_ITEM_HEIGHT,
 			is_active_column,
@@ -3749,6 +4596,7 @@ func hide_autocomplete() -> void:
 	_autocomplete_column_nodes.clear()
 	_autocomplete_active_column_index = -1
 	_autocomplete_global_search_mode = false
+	_autocomplete_pre_filter_highlighted_tiers.clear()
 	_pending_autocomplete_column_sync_start = -1
 	_autocomplete_column_sync_queued = false
 	_debug_autocomplete("hide_autocomplete.end")
@@ -3940,7 +4788,23 @@ func _reveal_command_path(command_path: String) -> bool:
 	return true
 
 
-func autocomplete_move_right() -> void:
+func _can_move_right_into_command_column(tier: String, match_data: Dictionary) -> bool:
+	if tier.is_empty():
+		return false
+
+	if tier == AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND:
+		return true
+
+	if match_data.get("has_children", false):
+		return not _build_tier_matches(tier + "/", "").is_empty()
+
+	if not match_data.get("has_command", false):
+		return false
+
+	return not _build_command_option_matches(tier, 0).is_empty()
+
+
+func autocomplete_move_right(require_actionable_destination: bool = false) -> void:
 	if _is_history_popup_visible():
 		_reveal_selected_history_command_path()
 		return
@@ -3958,6 +4822,9 @@ func autocomplete_move_right() -> void:
 
 	if _autocomplete_global_search_mode:
 		_reveal_command_path(tier)
+		return
+
+	if require_actionable_destination and not _can_move_right_into_command_column(tier, match_data):
 		return
 
 	_set_line_edit_command_path(tier, true)
@@ -4059,6 +4926,11 @@ func reset_autocomplete() -> void:
 	_current_suggest = 0
 	_suggesting = false
 	hide_autocomplete()
+
+
+func clear_autocomplete_highlight_memory() -> void:
+	_autocomplete_highlighted_tiers.clear()
+	_autocomplete_pre_filter_highlighted_tiers.clear()
 
 
 ## Add a command to the history

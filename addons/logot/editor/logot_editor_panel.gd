@@ -284,14 +284,15 @@ func _sync_existing_entries() -> void:
 			if _logot.has_method("get_known_channels"):
 				for channel in _logot.get_known_channels():
 					_display.ensure_channel(channel)
+
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
 		_display.set_display_variables_provider(_get_display_variables)
 
 		# Before setting up providers, capture the loaded visibility settings from display
 		# These were loaded from config in _init_base() before providers were set
-			var loaded_level_visibility: Dictionary = _display.get_level_visibility_snapshot()
-			var loaded_channel_visibility: Dictionary = _display.get_channel_visibility_snapshot()
+		var loaded_level_visibility: Dictionary = _display.get_level_visibility_snapshot()
+		var loaded_channel_visibility: Dictionary = _display.get_channel_visibility_snapshot()
 
 		# Set up visibility providers to use logot's visibility dictionaries
 		if _logot.has_method("get_level_visibility") and _logot.has_method("set_level_visibility"):
@@ -318,7 +319,7 @@ func _sync_existing_entries() -> void:
 		# Add "Editor" as the first instance
 		_register_editor_instance()
 
-			_display.rebuild_display()
+		_display.rebuild_display()
 
 
 ## Register the Editor as a special instance
@@ -711,11 +712,11 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 			_display.line_edit.clear()
 			_display.line_edit.grab_focus()
 
-			if _display:
-				_display.set_search_filter("")
-				_display.rebuild_display()
-				if _display.is_command_entry_mode():
-					_display.hide_command_entry_mode(false)
+		if _display:
+			_display.set_search_filter("")
+			_display.rebuild_display()
+			if _display.is_command_entry_mode():
+				_display.hide_command_entry_mode(false)
 	else:
 		if _display and _display.line_edit:
 			_display.line_edit.grab_focus()
@@ -764,7 +765,7 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 
 
 func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
-	var line_edit := _display.line_edit if _display else null
+	var line_edit = _display.line_edit if _display else null
 	if not LogotCommandInput.is_submit_event(event, line_edit):
 		return false
 
