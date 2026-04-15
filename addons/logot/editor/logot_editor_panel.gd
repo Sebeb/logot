@@ -6,6 +6,7 @@ extends Control
 ## Configures it for editor use.
 
 const LogotDisplay = preload("res://addons/logot/logot_display.gd")
+const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
 const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
 const SETTINGS_FILE := "user://logot_editor_filters.cfg"
 
@@ -697,33 +698,14 @@ func _on_text_entered(text: String) -> void:
 
 
 func _extract_command_name(command_input: String) -> String:
-	var trimmed_input := command_input.strip_edges()
-	if not trimmed_input.begins_with("/"):
-		return ""
-
-	var command_text := trimmed_input.substr(1)
-	if command_text.is_empty():
-		return ""
-
-	var text_split := PackedStringArray()
+	var parse_input := Callable()
 	if _logot and _logot.has_method("parse_line_input"):
-		text_split = _logot.parse_line_input(command_text)
-	else:
-		text_split = command_text.split(" ", false)
-	if text_split.is_empty():
-		return ""
-	return str(text_split[0]).strip_edges()
+		parse_input = Callable(_logot, "parse_line_input")
+	return LogotCommandInput.extract_command_name(command_input, parse_input)
 
 
 func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bool) -> String:
-	var submitted_text := raw_text.strip_edges()
-	if not prefer_autocomplete_selection:
-		return submitted_text
-	if not submitted_text.begins_with("/"):
-		return submitted_text
-	if not _display or not _display.has_active_command_autocomplete_match():
-		return submitted_text
-	return _display.get_active_command_submission_text().strip_edges()
+	return LogotCommandInput.resolve_submitted_text(raw_text, prefer_autocomplete_selection, _display)
 
 
 func _is_valid_command_input(command_input: String) -> bool:
@@ -785,48 +767,11 @@ func _input(event: InputEvent) -> void:
 
 
 func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
-	if not event.pressed or event.echo:
-		return false
-	if not _display or not _display.line_edit or not _display.line_edit.has_focus():
-		return false
-
-	if _display.is_autocomplete_visible():
-		match event.keycode:
-			KEY_DOWN:
-				_display.autocomplete_select_next()
-				return true
-			KEY_UP:
-				_display.autocomplete_select_prev()
-				return true
-			KEY_RIGHT:
-				_display.autocomplete_move_right()
-				return true
-			KEY_LEFT:
-				_display.autocomplete_move_left()
-				return true
-			KEY_TAB:
-				_display.confirm_autocomplete()
-				return true
-			KEY_ESCAPE:
-				if _display.is_command_entry_mode():
-					_display.hide_command_entry_mode()
-				else:
-					_display.hide_autocomplete()
-				return true
-		return false
-
-	match event.keycode:
-		KEY_UP:
-			_display.autocomplete_select_prev()
-			return true
-		KEY_DOWN:
-			_display.autocomplete_select_next()
-			return true
-		KEY_ESCAPE:
-			if _display.is_command_entry_mode():
-				_display.hide_command_entry_mode()
-				return true
-	return false
+	return LogotCommandInput.handle_autocomplete_navigation(
+		event,
+		_display,
+		_display.line_edit if _display else null
+	)
 
 
 func _on_line_edit_gui_input(event: InputEvent) -> void:
@@ -842,17 +787,12 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 
 
 func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
-	if not event.pressed or event.echo:
-		return false
-	if not _display or not _display.line_edit or not _display.line_edit.has_focus():
-		return false
-	if event.keycode != KEY_ENTER and event.keycode != KEY_KP_ENTER:
+	var line_edit := _display.line_edit if _display else null
+	if not LogotCommandInput.is_submit_event(event, line_edit):
 		return false
 
 	var keep_input := event.shift_pressed
-	var selected_history_command := ""
-	if _display and _display.has_method("get_selected_history_command"):
-		selected_history_command = str(_display.get_selected_history_command()).strip_edges()
+	var selected_history_command := LogotCommandInput.get_selected_history_command(_display)
 	if not selected_history_command.is_empty():
 		_submit_line_edit_input(selected_history_command, keep_input, false)
 		return true
