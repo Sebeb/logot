@@ -3,15 +3,18 @@ extends EditorPlugin
 
 const EditorPanelScript = preload("res://addons/logot/editor/logot_editor_panel.gd")
 const LogotDebuggerPlugin = preload("res://addons/logot/editor/logot_debugger_plugin.gd")
+const LOGOT_AUTOLOAD_PATH := "res://addons/logot/logot.gd"
 
 var _editor_panel: Control
 var _editor_dock: EditorDock
 var _debugger_plugin: EditorDebuggerPlugin
 var _restart_in_progress := false
+var _added_console_autoload := false
 
 
 func _enter_tree() -> void:
 	print("Logot plugin activated.")
+	_ensure_console_autoload()
 
 	# Create and register the debugger plugin for game instance communication
 	_debugger_plugin = LogotDebuggerPlugin.new()
@@ -57,6 +60,10 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	if _added_console_autoload:
+		remove_autoload_singleton("Console")
+		_added_console_autoload = false
+
 	if _debugger_plugin:
 		remove_debugger_plugin(_debugger_plugin)
 		_debugger_plugin = null
@@ -129,3 +136,10 @@ func _restart_editor_play_session() -> void:
 		push_warning("Logot: Failed to restart play session in editor (no play method available).")
 
 	_restart_in_progress = false
+
+
+func _ensure_console_autoload() -> void:
+	if ProjectSettings.has_setting("autoload/Console"):
+		return
+	add_autoload_singleton("Console", LOGOT_AUTOLOAD_PATH)
+	_added_console_autoload = true

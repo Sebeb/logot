@@ -31,9 +31,14 @@ static var inited := false
 static func _get_console():
 	if Engine.has_singleton("Console"):
 		return Engine.get_singleton("Console")
+	if Engine.has_singleton("Logot"):
+		return Engine.get_singleton("Logot")
 	var tree := Engine.get_main_loop()
-	if tree and tree.root and tree.root.has_node("Console"):
-		return tree.root.get_node("Console")
+	if tree and tree.root:
+		if tree.root.has_node("Console"):
+			return tree.root.get_node("Console")
+		if tree.root.has_node("Logot"):
+			return tree.root.get_node("Logot")
 	return null
 
 static func init():
