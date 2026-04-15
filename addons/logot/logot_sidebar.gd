@@ -828,7 +828,6 @@ enum ContextMenuID {
 	SET_SHOWN = 0,
 	SET_HIDDEN = 1,
 	SET_OFF = 2,
-	SEPARATOR = 3,
 	DELETE_CHANNEL = 4,
 }
 
@@ -981,43 +980,6 @@ func _cycle_channel_visibility(channel: String) -> void:
 	_update_ui()
 
 
-## Right-click toggles OFF state
-func _toggle_level_off(level: int) -> void:
-	var current = _level_visibility.get(level, VisibilityMode.SHOWN)
-	var next_mode: int
-	if current == VisibilityMode.OFF:
-		next_mode = VisibilityMode.SHOWN
-	else:
-		next_mode = VisibilityMode.OFF
-	_level_visibility[level] = next_mode
-	_update_ui()
-	level_visibility_changed.emit(level, next_mode)
-
-
-## Right-click toggles OFF state
-func _toggle_channel_off(channel: String) -> void:
-	var current = _channel_visibility.get(channel, VisibilityMode.SHOWN)
-	var next_mode: int
-	if current == VisibilityMode.OFF:
-		next_mode = VisibilityMode.SHOWN
-	else:
-		next_mode = VisibilityMode.OFF
-
-	# Check if this channel has children and is collapsed - if so, cascade the change
-	var item: TreeItem = _channel_items.get(channel)
-	var should_cascade := _has_children(channel) and item != null and item.collapsed
-
-	_channel_visibility[channel] = next_mode
-	channel_visibility_changed.emit(channel, next_mode)
-
-	if should_cascade:
-		for descendant in _get_all_descendants(channel):
-			_channel_visibility[descendant] = next_mode
-			channel_visibility_changed.emit(descendant, next_mode)
-
-	_update_ui()
-
-
 ## Handle tree item collapse/expand to update aggregated stats and icons
 func _on_tree_item_collapsed(item: TreeItem) -> void:
 	var metadata = item.get_metadata(COL_NAME)
@@ -1045,15 +1007,3 @@ func _cycle_instance_visibility(instance_id: int) -> void:
 	_update_ui()
 	instance_visibility_changed.emit(instance_id, next_mode)
 
-
-## Right-click toggles OFF state for instances
-func _toggle_instance_off(instance_id: int) -> void:
-	var current = _instance_visibility.get(instance_id, VisibilityMode.SHOWN)
-	var next_mode: int
-	if current == VisibilityMode.OFF:
-		next_mode = VisibilityMode.SHOWN
-	else:
-		next_mode = VisibilityMode.OFF
-	_instance_visibility[instance_id] = next_mode
-	_update_ui()
-	instance_visibility_changed.emit(instance_id, next_mode)

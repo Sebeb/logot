@@ -16,8 +16,6 @@ const VERBOSE := 1 << 6
 ## Micro detail info that is only useful for debugging
 const DEBUG := 1 << 7
 
-const GROUP := 1 << 8
-
 const names := {
 	ERROR: "ERROR",
 	WARN: "WARN",

@@ -24,12 +24,10 @@ signal display_rebuilt()  # Emitted after display is rebuilt, for external stats
 class FilterStats:
 	var shown_count: int = 0
 	var hidden_count: int = 0
-	var off_count: int = 0
 
 	func reset() -> void:
 		shown_count = 0
 		hidden_count = 0
-		off_count = 0
 
 
 class LogEntry:

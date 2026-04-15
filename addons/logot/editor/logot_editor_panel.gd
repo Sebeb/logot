@@ -696,17 +696,6 @@ func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bo
 	return LogotCommandInput.resolve_submitted_text(raw_text, prefer_autocomplete_selection, _display)
 
 
-func _is_valid_command_input(command_input: String) -> bool:
-	var command_name := _extract_command_name(command_input)
-	if command_name.is_empty():
-		return false
-	if _get_commands().has(command_name):
-		return true
-	if _logot and _logot.has_method("can_execute_console_command"):
-		return bool(_logot.can_execute_console_command(command_name))
-	return false
-
-
 func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_autocomplete_selection: bool = false) -> bool:
 	var submitted_text := _resolve_submitted_text(raw_text, prefer_autocomplete_selection)
 	if submitted_text.is_empty():
