@@ -2032,36 +2032,63 @@ func _command_load_pins_overlay(name: String) -> void:
 	print_line("Loaded overlay [color=light_green]%s[/color] with %d pinned variable(s)." % [_escape_bbcode_text(overlay_name), pinned_count])
 
 
+func _get_sorted_command_names() -> Array[String]:
+	var commands: Array[String] = []
+	for command_name in console_commands:
+		commands.append(str(command_name))
+	commands.sort()
+	return commands
+
+
+func _get_command_arguments_markup(command_name: String) -> String:
+	var command_data = console_commands.get(command_name)
+	if not (command_data is LogotCommand):
+		return ""
+
+	var command := command_data as LogotCommand
+	var arguments_markup := ""
+	for index in range(command.arguments.size()):
+		var argument_name := command.arguments[index]
+		if index < command.required:
+			arguments_markup += "  [color=cornflower_blue]<%s>[/color]" % argument_name
+		else:
+			arguments_markup += "  <%s>" % argument_name
+	return arguments_markup
+
+
+func _build_help_commands_lines() -> PackedStringArray:
+	var lines: PackedStringArray = []
+	for command_name in _get_sorted_command_names():
+		var command_data = console_commands.get(command_name)
+		if not (command_data is LogotCommand):
+			continue
+		var description := str((command_data as LogotCommand).description)
+		lines.append("			[color=light_green]/%s[/color][color=gray]%s[/color]: %s" % [
+			command_name,
+			_get_command_arguments_markup(command_name),
+			description,
+		])
+	return lines
+
+
 func help() -> void:
-	self.log(["[color=cyan]Help:[/color]
-	[color=cyan]Search:[/color]
-		Type text to filter logs in real-time
-		Press Enter to confirm and clear the search
-		[color=cyan]Commands (prefix with /):[/color]
-			[color=light_green]/console/calc[/color]: Calculates a given expression
-			[color=light_green]/console/clear[/color]: Clears the registry view
-			[color=light_green]/console/commands[/color]: Shows a detailed list of all the currently registered commands
-			[color=light_green]/console/delete_history[/color]: Deletes the commands history
-			[color=light_green]/pins/view[/color]: Shows pinned display variables and pin/unpin toggles
-			[color=light_green]/pins/clear[/color]: Clears all pinned display variables
-			[color=light_green]/pins/save <name>[/color]: Saves current pins as a named overlay
-			[color=light_green]/pins/load <name>[/color]: Loads pins from a named overlay
-			[color=light_green]/console/quit[/color]: Quits the game
-			[color=light_green]/exit[/color]: Quits the game (alias)
-			[color=light_green]/restart[/color]: Restarts the game (root command)
-		[color=light_green]/log_show[/color]: Set level/channel to SHOWN
-		[color=light_green]/log_hide[/color]: Set level/channel to HIDDEN
-		[color=light_green]/log_off[/color]: Set level/channel to OFF
-		[color=light_green]/log_stats[/color]: Show all filter statistics
-	[color=cyan]Controls:[/color]
-		[color=light_blue]Up[/color] from an empty input box to browse commands
-		[color=light_blue]Down[/color] from an empty input box or bare [color=light_blue]/[/color] to browse recent commands
-		[color=light_blue]PageUp[/color] and [color=light_blue]PageDown[/color] to scroll registry
-		[[color=light_blue]Ctrl[/color] + [color=light_blue]~[/color]] to change console size between half screen and full screen
-		[color=light_blue]~[/color] or [color=light_blue]Esc[/color] key to close the console
-		[color=light_blue]Up[/color] and [color=light_blue]Down[/color] move within the active autocomplete column
-		[color=light_blue]Right[/color] or [color=light_blue]Tab[/color] commits the highlighted branch to the next column
-		[color=light_blue]Left[/color] moves back to the previous autocomplete column"])
+	var lines: PackedStringArray = []
+	lines.append("[color=cyan]Help:[/color]")
+	lines.append("	[color=cyan]Search:[/color]")
+	lines.append("		Type text to filter logs in real-time")
+	lines.append("		Press Enter to confirm and clear the search")
+	lines.append("	[color=cyan]Commands (prefix with /):[/color]")
+	lines.append_array(_build_help_commands_lines())
+	lines.append("	[color=cyan]Controls:[/color]")
+	lines.append("		[color=light_blue]Up[/color] from an empty input box to browse commands")
+	lines.append("		[color=light_blue]Down[/color] from an empty input box or bare [color=light_blue]/[/color] to browse recent commands")
+	lines.append("		[color=light_blue]PageUp[/color] and [color=light_blue]PageDown[/color] to scroll registry")
+	lines.append("		[[color=light_blue]Ctrl[/color] + [color=light_blue]~[/color]] to change console size between half screen and full screen")
+	lines.append("		[color=light_blue]~[/color] or [color=light_blue]Esc[/color] key to close the console")
+	lines.append("		[color=light_blue]Up[/color] and [color=light_blue]Down[/color] move within the active autocomplete column")
+	lines.append("		[color=light_blue]Right[/color] or [color=light_blue]Tab[/color] commits the highlighted branch to the next column")
+	lines.append("		[color=light_blue]Left[/color] moves back to the previous autocomplete column")
+	self.log(["\n".join(lines)])
 
 
 func calculate(command : String) -> void:
@@ -2078,28 +2105,16 @@ func calculate(command : String) -> void:
 
 
 func commands() -> void:
-	var cmds := []
-	for command in console_commands:
-		cmds.append(str(command))
-	cmds.sort()
-	self.log([str(cmds)])
+	self.log([str(_get_sorted_command_names())])
 
 
 func commands_list() -> void:
-	var cmds := []
-	for command in console_commands:
-		cmds.append(str(command))
-	cmds.sort()
+	var cmds := _get_sorted_command_names()
 
 	var output := ""
 	for command in cmds:
-		var arguments_string := ""
-		var description : String = console_commands[command].description
-		for i in range(console_commands[command].arguments.size()):
-			if i < console_commands[command].required:
-				arguments_string += "  [color=cornflower_blue]<" + console_commands[command].arguments[i] + ">[/color]"
-			else:
-				arguments_string += "  <" + console_commands[command].arguments[i] + ">"
+		var arguments_string := _get_command_arguments_markup(command)
+		var description : String = str((console_commands[command] as LogotCommand).description)
 		output += "[color=light_green]%s[/color][color=gray]%s[/color]:   %s\n" % [command, arguments_string, description]
 	self.log([output])
 
