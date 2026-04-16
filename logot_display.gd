@@ -2,6 +2,8 @@
 class_name LogotDisplay
 extends Control
 
+const LogLevel = preload("res://Addons/logot/log_level.gd")
+
 ## Logot display functionality.
 ## Provides all filtering, display, sidebar, and settings logic.
 ## Used via composition by logot.gd and logot_editor_panel.gd.
@@ -137,6 +139,8 @@ class AutocompleteCommandColumn:
 	var _header_description := ""
 	var _header_height := 0.0
 	var _header_label: RichTextLabel
+	var _row_scrollbar: VScrollBar
+	var _updating_scrollbar := false
 
 	var _font: Font
 	var _font_size := 16
@@ -184,6 +188,15 @@ class AutocompleteCommandColumn:
 		_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_header_label.focus_mode = Control.FOCUS_NONE
 		add_child(_header_label)
+		_row_scrollbar = VScrollBar.new()
+		_row_scrollbar.visible = false
+		_row_scrollbar.custom_minimum_size = Vector2(10.0, 0.0)
+		_row_scrollbar.step = 1.0
+		_row_scrollbar.page = 1.0
+		_row_scrollbar.mouse_filter = Control.MOUSE_FILTER_STOP
+		_row_scrollbar.focus_mode = Control.FOCUS_NONE
+		_row_scrollbar.value_changed.connect(_on_row_scrollbar_value_changed)
+		add_child(_row_scrollbar)
 		_configure_value_pill_styles()
 
 	func configure_theme(theme_source: Control) -> void:
@@ -223,6 +236,9 @@ class AutocompleteCommandColumn:
 		_header_description = header_description
 		_update_header_layout()
 		_ensure_selection_visible()
+		_update_row_scrollbar()
+		_update_header_layout()
+		_update_row_scrollbar()
 		queue_redraw()
 
 	func get_row_count() -> int:
@@ -230,6 +246,7 @@ class AutocompleteCommandColumn:
 
 	func ensure_current_is_visible() -> void:
 		_ensure_selection_visible()
+		_update_row_scrollbar()
 		queue_redraw()
 
 	func _ensure_selection_visible() -> void:
@@ -264,6 +281,7 @@ class AutocompleteCommandColumn:
 		var baseline_offset := _get_baseline_offset()
 		var rows_top := _header_height
 		var rows_area_height := maxf(0.0, size.y - _header_height)
+		var content_width := _get_column_content_width()
 		if _rows.size() <= visible_rows:
 			var drawn_rows := maxi(0, end_index - start_index)
 			var drawn_height := float(drawn_rows * _row_height)
@@ -271,7 +289,7 @@ class AutocompleteCommandColumn:
 
 		for row_index in range(start_index, end_index):
 			var row_top := rows_top + float((row_index - start_index) * _row_height)
-			var row_rect := Rect2(0.0, row_top, size.x, _row_height)
+			var row_rect := Rect2(0.0, row_top, content_width, _row_height)
 			var row_data: Dictionary = _rows[row_index]
 			var selection_state := _get_row_selection_state(row_index)
 			_draw_row_background(row_rect, row_data, selection_state)
@@ -280,6 +298,11 @@ class AutocompleteCommandColumn:
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_RESIZED:
 			_update_header_layout()
+			_ensure_selection_visible()
+			_update_row_scrollbar()
+			_update_header_layout()
+			_update_row_scrollbar()
+			queue_redraw()
 
 	func _update_header_layout() -> void:
 		if _header_label == null:
@@ -310,7 +333,7 @@ class AutocompleteCommandColumn:
 		_header_label.append_text(bbcode)
 		_header_label.position = Vector2(CONTENT_PADDING_X, HEADER_TOP_PADDING)
 		_header_label.size = Vector2(
-			maxf(0.0, size.x - CONTENT_PADDING_X * 2.0),
+			maxf(0.0, _get_column_content_width() - CONTENT_PADDING_X * 2.0),
 			maxf(0.0, size.y - HEADER_TOP_PADDING)
 		)
 
@@ -318,6 +341,61 @@ class AutocompleteCommandColumn:
 		var fallback_content_height := _estimate_header_content_height(header_title.to_upper(), header_description, available_width)
 		var content_height := maxf(float(_header_label.get_content_height()), fallback_content_height)
 		_header_height = HEADER_TOP_PADDING + content_height + HEADER_BOTTOM_PADDING + HEADER_CONTENT_GAP
+
+	func _get_column_content_width() -> float:
+		return maxf(0.0, size.x - _get_row_scrollbar_width())
+
+	func _get_row_scrollbar_width() -> float:
+		if _row_scrollbar == null or not _row_scrollbar.visible:
+			return 0.0
+		var width := _row_scrollbar.size.x
+		if width <= 0.0:
+			width = _row_scrollbar.custom_minimum_size.x
+		if width <= 0.0:
+			width = 10.0
+		return width
+
+	func _update_row_scrollbar() -> void:
+		if _row_scrollbar == null:
+			return
+
+		var visible_rows := _get_visible_row_capacity()
+		var total_rows := _rows.size()
+		var has_overflow := total_rows > visible_rows
+		_row_scrollbar.visible = has_overflow
+
+		if not has_overflow:
+			_updating_scrollbar = true
+			_row_scrollbar.value = 0.0
+			_row_scrollbar.page = 1.0
+			_row_scrollbar.max_value = 1.0
+			_updating_scrollbar = false
+			return
+
+		var max_scroll := maxi(0, total_rows - visible_rows)
+		_scroll_row = clampi(_scroll_row, 0, max_scroll)
+
+		var scrollbar_width := maxf(8.0, _row_scrollbar.custom_minimum_size.x)
+		_row_scrollbar.position = Vector2(maxf(0.0, size.x - scrollbar_width), _header_height)
+		_row_scrollbar.size = Vector2(scrollbar_width, maxf(0.0, size.y - _header_height))
+
+		_updating_scrollbar = true
+		_row_scrollbar.min_value = 0.0
+		_row_scrollbar.max_value = float(total_rows)
+		_row_scrollbar.page = float(maxi(1, visible_rows))
+		_row_scrollbar.value = float(_scroll_row)
+		_updating_scrollbar = false
+
+	func _on_row_scrollbar_value_changed(value: float) -> void:
+		if _updating_scrollbar:
+			return
+		var visible_rows := _get_visible_row_capacity()
+		var max_scroll := maxi(0, _rows.size() - visible_rows)
+		var next_scroll := clampi(int(round(value)), 0, max_scroll)
+		if next_scroll == _scroll_row:
+			return
+		_scroll_row = next_scroll
+		queue_redraw()
 
 	func _escape_bbcode(text: String) -> String:
 		return text.replace("[", "[lb]").replace("]", "[rb]")
@@ -431,7 +509,8 @@ class AutocompleteCommandColumn:
 			var value_text_max_width := maxf(0.0, value_rect.size.x - VALUE_PILL_PADDING_X * 2.0)
 			var fitted_value_text := _fit_text_to_width(value_text, value_text_max_width)
 			var value_text_color := text_color
-			var custom_value_text_color := row_data.get("value_text_color", null)
+			var custom_value_text_color: Variant
+			custom_value_text_color = row_data.get("value_text_color", null)
 			var value_pill_style := _resolve_value_pill_style(selection_state)
 			if custom_value_text_color is Color:
 				value_text_color = custom_value_text_color as Color
@@ -772,9 +851,9 @@ const LEVEL_COLORS := {
 	LogLevel.VERBOSE: Color8(210, 180, 162),
 	LogLevel.DEBUG: Color8(128, 128, 128),
 }
-const ICON_VISIBLE := preload("res://addons/logot/assets/channel_visible.svg")
-const ICON_HIDDEN := preload("res://addons/logot/assets/channel_hidden.svg")
-const ICON_OFF := preload("res://addons/logot/assets/channel_off.svg")
+const ICON_VISIBLE := preload("res://Addons/logot/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://Addons/logot/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://Addons/logot/assets/channel_off.svg")
 const LOG_LEVELS := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
 					 LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
 const LEVEL_BUTTON_LABELS := {
@@ -788,7 +867,7 @@ const LEVEL_BUTTON_LABELS := {
 }
 const AUTOCOMPLETE_ITEM_HEIGHT := 28
 const AUTOCOMPLETE_MAX_VISIBLE_ITEMS := 10
-const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 40
+const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 15
 const AUTOCOMPLETE_COLUMN_PADDING := 24
 const AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH := 20
 const AUTOCOMPLETE_ACTION_ICON_DIAMETER := 18
@@ -802,8 +881,13 @@ const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
 const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
 const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
 const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
+const AUTOCOMPLETE_ROOT_COMMANDS_LOCKED_HINT := "down wraps to top (Esc resets history access)"
 const AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX := "__global_search__"
 const AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND := "search"
+const SCROLL_TO_BOTTOM_BUTTON_DIAMETER := 34.0
+const SCROLL_TO_BOTTOM_BUTTON_MARGIN := 8.0
+const SCROLL_TO_BOTTOM_SCROLLBAR_GAP := 4.0
+const SCROLL_TO_BOTTOM_ANIMATION_DURATION := 0.16
 const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
 const ROOT_COMMAND_GROUP_PINNED_NAME := "pined commands"
 const ROOT_COMMAND_GROUP_PINNED_PRIORITY := -1
@@ -827,6 +911,8 @@ var _collapsed_level_buttons_row: HBoxContainer
 var _main_container: Control
 var _logot_container: VBoxContainer
 var _input_row: HBoxContainer
+var _scroll_to_bottom_button: Button
+var _rich_label_scrollbar: VScrollBar
 
 
 # =============================================================================
@@ -879,6 +965,7 @@ var _autocomplete_highlighted_tiers: Dictionary = {}
 var _autocomplete_pre_filter_highlighted_tiers: Dictionary = {}
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
+var _pending_autocomplete_column_sync_scroll_to_end := false
 var _autocomplete_global_search_mode := false
 var _suggestions := []
 var _current_suggest := 0
@@ -889,11 +976,15 @@ var _command_entry_mode := false
 var _command_history: Array[String] = []
 var _max_history_size := 50
 var _history_can_switch_to_commands := false
+var _history_access_locked_until_reset := false
+var _root_command_selection_reset_pending := false
 
 # Display variables
 var _pinned_display_variables: Array[String] = []
 var _pinned_overlay_label: RichTextLabel
 var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
+var _scroll_to_bottom_tween: Tween
+var _pending_animated_scroll_to_bottom := false
 
 
 # =============================================================================
@@ -1402,6 +1493,9 @@ func _connect_ui_signals() -> void:
 		rich_label.meta_clicked.connect(_on_log_meta_clicked)
 		rich_label.meta_underlined = false
 		rich_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if _wrap_text else TextServer.AUTOWRAP_OFF
+		_ensure_scroll_to_bottom_button()
+		_connect_rich_label_scroll_tracking()
+		_update_scroll_to_bottom_button_visibility()
 
 	if _clear_btn:
 		_clear_btn.pressed.connect(_clear_logs)
@@ -1414,6 +1508,131 @@ func _connect_ui_signals() -> void:
 		_sidebar.visible = _sidebar_visible and not _command_entry_mode
 
 	_setup_collapsed_level_buttons()
+
+
+func _ensure_scroll_to_bottom_button() -> void:
+	if not rich_label or _scroll_to_bottom_button:
+		return
+
+	var button := Button.new()
+	button.name = "ScrollToBottomButton"
+	button.text = "v"
+	button.tooltip_text = "Scroll to bottom"
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.visible = false
+	button.z_index = 120
+	button.custom_minimum_size = Vector2(SCROLL_TO_BOTTOM_BUTTON_DIAMETER, SCROLL_TO_BOTTOM_BUTTON_DIAMETER)
+	_style_scroll_to_bottom_button(button)
+	button.pressed.connect(_on_scroll_to_bottom_button_pressed)
+	rich_label.add_child(button)
+	_scroll_to_bottom_button = button
+	_update_scroll_to_bottom_button_layout()
+
+
+func _style_scroll_to_bottom_button(button: Button) -> void:
+	var radius := int(round(SCROLL_TO_BOTTOM_BUTTON_DIAMETER * 0.5))
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.14, 0.16, 0.2, 0.92)
+	normal.border_color = Color(0.48, 0.52, 0.62, 0.95)
+	normal.border_width_left = 1
+	normal.border_width_top = 1
+	normal.border_width_right = 1
+	normal.border_width_bottom = 1
+	normal.corner_radius_top_left = radius
+	normal.corner_radius_top_right = radius
+	normal.corner_radius_bottom_right = radius
+	normal.corner_radius_bottom_left = radius
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.18, 0.24, 0.34, 0.96)
+	hover.border_color = Color(0.62, 0.7, 0.84, 1.0)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.14, 0.2, 0.28, 0.98)
+	pressed.border_color = Color(0.54, 0.64, 0.8, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_font_size_override("font_size", 14)
+
+
+func _connect_rich_label_scroll_tracking() -> void:
+	if not rich_label:
+		return
+	if not rich_label.resized.is_connected(_on_rich_label_resized):
+		rich_label.resized.connect(_on_rich_label_resized)
+	var scrollbar := rich_label.get_v_scroll_bar()
+	if not scrollbar:
+		return
+	_rich_label_scrollbar = scrollbar
+	if not _rich_label_scrollbar.value_changed.is_connected(_on_rich_label_scrollbar_value_changed):
+		_rich_label_scrollbar.value_changed.connect(_on_rich_label_scrollbar_value_changed)
+	if not _rich_label_scrollbar.changed.is_connected(_on_rich_label_scrollbar_changed):
+		_rich_label_scrollbar.changed.connect(_on_rich_label_scrollbar_changed)
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _update_scroll_to_bottom_button_layout() -> void:
+	if not _scroll_to_bottom_button or not rich_label:
+		return
+
+	var diameter := SCROLL_TO_BOTTOM_BUTTON_DIAMETER
+	var scrollbar_offset := 0.0
+	if _rich_label_scrollbar and _rich_label_scrollbar.visible:
+		scrollbar_offset = maxf(_rich_label_scrollbar.size.x, _rich_label_scrollbar.custom_minimum_size.x)
+		if scrollbar_offset > 0.0:
+			scrollbar_offset += SCROLL_TO_BOTTOM_SCROLLBAR_GAP
+
+	var x := rich_label.size.x - diameter - SCROLL_TO_BOTTOM_BUTTON_MARGIN - scrollbar_offset
+	var y := rich_label.size.y - diameter - SCROLL_TO_BOTTOM_BUTTON_MARGIN
+	_scroll_to_bottom_button.position = Vector2(maxf(0.0, x), maxf(0.0, y))
+	_scroll_to_bottom_button.size = Vector2(diameter, diameter)
+
+
+func _update_scroll_to_bottom_button_visibility() -> void:
+	if not _scroll_to_bottom_button:
+		return
+
+	if not rich_label or _pending_animated_scroll_to_bottom:
+		_scroll_to_bottom_button.visible = false
+		return
+
+	if _scroll_to_bottom_tween and is_instance_valid(_scroll_to_bottom_tween):
+		_scroll_to_bottom_button.visible = false
+		return
+
+	var scrollbar := rich_label.get_v_scroll_bar()
+	if not scrollbar:
+		_scroll_to_bottom_button.visible = false
+		return
+
+	var has_overflow := scrollbar.max_value > scrollbar.page + 1.0
+	_scroll_to_bottom_button.visible = has_overflow and not _is_scrolled_to_bottom()
+
+
+func _on_scroll_to_bottom_button_pressed() -> void:
+	_scroll_to_bottom(true)
+
+
+func _on_rich_label_resized() -> void:
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _on_rich_label_scrollbar_value_changed(_value: float) -> void:
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _on_rich_label_scrollbar_changed() -> void:
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
 
 
 func _setup_sidebar() -> void:
@@ -1706,6 +1925,7 @@ func _init_display() -> void:
 	_ensure_pinned_overlay()
 	if rich_label:
 		rich_label.append_text(_get_welcome_message())
+		_update_scroll_to_bottom_button_visibility()
 	_refresh_pinned_display_variables()
 
 
@@ -1848,7 +2068,7 @@ static func _get_level_color_hex(level: int) -> String:
 ##   - formatted_stack_trace: Pre-formatted stack trace BBCode (for expanded view)
 ##   - instance_name: Name of the instance this log came from (empty for local/editor)
 static func format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "", instance_name: String = "") -> String:
-	var color: String = LogotDisplay._get_level_color_hex(level)
+	var color: String = _get_level_color_hex(level)
 
 	# Build extra lines indicator for collapsed view
 	var extra_indicator := ""
@@ -1958,15 +2178,53 @@ func _is_scrolled_to_bottom() -> bool:
 	return scrollbar.value >= scrollbar.max_value - scrollbar.page - 1.0
 
 
-func _scroll_to_bottom() -> void:
+func _scroll_to_bottom(animated: bool = false) -> void:
 	if not rich_label:
 		return
 	var scrollbar := rich_label.get_v_scroll_bar()
-	if scrollbar:
+	if not scrollbar:
+		return
+
+	if not animated:
+		_pending_animated_scroll_to_bottom = false
+		if _scroll_to_bottom_tween and is_instance_valid(_scroll_to_bottom_tween):
+			_scroll_to_bottom_tween.kill()
+			_scroll_to_bottom_tween = null
 		scrollbar.value = scrollbar.max_value
+		_update_scroll_to_bottom_button_visibility()
+		return
+
+	if _pending_animated_scroll_to_bottom:
+		return
+	_pending_animated_scroll_to_bottom = true
+	call_deferred("_scroll_to_bottom_animated_deferred")
 
 
-func _display_entry(entry) -> void:
+func _scroll_to_bottom_animated_deferred() -> void:
+	_pending_animated_scroll_to_bottom = false
+	if not rich_label:
+		return
+	var scrollbar := rich_label.get_v_scroll_bar()
+	if not scrollbar:
+		return
+
+	if _scroll_to_bottom_tween and is_instance_valid(_scroll_to_bottom_tween):
+		_scroll_to_bottom_tween.kill()
+
+	_scroll_to_bottom_tween = create_tween()
+	_scroll_to_bottom_tween.set_trans(Tween.TRANS_QUAD)
+	_scroll_to_bottom_tween.set_ease(Tween.EASE_OUT)
+	_scroll_to_bottom_tween.tween_property(scrollbar, "value", scrollbar.max_value, SCROLL_TO_BOTTOM_ANIMATION_DURATION)
+	_scroll_to_bottom_tween.finished.connect(_on_scroll_to_bottom_tween_finished)
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _on_scroll_to_bottom_tween_finished() -> void:
+	_scroll_to_bottom_tween = null
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _display_entry(entry, animate_auto_scroll: bool = true) -> void:
 	if not rich_label:
 		return
 
@@ -2008,7 +2266,9 @@ func _display_entry(entry) -> void:
 
 	# Only auto-scroll if we were already at the bottom
 	if was_at_bottom:
-		_scroll_to_bottom()
+		_scroll_to_bottom(animate_auto_scroll)
+	else:
+		_update_scroll_to_bottom_button_visibility()
 
 
 func _rebuild_display() -> void:
@@ -2026,11 +2286,12 @@ func _rebuild_display() -> void:
 		_ensure_channel_exists(entry.channel)
 		_update_stats_for_entry(entry)
 		if _should_display(entry):
-			_display_entry(entry)
+			_display_entry(entry, false)
 		else:
 			entry.visible = false
 
 	_update_sidebar_stats()
+	_update_scroll_to_bottom_button_visibility()
 	display_rebuilt.emit()
 
 
@@ -2228,6 +2489,7 @@ func _clear_logs() -> void:
 	if rich_label:
 		rich_label.clear()
 		rich_label.append_text(_get_welcome_message())
+		_update_scroll_to_bottom_button_visibility()
 	if _sidebar:
 		_sidebar.reset_stats()
 	_refresh_collapsed_level_buttons()
@@ -2778,7 +3040,8 @@ func _get_display_variable_inline_color(address: String) -> Color:
 	var custom_color := _get_display_variable_custom_inline_color(address)
 	if custom_color.a > 0.0:
 		return custom_color
-	var value := _get_display_variable_value(address)
+	var value: Variant
+	value = _get_display_variable_value(address)
 	return _get_default_display_variable_inline_color(value)
 
 
@@ -2795,7 +3058,8 @@ func _get_display_variable_custom_inline_color(address: String) -> Color:
 
 
 func _get_display_variable_value_text(address: String, single_line: bool = true) -> String:
-	var value := _get_display_variable_value(address)
+	var value: Variant
+	value = _get_display_variable_value(address)
 	var text := str(value)
 	if single_line:
 		text = text.replace("\n", " ").replace("\r", " ")
@@ -2803,7 +3067,8 @@ func _get_display_variable_value_text(address: String, single_line: bool = true)
 
 
 func _get_display_variable_display_text(address: String, single_line: bool = true) -> String:
-	var value := _get_display_variable_value(address)
+	var value: Variant
+	value = _get_display_variable_value(address)
 	var option_label := _get_command_option_label_for_value(address, value, 0)
 	if not option_label.is_empty():
 		return option_label
@@ -2910,7 +3175,8 @@ func _get_all_known_autocomplete_tiers() -> Array[String]:
 	var queue: Array[String] = [""]
 
 	while not queue.is_empty():
-		var menu_path := queue.pop_front()
+		var menu_path: String
+		menu_path = str(queue.pop_front())
 		if visited_menu_paths.has(menu_path):
 			continue
 		visited_menu_paths[menu_path] = true
@@ -3068,7 +3334,8 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		}
 
 	var value_data := _get_autocomplete_display_variable_value_data(match_data)
-	var value_text_color := value_data.get("color", null)
+	var value_text_color: Variant
+	value_text_color = value_data.get("color", null)
 	return {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
 		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
@@ -3198,6 +3465,8 @@ func _get_command_autocomplete_description(command_name: String) -> String:
 
 func _get_command_autocomplete_column_description(prefix: String, command_name: String) -> String:
 	if prefix.is_empty():
+		if _history_access_locked_until_reset:
+			return AUTOCOMPLETE_ROOT_COMMANDS_LOCKED_HINT
 		return "%s, %s" % [AUTOCOMPLETE_ROOT_COMMANDS_HINT, AUTOCOMPLETE_HISTORY_HINT]
 	return _get_command_autocomplete_description(command_name)
 
@@ -3303,7 +3572,8 @@ func _build_command_option_matches(command_name: String, argument_index: int = 0
 	var option_values := _get_command_argument_option_values(command_name, argument_index)
 	var option_matches: Array[Dictionary] = []
 	for option_entry in option_values:
-		var option_value := _get_command_option_entry_value(option_entry)
+		var option_value: Variant
+		option_value = _get_command_option_entry_value(option_entry)
 		var option_label := _get_command_option_entry_label(option_entry)
 		option_matches.append({
 			"is_option": true,
@@ -3338,7 +3608,7 @@ func _get_command_option_label_for_value(command_name: String, value: Variant, a
 
 	var value_text := str(value)
 	for option_entry in options:
-		var option_value := _get_command_option_entry_value(option_entry)
+		var option_value: Variant = _get_command_option_entry_value(option_entry)
 		var exact_match: bool = typeof(option_value) == typeof(value) and option_value == value
 		if exact_match or str(option_value) == value_text:
 			return _get_command_option_entry_label(option_entry)
@@ -3520,7 +3790,8 @@ func _validate_text_input_for_command_path(command_name: String, raw_input: Stri
 	if not _is_setget_command_name(resolved_command):
 		return {"valid": false, "accepted_type": "value"}
 
-	var current_value := _get_command_current_value(resolved_command)
+	var current_value: Variant
+	current_value = _get_command_current_value(resolved_command)
 	var accepted_type := _get_input_type_label_from_value(current_value)
 	var converted := _convert_setget_input_to_value(raw_input, current_value, _get_command_argument_option_values(resolved_command, 0))
 	return {
@@ -3574,7 +3845,8 @@ func _find_setget_preview_option_selected_index(command_name: String, preview_pr
 	if command_name.is_empty() or preview_prefix.is_empty() or preview_matches.is_empty():
 		return -1
 
-	var current_value := _get_command_current_value(command_name)
+	var current_value: Variant
+	current_value = _get_command_current_value(command_name)
 	var current_text := str(current_value)
 	var option_values := _get_command_argument_option_values(command_name, 0)
 	for option_index in range(preview_matches.size()):
@@ -3611,7 +3883,7 @@ func _match_setget_option_text(raw_value: String, options: Array) -> Dictionary:
 
 	var lowered_value := trimmed_value.to_lower()
 	for option_entry in options:
-		var option_value := _get_command_option_entry_value(option_entry)
+		var option_value: Variant = _get_command_option_entry_value(option_entry)
 		var option_label := _get_command_option_entry_label(option_entry)
 		for candidate in [option_label, str(option_value)]:
 			if candidate == trimmed_value or candidate.to_lower() == lowered_value:
@@ -3623,7 +3895,8 @@ func _find_command_option_match_index(command_name: String, option_matches: Arra
 	if option_matches.is_empty():
 		return -1
 
-	var current_value := _get_command_current_value(command_name)
+	var current_value: Variant
+	current_value = _get_command_current_value(command_name)
 	if current_value == null:
 		return -1
 
@@ -3846,7 +4119,16 @@ func _build_command_autocomplete_state() -> bool:
 				if column_index < committed_segments.size():
 					_autocomplete_active_column_index = -1
 					return false
-				selected_index = matches.size() - 1
+				var use_neutral_root_selection := (
+					_root_command_selection_reset_pending
+					and column_index == _autocomplete_active_column_index
+					and column_index == 0
+					and committed_segments.is_empty()
+					and column_query.is_empty()
+					and prefix.is_empty()
+				)
+				if not use_neutral_root_selection:
+					selected_index = matches.size() - 1
 
 		_store_autocomplete_highlighted_tier(prefix, matches, selected_index)
 		_autocomplete_column_states.append({
@@ -3904,26 +4186,49 @@ func _build_global_command_autocomplete_state(query: String) -> bool:
 	return true
 
 
-func _refresh_active_preview_column_state() -> void:
+func _get_preview_column_state_snapshot() -> Array[Dictionary]:
+	var snapshot: Array[Dictionary] = []
+	for column_state in _autocomplete_column_states:
+		if not bool(column_state.get("preview", false)):
+			continue
+		var selected_tier := ""
+		var selected_index := int(column_state.get("selected_index", -1))
+		var matches: Array = column_state.get("matches", [])
+		if selected_index >= 0 and selected_index < matches.size():
+			selected_tier = str(matches[selected_index].get("tier", ""))
+		snapshot.append({
+			"prefix": str(column_state.get("prefix", "")),
+			"selected_tier": selected_tier,
+			"selected_index": selected_index,
+			"match_count": matches.size(),
+			"preview_parent_tier": str(column_state.get("preview_parent_tier", "")),
+			"preview_command": str(column_state.get("preview_command", "")),
+		})
+	return snapshot
+
+
+func _refresh_active_preview_column_state() -> bool:
 	if _autocomplete_global_search_mode:
-		return
+		return false
+
+	var previous_preview_snapshot := _get_preview_column_state_snapshot()
 
 	while _autocomplete_column_states.size() > _autocomplete_active_column_index + 1:
 		_autocomplete_column_states.remove_at(_autocomplete_column_states.size() - 1)
 
 	if _autocomplete_active_column_index < 0 or _autocomplete_active_column_index >= _autocomplete_column_states.size():
-		return
+		return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 	var active_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
 	var selected_index := int(active_state.get("selected_index", -1))
 	var matches: Array = active_state.get("matches", [])
 	if selected_index < 0 or selected_index >= matches.size():
-		return
+		return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 	var selected_match: Dictionary = matches[selected_index]
 	var selected_tier := str(selected_match.get("tier", ""))
 	if selected_tier.is_empty():
-		return
+		return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 	if selected_match.get("has_children", false):
 		var preview_prefix := selected_tier + "/"
@@ -3961,7 +4266,7 @@ func _refresh_active_preview_column_state() -> void:
 				"left_width": 0,
 				"width": 0,
 			})
-			return
+			return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 		_autocomplete_column_states.append({
 			"prefix": selected_tier + "/",
@@ -3973,6 +4278,8 @@ func _refresh_active_preview_column_state() -> void:
 			"left_width": 0,
 			"width": 0,
 		})
+
+	return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 
 func _measure_autocomplete_text_width(control: Control, text: String) -> int:
@@ -4098,7 +4405,8 @@ func _position_history_autocomplete_popup() -> void:
 	if line_edit.size.x > 0.0:
 		popup_width = minf(popup_width, line_edit.size.x)
 	var viewport_rect := get_viewport_rect()
-	var popup_x := clamp(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
+	var popup_x: float
+	popup_x = clampf(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
 
 	_history_autocomplete_popup.global_position = Vector2(popup_x, popup_y)
 	_history_autocomplete_popup.size = Vector2(popup_width, popup_height)
@@ -4115,7 +4423,8 @@ func _position_command_autocomplete_popup() -> void:
 	if line_edit.size.x > 0.0:
 		popup_width = minf(popup_width, line_edit.size.x)
 	var viewport_rect := get_viewport_rect()
-	var popup_x := clamp(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
+	var popup_x: float
+	popup_x = clampf(line_edit_rect.position.x, 0.0, maxf(0.0, viewport_rect.size.x - popup_width))
 
 	_command_autocomplete_popup.global_position = Vector2(popup_x, popup_y)
 	_command_autocomplete_popup.size = Vector2(popup_width, popup_height)
@@ -4168,12 +4477,14 @@ func _ensure_active_command_column_visible() -> void:
 	_command_autocomplete_scroll.scroll_horizontal = target_scroll
 
 
-func _queue_command_autocomplete_column_sync(start_index: int) -> void:
+func _queue_command_autocomplete_column_sync(start_index: int, scroll_to_end: bool = false) -> void:
 	_debug_autocomplete("_queue_command_autocomplete_column_sync", "start_index=%d" % start_index)
 	if _pending_autocomplete_column_sync_start == -1:
 		_pending_autocomplete_column_sync_start = start_index
 	else:
 		_pending_autocomplete_column_sync_start = mini(_pending_autocomplete_column_sync_start, start_index)
+	if scroll_to_end:
+		_pending_autocomplete_column_sync_scroll_to_end = true
 
 	if _autocomplete_column_sync_queued:
 		return
@@ -4185,9 +4496,11 @@ func _queue_command_autocomplete_column_sync(start_index: int) -> void:
 func _flush_command_autocomplete_column_sync() -> void:
 	_autocomplete_column_sync_queued = false
 	var start_index := maxi(0, _pending_autocomplete_column_sync_start)
+	var scroll_to_end := _pending_autocomplete_column_sync_scroll_to_end
 	_pending_autocomplete_column_sync_start = -1
+	_pending_autocomplete_column_sync_scroll_to_end = false
 	_debug_autocomplete("_flush_command_autocomplete_column_sync", "start_index=%d" % start_index)
-	_sync_visible_command_autocomplete_columns(start_index)
+	_sync_visible_command_autocomplete_columns(start_index, scroll_to_end)
 
 
 func _debug_command_popup_height(source: String) -> void:
@@ -4292,7 +4605,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	return column_state
 
 
-func _sync_visible_command_autocomplete_columns(start_index: int = 0) -> void:
+func _sync_visible_command_autocomplete_columns(start_index: int = 0, scroll_to_end: bool = false) -> void:
 	_debug_autocomplete("_sync_visible_command_autocomplete_columns", "start_index=%d" % start_index)
 	if not _command_autocomplete_popup or not _command_autocomplete_columns_container:
 		return
@@ -4314,7 +4627,8 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0) -> void:
 	)
 
 	while _autocomplete_column_nodes.size() > _autocomplete_column_states.size():
-		var node := _autocomplete_column_nodes.pop_back()
+		var node: Control
+		node = _autocomplete_column_nodes.pop_back() as Control
 		_command_autocomplete_columns_container.remove_child(node)
 		node.queue_free()
 		_debug_autocomplete(
@@ -4356,7 +4670,10 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0) -> void:
 
 	_position_command_autocomplete_popup()
 	_command_autocomplete_popup.visible = true
-	_ensure_active_command_column_visible()
+	if scroll_to_end:
+		_scroll_command_autocomplete_columns_to_end()
+	else:
+		_ensure_active_command_column_visible()
 	var active_item_count := -1
 	if _autocomplete_active_column_index >= 0 and _autocomplete_active_column_index < _autocomplete_column_states.size():
 		active_item_count = _autocomplete_column_states[_autocomplete_active_column_index].get("matches", []).size()
@@ -4464,7 +4781,7 @@ func refresh_setget_option_highlight(command_name: String) -> void:
 		refreshed = true
 
 	if refreshed:
-		_queue_command_autocomplete_column_sync(0)
+		_queue_command_autocomplete_column_sync(0, true)
 
 
 func _set_history_autocomplete_selection(index: int) -> void:
@@ -4502,9 +4819,10 @@ func _set_active_command_column_selection(index: int) -> void:
 	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(matches[index].get("tier", ""))
 	_debug_autocomplete("_set_active_command_column_selection.selected", "resolved_index=%d tier=%s" % [index, str(matches[index].get("tier", ""))])
 	_debug_command_popup_height("_set_active_command_column_selection.selected_height")
+	var preview_column_changed := false
 	if not _autocomplete_global_search_mode:
-		_refresh_active_preview_column_state()
-	_sync_visible_command_autocomplete_columns(0)
+		preview_column_changed = _refresh_active_preview_column_state()
+	_sync_visible_command_autocomplete_columns(0, preview_column_changed)
 	call_deferred("_debug_command_popup_height", "_set_active_command_column_selection.deferred_height")
 
 
@@ -4599,6 +4917,7 @@ func hide_autocomplete() -> void:
 	_autocomplete_pre_filter_highlighted_tiers.clear()
 	_pending_autocomplete_column_sync_start = -1
 	_autocomplete_column_sync_queued = false
+	_pending_autocomplete_column_sync_scroll_to_end = false
 	_debug_autocomplete("hide_autocomplete.end")
 
 
@@ -4623,11 +4942,18 @@ func _should_show_recent_history() -> bool:
 	return input_text.is_empty() or input_text == "/"
 
 
+func begin_command_palette_reset_navigation() -> void:
+	_history_access_locked_until_reset = false
+	_root_command_selection_reset_pending = true
+
+
 func _show_command_popup_for_default_input() -> void:
 	if not line_edit:
 		return
 
 	_history_can_switch_to_commands = false
+	_history_access_locked_until_reset = true
+	_root_command_selection_reset_pending = false
 	if line_edit.text.strip_edges().is_empty():
 		line_edit.text = "/"
 		line_edit.caret_column = line_edit.text.length()
@@ -4640,6 +4966,8 @@ func _show_root_command_popup() -> void:
 		return
 
 	_history_can_switch_to_commands = false
+	_history_access_locked_until_reset = true
+	_root_command_selection_reset_pending = false
 	line_edit.text = "/"
 	line_edit.caret_column = line_edit.text.length()
 	update_autocomplete_popup()
@@ -4647,6 +4975,7 @@ func _show_root_command_popup() -> void:
 
 func _show_recent_history_popup(query: String = "", allow_switch_to_commands: bool = false) -> void:
 	_history_can_switch_to_commands = allow_switch_to_commands
+	_root_command_selection_reset_pending = false
 	if _history_autocomplete_popup:
 		_history_autocomplete_popup.tooltip_text = AUTOCOMPLETE_HISTORY_HINT if allow_switch_to_commands else ""
 	_update_history_popup(query)
@@ -4673,6 +5002,8 @@ func autocomplete_select_prev() -> void:
 			return
 
 	if _is_command_popup_visible():
+		_history_access_locked_until_reset = true
+		_root_command_selection_reset_pending = false
 		var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
 		var selected_index := int(column_state.get("selected_index", -1)) - 1
 		_debug_autocomplete("autocomplete_select_prev.command", "next_index=%d" % selected_index)
@@ -4700,7 +5031,10 @@ func autocomplete_select_prev() -> void:
 func autocomplete_select_next() -> void:
 	_debug_autocomplete("autocomplete_select_next.begin")
 	if _should_show_recent_history() and not _is_history_popup_visible() and not _is_command_popup_visible():
-		_show_recent_history_popup("", true)
+		if _history_access_locked_until_reset:
+			_show_command_popup_for_default_input()
+		else:
+			_show_recent_history_popup("", true)
 		return
 
 	if _is_command_popup_visible():
@@ -4710,7 +5044,11 @@ func autocomplete_select_next() -> void:
 			_debug_autocomplete("autocomplete_select_next.command_no_matches")
 			return
 		var selected_index := int(column_state.get("selected_index", -1))
-		if str(column_state.get("prefix", "")).is_empty() and selected_index >= matches.size() - 1:
+		var is_root_column := str(column_state.get("prefix", "")).is_empty()
+		if is_root_column and selected_index < 0 and not _history_access_locked_until_reset:
+			_show_recent_history_popup("", true)
+			return
+		if is_root_column and selected_index >= matches.size() - 1 and not _history_access_locked_until_reset:
 			_show_recent_history_popup("", true)
 			return
 		var next_index := selected_index + 1
@@ -5002,6 +5340,8 @@ func on_text_changed_autocomplete(new_text: String) -> void:
 	_suggestions.clear()
 	_current_suggest = 0
 	_suggesting = false
+	if new_text.strip_edges() != "/":
+		_root_command_selection_reset_pending = false
 
 	if new_text.begins_with("/"):
 		# It's a command being typed, show autocomplete popup

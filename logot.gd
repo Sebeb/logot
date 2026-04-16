@@ -101,10 +101,12 @@ const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_inte
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 
 # Preload scenes and scripts
-const LogLevel = preload("res://addons/logot/log_level.gd")
-const LogotDisplay = preload("res://addons/logot/logot_display.gd")
-const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
-const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const LogLevel = preload("res://Addons/logot/log_level.gd")
+const LogotDisplay = preload("res://Addons/logot/logot_display.gd")
+const LogotCommandInput = preload("res://Addons/logot/logot_command_input.gd")
+const LOGOT_UI_SCENE := preload("res://Addons/logot/logot.tscn")
+const LogotTestManagerScript = preload("res://Addons/logot/testing/logot_test_manager.gd")
+const LogotTestPanelScript = preload("res://Addons/logot/testing/logot_test_panel.gd")
 
 # =============================================================================
 # TYPE ALIASES - Use classes from LogotDisplay
@@ -143,7 +145,7 @@ signal off_log_tracked(level: int, channel: String)
 var control: Control
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var theme: Theme = preload("res://addons/logot/logot_theme.tres")
+var theme: Theme = preload("res://Addons/logot/logot_theme.tres")
 
 var console_commands := {}
 var display_variables := {}
@@ -152,6 +154,10 @@ var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _external_displays: Array = []
 var _console_interfacing_test_commands: RefCounted = null
+var _test_manager = null
+var _test_panel = null
+var _test_button: Button = null
+var _test_panel_input_row: HBoxContainer = null
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -514,7 +520,8 @@ func _resolve_setget_option_values(getter: Callable, options_provider: Callable 
 	if not getter.is_valid():
 		return []
 
-	var current_value := getter.call()
+	var current_value: Variant
+	current_value = getter.call()
 	if typeof(current_value) == TYPE_BOOL:
 		return [false, true]
 	var enum_options := _resolve_setget_enum_options(getter)
@@ -897,8 +904,10 @@ func _validate_command_option_segment(command_name: String, option_segment: Stri
 			var value_getter := (command_data as LogotCommand).value_getter
 			if not value_getter.is_valid():
 				return {"checked": false, "valid": true}
-			var current_value := value_getter.call()
-			var converted := _convert_setget_input_to_value(option_segment, current_value, _get_command_argument_option_values(command_name, 0))
+			var current_value: Variant
+			current_value = value_getter.call()
+			var converted: Dictionary
+			converted = _convert_setget_input_to_value(option_segment, current_value, _get_command_argument_option_values(command_name, 0))
 			return {"checked": true, "valid": bool(converted.get("ok", false))}
 		return {"checked": false, "valid": true}
 
@@ -1013,13 +1022,16 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 		print_error("Set/get command '%s' is missing a valid setter/getter." % command_name)
 		return
 
-	var current_value := getter.call()
-	var discrete_options := _resolve_setget_option_values(getter, options_provider)
+	var current_value: Variant
+	current_value = getter.call()
+	var discrete_options: Array
+	discrete_options = _resolve_setget_option_values(getter, options_provider)
 	if value_text.strip_edges().is_empty():
 		if discrete_options.is_empty():
 			print_error("Failed to set '%s': this command requires a value." % command_name)
 			return
-		var current_index := _find_setget_option_index(current_value, discrete_options)
+		var current_index: int
+		current_index = _find_setget_option_index(current_value, discrete_options)
 		var next_index := 0 if current_index == -1 else (current_index + 1) % discrete_options.size()
 		setter.call(_extract_setget_option_value(discrete_options[next_index]))
 		var active_display := _get_active_display()
@@ -1064,7 +1076,8 @@ func pin(key: String, value_or_getter: Variant) -> void:
 			print_error("Pin getter for '%s' is not valid." % address)
 			return
 	else:
-		var pinned_value := value_or_getter
+		var pinned_value: Variant
+		pinned_value = value_or_getter
 		getter = func() -> Variant:
 			return pinned_value
 
@@ -1320,6 +1333,54 @@ func execute_console_command(command_input: String, request_id: String = "", str
 	}
 
 
+func get_test_manager():
+	return _test_manager
+
+
+func _ensure_test_manager():
+	if _test_manager != null and is_instance_valid(_test_manager):
+		return _test_manager
+
+	_test_manager = LogotTestManagerScript.new(self)
+	_test_manager.name = "LogotTestManager"
+	add_child(_test_manager)
+	return _test_manager
+
+
+func _ensure_test_panel() -> void:
+	if Engine.is_editor_hint():
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	if _logot_ui == null:
+		return
+
+	if _test_panel == null or not is_instance_valid(_test_panel):
+		_test_panel = LogotTestPanelScript.new()
+		_test_panel.name = "LogotTestPanel"
+		_logot_ui.add_child(_test_panel)
+
+	var input_row = _logot_ui.get_node_or_null("MainContainer/LogotContainer/VBoxContainer/InputRow")
+	if input_row is HBoxContainer:
+		_test_panel_input_row = input_row as HBoxContainer
+		if _test_button == null or not is_instance_valid(_test_button):
+			_test_button = Button.new()
+			_test_button.text = "Tests"
+			_test_button.pressed.connect(_toggle_test_panel)
+			_test_panel_input_row.add_child(_test_button)
+			var clear_button = _test_panel_input_row.get_node_or_null("ClearButton")
+			if clear_button != null:
+				_test_panel_input_row.move_child(_test_button, clear_button.get_index())
+
+	_test_panel.set_manager(_ensure_test_manager())
+
+
+func _toggle_test_panel() -> void:
+	if _test_panel == null or not is_instance_valid(_test_panel):
+		return
+	_test_panel.toggle_visible()
+
+
 ## Set up the in-game console overlay UI (only called when running as game)
 func _setup_game_ui() -> void:
 	# Load console history
@@ -1394,6 +1455,7 @@ func _setup_game_ui() -> void:
 		line_edit.gui_input.connect(_on_line_edit_gui_input)
 
 	_apply_pending_pinned_display_variables()
+	_ensure_test_panel()
 
 
 func _apply_pending_pinned_display_variables() -> void:
@@ -1555,9 +1617,9 @@ func _register_bridge_commands() -> void:
 	add_command(
 		"bridge/screenshot",
 		_command_bridge_screenshot,
-		["path"],
+		["path", "name"],
 		0,
-		"Captures the current viewport to PNG. Defaults to user://artifacts/screenshots/"
+		"Captures the current viewport to PNG. Accepts an optional path and optional custom name."
 	)
 
 
@@ -1582,6 +1644,7 @@ func _ready() -> void:
 	add_command("console/commands", commands_list, 0, 0, "Lists all commands and their descriptions.")
 	add_command("console/calc", calculate, ["mathematical expression to evaluate"], 0, "Evaluates the math passed in for quick arithmetic.")
 	_register_bridge_commands()
+	_ensure_test_manager()
 
 	if _are_test_commands_enabled():
 		add_command("console/test_logging", _cmd_test_logging, [], 0, "Test all logging functionality")
@@ -1733,6 +1796,9 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 
 
 func _handle_escape_input() -> void:
+	if _test_panel != null and is_instance_valid(_test_panel) and _test_panel.visible:
+		_test_panel.hide()
+		return
 	if _is_escape_close_state():
 		toggle_console(true)
 		return
@@ -1755,6 +1821,7 @@ func _reset_console_for_escape() -> void:
 	line_edit.caret_column = line_edit.text.length()
 	line_edit.grab_focus()
 	if _display:
+		_display.begin_command_palette_reset_navigation()
 		_display.clear_autocomplete_highlight_memory()
 		_display.on_text_changed_autocomplete(line_edit.text)
 
@@ -2028,19 +2095,47 @@ func delete_history() -> void:
 	DirAccess.remove_absolute("user://console_history.txt")
 
 
-func _resolve_bridge_screenshot_output_path(path_text: String) -> String:
+func _sanitize_bridge_screenshot_name(value: String) -> String:
+	var sanitized := value.strip_edges().to_lower()
+	for character in ["/", "\\", ":", " ", "\t", "\n", "\r", "\"", "'", "[", "]", "(", ")", "{", "}", ","]:
+		sanitized = sanitized.replace(character, "_")
+	while sanitized.find("__") != -1:
+		sanitized = sanitized.replace("__", "_")
+	sanitized = sanitized.trim_prefix("_").trim_suffix("_")
+	return sanitized if not sanitized.is_empty() else "screenshot"
+
+
+func _looks_like_screenshot_path(value: String) -> bool:
+	var normalized := value.strip_edges()
+	if normalized.is_empty():
+		return false
+	return (
+		normalized.begins_with("res://")
+		or normalized.begins_with("user://")
+		or normalized.is_absolute_path()
+		or "/" in normalized
+		or "\\" in normalized
+		or normalized.to_lower().ends_with(".png")
+	)
+
+
+func _resolve_bridge_screenshot_output_path(path_text: String, custom_name: String = "") -> String:
 	var normalized_path := path_text.strip_edges()
 	if normalized_path.is_empty():
-		var now := Time.get_datetime_dict_from_system()
-		normalized_path = "%s/logot_%04d%02d%02d_%02d%02d%02d.png" % [
-			DEFAULT_BRIDGE_SCREENSHOT_DIR,
-			int(now.get("year", 1970)),
-			int(now.get("month", 1)),
-			int(now.get("day", 1)),
-			int(now.get("hour", 0)),
-			int(now.get("minute", 0)),
-			int(now.get("second", 0)),
-		]
+		var normalized_name := _sanitize_bridge_screenshot_name(custom_name)
+		if custom_name.strip_edges().is_empty():
+			var now := Time.get_datetime_dict_from_system()
+			normalized_path = "%s/logot_%04d%02d%02d_%02d%02d%02d.png" % [
+				DEFAULT_BRIDGE_SCREENSHOT_DIR,
+				int(now.get("year", 1970)),
+				int(now.get("month", 1)),
+				int(now.get("day", 1)),
+				int(now.get("hour", 0)),
+				int(now.get("minute", 0)),
+				int(now.get("second", 0)),
+			]
+		else:
+			normalized_path = "%s/%s.png" % [DEFAULT_BRIDGE_SCREENSHOT_DIR, normalized_name]
 
 	if not normalized_path.to_lower().ends_with(".png"):
 		normalized_path += ".png"
@@ -2054,39 +2149,99 @@ func _resolve_bridge_screenshot_output_path(path_text: String) -> String:
 	return ProjectSettings.globalize_path("%s/%s" % [DEFAULT_BRIDGE_SCREENSHOT_DIR, normalized_path])
 
 
-func _command_bridge_screenshot(path: String = "") -> void:
+func capture_screenshot(path_text: String = "", custom_name: String = "", log_result := true) -> Dictionary:
 	if DisplayServer.get_name() == "headless":
-		print_error("Screenshot capture is not available in headless mode.")
-		return
+		var headless_result := {
+			"ok": false,
+			"path": "",
+			"name": custom_name.strip_edges(),
+			"error": "Screenshot capture is not available in headless mode.",
+		}
+		if log_result:
+			print_error(str(headless_result.error))
+		return headless_result
 
 	var viewport := get_viewport()
 	if viewport == null:
-		print_error("No viewport is available for screenshot capture.")
-		return
+		var no_viewport_result := {
+			"ok": false,
+			"path": "",
+			"name": custom_name.strip_edges(),
+			"error": "No viewport is available for screenshot capture.",
+		}
+		if log_result:
+			print_error(str(no_viewport_result.error))
+		return no_viewport_result
 
 	var viewport_texture := viewport.get_texture()
 	if viewport_texture == null:
-		print_error("No viewport texture is available for screenshot capture.")
-		return
+		var no_texture_result := {
+			"ok": false,
+			"path": "",
+			"name": custom_name.strip_edges(),
+			"error": "No viewport texture is available for screenshot capture.",
+		}
+		if log_result:
+			print_error(str(no_texture_result.error))
+		return no_texture_result
 
 	var screenshot_image := viewport_texture.get_image()
 	if screenshot_image == null or screenshot_image.is_empty():
-		print_error("Screenshot capture returned an empty image.")
-		return
+		var empty_image_result := {
+			"ok": false,
+			"path": "",
+			"name": custom_name.strip_edges(),
+			"error": "Screenshot capture returned an empty image.",
+		}
+		if log_result:
+			print_error(str(empty_image_result.error))
+		return empty_image_result
 
-	var output_path := _resolve_bridge_screenshot_output_path(path)
+	var output_path := _resolve_bridge_screenshot_output_path(path_text, custom_name)
 	var output_dir := output_path.get_base_dir()
 	var mkdir_err := DirAccess.make_dir_recursive_absolute(output_dir)
 	if mkdir_err != OK:
-		print_error("Failed to create screenshot directory '%s' (error %d)." % [output_dir, mkdir_err])
-		return
+		var mkdir_result := {
+			"ok": false,
+			"path": output_path,
+			"name": custom_name.strip_edges(),
+			"error": "Failed to create screenshot directory '%s' (error %d)." % [output_dir, mkdir_err],
+		}
+		if log_result:
+			print_error(str(mkdir_result.error))
+		return mkdir_result
 
 	var save_err := screenshot_image.save_png(output_path)
 	if save_err != OK:
-		print_error("Failed to save screenshot '%s' (error %d)." % [output_path, save_err])
-		return
+		var save_result := {
+			"ok": false,
+			"path": output_path,
+			"name": custom_name.strip_edges(),
+			"error": "Failed to save screenshot '%s' (error %d)." % [output_path, save_err],
+		}
+		if log_result:
+			print_error(str(save_result.error))
+		return save_result
 
-	print_line("Screenshot saved to %s" % output_path)
+	var result := {
+		"ok": true,
+		"path": output_path,
+		"name": custom_name.strip_edges(),
+		"error": "",
+	}
+	if log_result:
+		var label := " '%s'" % result.name if not str(result.name).is_empty() else ""
+		print_line("Screenshot%s saved to %s" % [label, output_path])
+	return result
+
+
+func _command_bridge_screenshot(path: String = "", name: String = "") -> void:
+	var resolved_path := path
+	var resolved_name := name
+	if resolved_name.is_empty() and not resolved_path.is_empty() and not _looks_like_screenshot_path(resolved_path):
+		resolved_name = resolved_path
+		resolved_path = ""
+	capture_screenshot(resolved_path, resolved_name, true)
 
 
 func _escape_bbcode_text(text: String) -> String:
