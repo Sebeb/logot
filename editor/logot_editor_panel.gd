@@ -5,10 +5,10 @@ extends Control
 ## Creates a LogotDisplay and adds logot.tscn as its child.
 ## Configures it for editor use.
 
-const LogotDisplay = preload("res://Addons/logot/logot_display.gd")
-const LogotCommandInput = preload("res://Addons/logot/logot_command_input.gd")
-const LOGOT_UI_SCENE := preload("res://Addons/logot/logot.tscn")
-const LogotTestPanelScript = preload("res://Addons/logot/testing/logot_test_panel.gd")
+const LogotDisplay = preload("res://addons/logot/logot_display.gd")
+const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
+const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const LogotTestPanelScript = preload("res://addons/logot/testing/logot_test_panel.gd")
 const SETTINGS_FILE := "user://logot_editor_filters.cfg"
 
 # UI reference - the actual display component

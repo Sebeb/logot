@@ -1,13 +1,13 @@
 class_name LogotTestManager
 extends Node
 
-const LogotTestCaseScript = preload("res://Addons/logot/testing/logot_test_case.gd")
-const LogotTestContextScript = preload("res://Addons/logot/testing/logot_test_context.gd")
-const LogotTestRunResultScript = preload("res://Addons/logot/testing/resources/logot_test_run_result.gd")
-const LogotTestCheckResultScript = preload("res://Addons/logot/testing/resources/logot_test_check_result.gd")
-const LogotTestVisualResultScript = preload("res://Addons/logot/testing/resources/logot_test_visual_result.gd")
-const LogotTestLogRecordScript = preload("res://Addons/logot/testing/resources/logot_test_log_record.gd")
-const LogLevel = preload("res://Addons/logot/log_level.gd")
+const LogotTestCaseScript = preload("res://addons/logot/testing/logot_test_case.gd")
+const LogotTestContextScript = preload("res://addons/logot/testing/logot_test_context.gd")
+const LogotTestRunResultScript = preload("res://addons/logot/testing/resources/logot_test_run_result.gd")
+const LogotTestCheckResultScript = preload("res://addons/logot/testing/resources/logot_test_check_result.gd")
+const LogotTestVisualResultScript = preload("res://addons/logot/testing/resources/logot_test_visual_result.gd")
+const LogotTestLogRecordScript = preload("res://addons/logot/testing/resources/logot_test_log_record.gd")
+const LogLevel = preload("res://addons/logot/log_level.gd")
 
 const TEST_CASES_ROOT := "res://tests/logot_cases"
 const TEST_ARTIFACTS_ROOT := "user://artifacts/tests"
@@ -488,13 +488,11 @@ func _persist_result(result) -> void:
 
 
 func _command_test_token(test_id: String) -> String:
-	var sanitized := test_id.strip_edges().to_lower()
-	for character in ["/", "\\", ":", " ", "\t", "\n", "\r", "\"", "'", "[", "]", "(", ")", "{", "}", ",", "."]:
-		sanitized = sanitized.replace(character, "_")
-	while sanitized.find("__") != -1:
-		sanitized = sanitized.replace("__", "_")
-	sanitized = sanitized.trim_prefix("_").trim_suffix("_")
-	return sanitized if not sanitized.is_empty() else "test"
+	return _sanitize_token(
+		test_id,
+		["/", "\\", ":", " ", "\t", "\n", "\r", "\"", "'", "[", "]", "(", ")", "{", "}", ",", "."],
+		"test"
+	)
 
 
 func _list_gd_files(root_path: String) -> Array[String]:
@@ -535,13 +533,21 @@ func _walk_directory(path: String, suffix: String, out: Array[String]) -> void:
 
 
 func _sanitize_file_component(value: String) -> String:
+	return _sanitize_token(
+		value,
+		["/", "\\", ":", " ", "\t", "\n", "\r", "\"", "'", "[", "]", "(", ")", "{", "}", ","],
+		"artifact"
+	)
+
+
+func _sanitize_token(value: String, invalid_characters: Array[String], fallback: String) -> String:
 	var sanitized := value.strip_edges().to_lower()
-	for character in ["/", "\\", ":", " ", "\t", "\n", "\r", "\"", "'", "[", "]", "(", ")", "{", "}", ","]:
-		sanitized = sanitized.replace(character, "_")
+	for character in invalid_characters:
+		sanitized = sanitized.replace(str(character), "_")
 	while sanitized.find("__") != -1:
 		sanitized = sanitized.replace("__", "_")
 	sanitized = sanitized.strip_edges().trim_prefix("_").trim_suffix("_")
-	return sanitized if not sanitized.is_empty() else "artifact"
+	return sanitized if not sanitized.is_empty() else fallback
 
 
 func _build_run_id() -> String:

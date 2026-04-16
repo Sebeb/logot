@@ -1,8 +1,6 @@
 class_name LogotTestPanel
 extends PanelContainer
 
-const LogotTestRunResultScript = preload("res://Addons/logot/testing/resources/logot_test_run_result.gd")
-
 var _manager = null
 var _selected_test_id := ""
 var _selected_run_id := ""

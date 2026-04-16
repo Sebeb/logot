@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c8vntvjl577ft"]
 
-[ext_resource type="Script" uid="uid://usye8cdv5bv3" path="res://Addons/logot/logot_sidebar.gd" id="1_sidebar"]
+[ext_resource type="Script" uid="uid://usye8cdv5bv3" path="res://addons/logot/logot_sidebar.gd" id="1_sidebar"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 8.0
