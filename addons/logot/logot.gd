@@ -93,20 +93,18 @@ class EngineLogger extends Logger:
 # CONFIGURATION CONSTANTS
 # =============================================================================
 const MAX_LOG_ENTRIES := 1000
-const SIDEBAR_BREAKPOINT := 800
-const DEFAULT_CHANNEL_DISPLAY_NAME := "General"
 const SETTINGS_FILE := "user://console_filters.cfg"
 const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
 const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_interfacing/console_interfacing_commands.gd"
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 
 # Preload scenes and scripts
-const LogLevel = preload("res://Addons/logot/log_level.gd")
-const LogotDisplay = preload("res://Addons/logot/logot_display.gd")
-const LogotCommandInput = preload("res://Addons/logot/logot_command_input.gd")
-const LOGOT_UI_SCENE := preload("res://Addons/logot/logot.tscn")
-const LogotTestManagerScript = preload("res://Addons/logot/testing/logot_test_manager.gd")
-const LogotTestPanelScript = preload("res://Addons/logot/testing/logot_test_panel.gd")
+const LogLevel = preload("res://addons/logot/log_level.gd")
+const LogotDisplay = preload("res://addons/logot/logot_display.gd")
+const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
+const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const LogotTestManagerScript = preload("res://addons/logot/testing/logot_test_manager.gd")
+const LogotTestPanelScript = preload("res://addons/logot/testing/logot_test_panel.gd")
 
 # =============================================================================
 # TYPE ALIASES - Use classes from LogotDisplay
@@ -145,7 +143,6 @@ signal off_log_tracked(level: int, channel: String)
 var control: Control
 var rich_label: RichTextLabel
 var line_edit: LineEdit
-var theme: Theme = preload("res://Addons/logot/logot_theme.tres")
 
 var console_commands := {}
 var display_variables := {}
@@ -181,7 +178,6 @@ var _off_channel_counts: Dictionary = {}  # {channel: int}
 # =============================================================================
 var _logot_ui: Control  # Root of the instantiated logot UI scene
 var _display: LogotDisplay  # Handles filtering, display, sidebar, autocomplete
-var _is_sidebar_layout := true
 var _restore_full_console_after_command_entry := false
 
 # Settings toggles (synced with display)
@@ -339,12 +335,11 @@ func _ensure_channel_exists(channel: String) -> void:
 					parent_path += "/" + parts[i]
 				# Recursively ensure parent exists
 				_ensure_channel_exists(parent_path)
-
-			_known_channels.append(channel)
-			if channel not in _channel_visibility:
-				_channel_visibility[channel] = VisibilityMode.SHOWN
-			if _display:
-				_display.ensure_channel(channel)
+		_known_channels.append(channel)
+		if channel not in _channel_visibility:
+			_channel_visibility[channel] = VisibilityMode.SHOWN
+		if _display:
+			_display.ensure_channel(channel)
 		# Notify editor via debugger
 		_send_debugger_message("channel_discovered", [channel])
 		channel_discovered.emit(channel)

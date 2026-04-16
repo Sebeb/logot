@@ -2,7 +2,7 @@
 class_name LogotDisplay
 extends Control
 
-const LogLevel = preload("res://Addons/logot/log_level.gd")
+const LogLevel = preload("res://addons/logot/log_level.gd")
 
 ## Logot display functionality.
 ## Provides all filtering, display, sidebar, and settings logic.
@@ -851,9 +851,9 @@ const LEVEL_COLORS := {
 	LogLevel.VERBOSE: Color8(210, 180, 162),
 	LogLevel.DEBUG: Color8(128, 128, 128),
 }
-const ICON_VISIBLE := preload("res://Addons/logot/assets/channel_visible.svg")
-const ICON_HIDDEN := preload("res://Addons/logot/assets/channel_hidden.svg")
-const ICON_OFF := preload("res://Addons/logot/assets/channel_off.svg")
+const ICON_VISIBLE := preload("res://addons/logot/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://addons/logot/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://addons/logot/assets/channel_off.svg")
 const LOG_LEVELS := [LogLevel.ERROR, LogLevel.WARN, LogLevel.COMMAND, LogLevel.MESSAGE,
 					 LogLevel.INFO, LogLevel.VERBOSE, LogLevel.DEBUG]
 const LEVEL_BUTTON_LABELS := {
@@ -889,7 +889,7 @@ const SCROLL_TO_BOTTOM_BUTTON_MARGIN := 8.0
 const SCROLL_TO_BOTTOM_SCROLLBAR_GAP := 4.0
 const SCROLL_TO_BOTTOM_ANIMATION_DURATION := 0.16
 const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
-const ROOT_COMMAND_GROUP_PINNED_NAME := "pined commands"
+const ROOT_COMMAND_GROUP_PINNED_NAME := "pinned commands"
 const ROOT_COMMAND_GROUP_PINNED_PRIORITY := -1
 const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
 const DEBUG_AUTOCOMPLETE_DEFAULT := false
@@ -3303,16 +3303,6 @@ func _get_autocomplete_tier_label(prefix: String, match_data: Dictionary) -> Str
 	return tier.substr(prefix.length()) if tier.begins_with(prefix) else tier
 
 
-func _format_autocomplete_item_text(prefix: String, match_data: Dictionary, left_column_width: int) -> String:
-	var left_text := _get_autocomplete_tier_label(prefix, match_data)
-	if not match_data.get("has_display_variable", false):
-		return left_text
-
-	var value_text := _get_display_variable_value_text(match_data.get("tier", ""), true)
-	var padding := maxi(2, left_column_width - left_text.length() + 4)
-	return left_text + " ".repeat(padding) + value_text
-
-
 func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary) -> Dictionary:
 	if match_data.get("is_text_input", false):
 		return {
@@ -3415,16 +3405,6 @@ func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Di
 		"text": _get_display_variable_display_text(tier, true),
 		"color": inline_color if inline_color.a > 0.0 else null,
 	}
-
-
-func _get_autocomplete_display_variable_value_text(match_data: Dictionary) -> String:
-	if not match_data.get("has_display_variable", false):
-		return ""
-
-	var tier := str(match_data.get("tier", ""))
-	if tier.is_empty():
-		return ""
-	return _get_display_variable_display_text(tier, true)
 
 
 func _get_command_autocomplete_column_name(prefix: String) -> String:
