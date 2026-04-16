@@ -2,7 +2,7 @@
 class_name LogotSidebar
 extends PanelContainer
 
-const LogLevel = preload("res://addons/logot/log_level.gd")
+const LogLevel = preload("res://Addons/logot/log_level.gd")
 
 ## Shared sidebar component used by both in-game logot and editor panel.
 ## Uses Godot's Tree component with clickable icons:
@@ -26,10 +26,10 @@ const COLOR_HIDDEN := Color(1, 1, 1, 0.65)  # Semi-transparent white
 const COLOR_OFF := Color(1, 1, 1, 0.3)     # Semi-transparent white
 
 # Visibility icons
-const ICON_VISIBLE := preload("res://addons/logot/assets/channel_visible.svg")
-const ICON_HIDDEN := preload("res://addons/logot/assets/channel_hidden.svg")
-const ICON_OFF := preload("res://addons/logot/assets/channel_off.svg")
-const ICON_MIXED := preload("res://addons/logot/assets/channel_mixed.svg")
+const ICON_VISIBLE := preload("res://Addons/logot/assets/channel_visible.svg")
+const ICON_HIDDEN := preload("res://Addons/logot/assets/channel_hidden.svg")
+const ICON_OFF := preload("res://Addons/logot/assets/channel_off.svg")
+const ICON_MIXED := preload("res://Addons/logot/assets/channel_mixed.svg")
 
 const LEVEL_COLORS := {
 	LogLevel.ERROR: Color8(204, 101, 102),
@@ -592,11 +592,13 @@ func _get_aggregated_stats(channel: String) -> Dictionary:
 ## Determine the visibility icon for a collapsed parent channel
 ## Returns ICON_MIXED if children have different visibility states
 func _get_collapsed_visibility_icon(channel: String) -> Texture2D:
-	var own_mode := _channel_visibility.get(channel, VisibilityMode.SHOWN)
+	var own_mode: int
+	own_mode = int(_channel_visibility.get(channel, VisibilityMode.SHOWN))
 	var all_same := true
 
 	for descendant in _get_all_descendants(channel):
-		var desc_mode := _channel_visibility.get(descendant, VisibilityMode.SHOWN)
+		var desc_mode: int
+		desc_mode = int(_channel_visibility.get(descendant, VisibilityMode.SHOWN))
 		if desc_mode != own_mode:
 			all_same = false
 			break

@@ -1,9 +1,9 @@
 @tool
 extends EditorPlugin
 
-const EditorPanelScript = preload("res://addons/logot/editor/logot_editor_panel.gd")
-const LogotDebuggerPlugin = preload("res://addons/logot/editor/logot_debugger_plugin.gd")
-const LOGOT_AUTOLOAD_PATH := "res://addons/logot/logot.gd"
+const EditorPanelScript = preload("res://Addons/logot/editor/logot_editor_panel.gd")
+const LogotDebuggerPlugin = preload("res://Addons/logot/editor/logot_debugger_plugin.gd")
+const LOGOT_AUTOLOAD_PATH := "res://Addons/logot/logot.gd"
 
 var _editor_panel: Control
 var _editor_dock: EditorDock

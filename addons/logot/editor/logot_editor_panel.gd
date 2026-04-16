@@ -5,13 +5,17 @@ extends Control
 ## Creates a LogotDisplay and adds logot.tscn as its child.
 ## Configures it for editor use.
 
-const LogotDisplay = preload("res://addons/logot/logot_display.gd")
-const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
-const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const LogotDisplay = preload("res://Addons/logot/logot_display.gd")
+const LogotCommandInput = preload("res://Addons/logot/logot_command_input.gd")
+const LOGOT_UI_SCENE := preload("res://Addons/logot/logot.tscn")
+const LogotTestPanelScript = preload("res://Addons/logot/testing/logot_test_panel.gd")
 const SETTINGS_FILE := "user://logot_editor_filters.cfg"
 
 # UI reference - the actual display component
 var _display
+var _logot_ui = null
+var _test_panel = null
+var _test_button: Button = null
 
 # Editor-specific settings
 var _clear_on_play := true
@@ -61,6 +65,7 @@ func _ready() -> void:
 	logot_ui.name = "LogotUI"
 	logot_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_display.add_child(logot_ui)
+	_logot_ui = logot_ui
 
 	# Configure for editor use
 	_display.set_settings_file(SETTINGS_FILE)
@@ -99,6 +104,8 @@ func _ready() -> void:
 		var columns_container = command_popup.get_node_or_null("ScrollContainer/ColumnsContainer")
 		if command_scroll and columns_container:
 			_display.set_command_autocomplete_popup(command_popup, command_scroll, columns_container)
+
+	_ensure_test_ui()
 
 	# Connect to Logot autoload
 	call_deferred("_connect_to_logot")
@@ -320,6 +327,37 @@ func _sync_existing_entries() -> void:
 		_register_editor_instance()
 
 		_display.rebuild_display()
+		if _test_panel != null and _logot.has_method("get_test_manager"):
+			_test_panel.set_manager(_logot.get_test_manager())
+
+
+func _ensure_test_ui() -> void:
+	if _logot_ui == null:
+		return
+
+	if _test_panel == null or not is_instance_valid(_test_panel):
+		_test_panel = LogotTestPanelScript.new()
+		_test_panel.name = "LogotTestPanel"
+		_logot_ui.add_child(_test_panel)
+
+	var input_row = _logot_ui.get_node_or_null("MainContainer/LogotContainer/VBoxContainer/InputRow")
+	if input_row is HBoxContainer and (_test_button == null or not is_instance_valid(_test_button)):
+		_test_button = Button.new()
+		_test_button.text = "Tests"
+		_test_button.pressed.connect(_toggle_test_panel)
+		(input_row as HBoxContainer).add_child(_test_button)
+		var clear_button = (input_row as HBoxContainer).get_node_or_null("ClearButton")
+		if clear_button != null:
+			(input_row as HBoxContainer).move_child(_test_button, clear_button.get_index())
+
+	if _logot != null and _logot.has_method("get_test_manager"):
+		_test_panel.set_manager(_logot.get_test_manager())
+
+
+func _toggle_test_panel() -> void:
+	if _test_panel == null or not is_instance_valid(_test_panel):
+		return
+	_test_panel.toggle_visible()
 
 
 ## Register the Editor as a special instance

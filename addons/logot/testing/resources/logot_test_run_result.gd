@@ -1,6 +1,10 @@
 class_name LogotTestRunResult
 extends Resource
 
+const LogotTestCheckResult = preload("res://Addons/logot/testing/resources/logot_test_check_result.gd")
+const LogotTestVisualResult = preload("res://Addons/logot/testing/resources/logot_test_visual_result.gd")
+const LogotTestLogRecord = preload("res://Addons/logot/testing/resources/logot_test_log_record.gd")
+
 
 @export var run_id := ""
 @export var test_id := ""
