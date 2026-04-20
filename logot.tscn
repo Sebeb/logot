@@ -9,7 +9,14 @@
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_rich_label"]
 bg_color = Color(0, 0, 0, 0.843137)
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ddh01"]
+[sub_resource type="InputEventKey" id="InputEventKey_pxr0l"]
+device = -1
+alt_pressed = true
+meta_pressed = true
+keycode = 75
+
+[sub_resource type="Shortcut" id="Shortcut_t2106"]
+events = [SubResource("InputEventKey_pxr0l")]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_autocomplete"]
 bg_color = Color(0.1, 0.1, 0.12, 0.95)
@@ -30,15 +37,6 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
-[sub_resource type="InputEventKey" id="InputEventKey_pxr0l"]
-device = -1
-alt_pressed = true
-meta_pressed = true
-keycode = 75
-
-[sub_resource type="Shortcut" id="Shortcut_t2106"]
-events = [SubResource("InputEventKey_pxr0l")]
-
 [node name="LogotUI" type="Control" unique_id=2042940667]
 layout_mode = 3
 anchors_preset = 15
@@ -58,15 +56,6 @@ split_offsets = PackedInt32Array(236)
 dragger_visibility = 1
 split_offset = 236
 
-[node name="AutocompleteOverlay" type="Control" parent="." unique_id=1573948091]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
 [node name="LogotContainer" type="VBoxContainer" parent="MainContainer" unique_id=1103596063]
 custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
@@ -81,7 +70,6 @@ focus_mode = 2
 theme = ExtResource("1_theme")
 theme_override_fonts/normal_font = ExtResource("2_pxr0l")
 theme_override_styles/normal = SubResource("StyleBoxFlat_rich_label")
-theme_override_styles/background = SubResource("StyleBoxEmpty_ddh01")
 bbcode_enabled = true
 tab_size = 2
 meta_underlined = false
@@ -90,41 +78,6 @@ deselect_on_focus_loss_enabled = false
 
 [node name="VBoxContainer" type="VBoxContainer" parent="MainContainer/LogotContainer" unique_id=2039839535]
 layout_mode = 2
-
-[node name="CommandAutocompletePopup" type="PanelContainer" parent="AutocompleteOverlay" unique_id=1663059663]
-visible = false
-z_index = 100
-layout_mode = 0
-theme = ExtResource("1_theme")
-theme_override_styles/panel = SubResource("StyleBoxFlat_autocomplete")
-
-[node name="ScrollContainer" type="ScrollContainer" parent="AutocompleteOverlay/CommandAutocompletePopup"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-
-[node name="ColumnsContainer" type="HBoxContainer" parent="AutocompleteOverlay/CommandAutocompletePopup/ScrollContainer"]
-layout_mode = 2
-
-[node name="HistoryAutocompletePopup" type="ItemList" parent="AutocompleteOverlay"]
-unique_name_in_owner = true
-visible = false
-z_index = 100
-layout_mode = 0
-theme = ExtResource("1_theme")
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
-theme_override_colors/font_hovered_color = Color(1, 1, 1, 1)
-theme_override_colors/font_selected_color = Color(1, 1, 1, 1)
-theme_override_styles/panel = SubResource("StyleBoxFlat_autocomplete")
-theme_override_styles/selected = SubResource("StyleBoxFlat_autocomplete_selected")
-theme_override_styles/selected_focus = SubResource("StyleBoxFlat_autocomplete_selected")
-allow_reselect = true
-auto_height = true
-item_count = 1
-item_0/text = "Item"
 
 [node name="InputRow" type="HBoxContainer" parent="MainContainer/LogotContainer/VBoxContainer" unique_id=537652556]
 unique_name_in_owner = true
@@ -157,3 +110,42 @@ icon = ExtResource("4_qnuwq")
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 size_flags_horizontal = 3
+
+[node name="AutocompleteOverlay" type="Control" parent="." unique_id=1573948091]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="CommandAutocompletePopup" type="PanelContainer" parent="AutocompleteOverlay" unique_id=1663059663]
+visible = false
+z_index = 100
+layout_mode = 0
+theme = ExtResource("1_theme")
+theme_override_styles/panel = SubResource("StyleBoxFlat_autocomplete")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="AutocompleteOverlay/CommandAutocompletePopup" unique_id=109182309]
+layout_mode = 2
+
+[node name="ColumnsContainer" type="HBoxContainer" parent="AutocompleteOverlay/CommandAutocompletePopup/ScrollContainer" unique_id=524247576]
+layout_mode = 2
+
+[node name="HistoryAutocompletePopup" type="ItemList" parent="AutocompleteOverlay" unique_id=1999274234]
+unique_name_in_owner = true
+visible = false
+z_index = 100
+layout_mode = 0
+theme = ExtResource("1_theme")
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 1)
+theme_override_colors/font_hovered_color = Color(1, 1, 1, 1)
+theme_override_colors/font_selected_color = Color(1, 1, 1, 1)
+theme_override_styles/panel = SubResource("StyleBoxFlat_autocomplete")
+theme_override_styles/selected = SubResource("StyleBoxFlat_autocomplete_selected")
+theme_override_styles/selected_focus = SubResource("StyleBoxFlat_autocomplete_selected")
+allow_reselect = true
+auto_height = true
+item_count = 1
+item_0/text = "Item"
