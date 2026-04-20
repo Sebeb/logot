@@ -115,6 +115,8 @@ class LogotDisplayVariable:
 	var pinnable: bool
 	var group_name: String
 	var group_priority: int
+	var change_signal_source: Object
+	var change_signal_name: StringName
 
 	func _init(
 		in_getter: Callable,
@@ -122,7 +124,9 @@ class LogotDisplayVariable:
 		in_items_provider: Callable = Callable(),
 		in_pinnable: bool = true,
 		in_group_name: String = "",
-		in_group_priority: int = 0
+		in_group_priority: int = 0,
+		in_change_signal_source: Object = null,
+		in_change_signal_name: StringName = &""
 	):
 		getter = in_getter
 		inline_color_provider = in_inline_color_provider
@@ -130,6 +134,8 @@ class LogotDisplayVariable:
 		pinnable = in_pinnable
 		group_name = in_group_name.strip_edges()
 		group_priority = in_group_priority if not group_name.is_empty() else 0
+		change_signal_source = in_change_signal_source
+		change_signal_name = in_change_signal_name
 
 
 class AutocompleteCommandColumn:
@@ -265,6 +271,21 @@ class AutocompleteCommandColumn:
 
 	func get_row_count() -> int:
 		return _rows.size()
+
+	func get_visible_display_variable_addresses() -> Array[String]:
+		var addresses: Array[String] = []
+		if _rows.is_empty():
+			return addresses
+
+		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
+		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
+		var end_index := mini(_rows.size(), start_index + content_visible_rows)
+		for row_index in range(start_index, end_index):
+			var address := str((_rows[row_index] as Dictionary).get("display_variable_address", "")).strip_edges()
+			if address.is_empty() or addresses.has(address):
+				continue
+			addresses.append(address)
+		return addresses
 
 	func ensure_current_is_visible() -> void:
 		_ensure_selection_visible()
@@ -1141,10 +1162,21 @@ var _root_command_selection_reset_pending := false
 
 # Display variables
 var _pinned_display_variables: Array[String] = []
-var _pinned_overlay_label: RichTextLabel
+var _pinned_overlay_root: Control
+var _pinned_overlay_container: VBoxContainer
+var _pinned_overlay_rows: Dictionary = {}
+var _pinned_row_render_cache: Dictionary = {}
+var _pinned_row_poll_signatures: Dictionary = {}
 var _pinned_overlay_visible := true
 var _pinned_overlay_corner := PINNED_OVERLAY_CORNER_TOP_LEFT
 var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
+var _command_catalog_dirty := true
+var _base_registered_addresses_cache: Array[String] = []
+var _default_menu_hierarchy_cache: Dictionary = {}
+var _all_known_autocomplete_tiers_cache: Array[String] = []
+var _all_known_autocomplete_tiers_cache_valid := false
+var _autocomplete_visible_address_columns: Dictionary = {}
+var _visible_getter_autocomplete_signatures: Dictionary = {}
 var _ingame_overlay_top_edge_override := 0.0
 var _ingame_overlay_left_edge_override := 0.0
 var _ingame_overlay_right_edge_override := 0.0
@@ -1175,10 +1207,34 @@ func set_entry_text_provider(provider: Callable) -> void:
 
 func set_commands_provider(provider: Callable) -> void:
 	_commands_provider = provider
+	invalidate_command_catalog(false)
 
 
 func set_display_variables_provider(provider: Callable) -> void:
 	_display_variables_provider = provider
+	invalidate_command_catalog(false)
+	_refresh_pinned_display_variables()
+
+
+func invalidate_command_catalog(refresh_popup: bool = true) -> void:
+	_command_catalog_dirty = true
+	_base_registered_addresses_cache.clear()
+	_default_menu_hierarchy_cache.clear()
+	_all_known_autocomplete_tiers_cache.clear()
+	_all_known_autocomplete_tiers_cache_valid = false
+	_refresh_pinned_display_variables()
+	if refresh_popup and _is_command_popup_visible():
+		update_autocomplete_popup()
+
+
+func invalidate_display_variable(address: String) -> void:
+	var normalized_address := _resolve_alias_command_path(address.strip_edges())
+	if normalized_address.is_empty():
+		return
+	if _pinned_display_variables.has(normalized_address):
+		_refresh_pinned_display_variable_row(normalized_address)
+	if _autocomplete_visible_address_columns.has(normalized_address):
+		_refresh_command_autocomplete_columns_for_addresses([normalized_address])
 
 
 func set_rejected_level_count_provider(provider: Callable) -> void:
@@ -1568,6 +1624,7 @@ func pin_display_variable(address: String) -> void:
 		return
 	_pinned_display_variables.append(address)
 	_save_filter_settings()
+	invalidate_command_catalog(false)
 	_refresh_pinned_display_variables()
 	_refresh_pin_option_autocomplete_state()
 
@@ -1578,6 +1635,7 @@ func unpin_display_variable(address: String) -> void:
 		return
 	_pinned_display_variables.remove_at(index)
 	_save_filter_settings()
+	invalidate_command_catalog(false)
 	_refresh_pinned_display_variables()
 	_refresh_pin_option_autocomplete_state()
 
@@ -1619,6 +1677,7 @@ func clear_pinned_display_variables() -> void:
 		return
 	_pinned_display_variables.clear()
 	_save_filter_settings()
+	invalidate_command_catalog(false)
 	_refresh_pinned_display_variables()
 	_refresh_pin_option_autocomplete_state()
 
@@ -1655,6 +1714,7 @@ func load_pinned_overlay(name: String) -> bool:
 			_pinned_display_variables.append(address_str)
 
 	_save_filter_settings()
+	invalidate_command_catalog(false)
 	_refresh_pinned_display_variables()
 	_refresh_pin_option_autocomplete_state()
 	return true
@@ -2158,9 +2218,7 @@ func _init_display() -> void:
 
 
 func _process(_delta: float) -> void:
-	if _is_command_popup_visible():
-		_refresh_command_autocomplete_popup_values()
-	_refresh_pinned_display_variables()
+	_poll_visible_display_variable_consumers()
 
 
 func _stop_command_autocomplete_animation() -> void:
@@ -2256,31 +2314,31 @@ func _hide_command_autocomplete_popup(animated: bool = true) -> void:
 
 
 func _ensure_pinned_overlay() -> void:
-	if _pinned_overlay_label:
+	if _pinned_overlay_root:
 		return
 
-	_pinned_overlay_label = RichTextLabel.new()
-	_pinned_overlay_label.name = "PinnedDisplayVariables"
-	_pinned_overlay_label.bbcode_enabled = true
-	_pinned_overlay_label.scroll_active = false
-	_pinned_overlay_label.fit_content = true
-	_pinned_overlay_label.autowrap_mode = TextServer.AUTOWRAP_OFF
-	_pinned_overlay_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pinned_overlay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_pinned_overlay_label.position = Vector2(PINNED_OVERLAY_MARGIN, PINNED_OVERLAY_MARGIN)
-	_pinned_overlay_label.visible = false
-	_pinned_overlay_label.z_index = 200
-	if _main_container and _main_container.theme:
-		_pinned_overlay_label.theme = _main_container.theme
-	add_child(_pinned_overlay_label)
+	_pinned_overlay_root = Control.new()
+	_pinned_overlay_root.name = "PinnedDisplayVariables"
+	_pinned_overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pinned_overlay_root.position = Vector2(PINNED_OVERLAY_MARGIN, PINNED_OVERLAY_MARGIN)
+	_pinned_overlay_root.visible = false
+	_pinned_overlay_root.z_index = 200
+	add_child(_pinned_overlay_root)
+
+	_pinned_overlay_container = VBoxContainer.new()
+	_pinned_overlay_container.name = "PinnedDisplayVariablesContainer"
+	_pinned_overlay_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pinned_overlay_container.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_pinned_overlay_container.add_theme_constant_override("separation", 0)
+	_pinned_overlay_root.add_child(_pinned_overlay_container)
 
 
 func _get_pinned_overlay_size() -> Vector2:
-	if not _pinned_overlay_label:
+	if not _pinned_overlay_root or not _pinned_overlay_container:
 		return Vector2.ZERO
-	var overlay_size := _pinned_overlay_label.get_combined_minimum_size()
+	var overlay_size := _pinned_overlay_container.get_combined_minimum_size()
 	if overlay_size.x <= 0.0 or overlay_size.y <= 0.0:
-		overlay_size = _pinned_overlay_label.size
+		overlay_size = _pinned_overlay_root.size
 	return Vector2(ceil(overlay_size.x), ceil(overlay_size.y))
 
 
@@ -2318,51 +2376,270 @@ func _update_pinned_overlay_corner_for_mouse(overlay_size: Vector2) -> bool:
 
 
 func _layout_pinned_overlay(overlay_size: Vector2) -> void:
-	if not _pinned_overlay_label:
+	if not _pinned_overlay_root or not _pinned_overlay_container:
 		return
-	_pinned_overlay_label.size = overlay_size
-	_pinned_overlay_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if _pinned_overlay_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT else HORIZONTAL_ALIGNMENT_LEFT
+	_pinned_overlay_root.size = overlay_size
+	_pinned_overlay_container.size = overlay_size
+	var horizontal_alignment := HORIZONTAL_ALIGNMENT_RIGHT if _pinned_overlay_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT else HORIZONTAL_ALIGNMENT_LEFT
+	for row in _pinned_overlay_rows.values():
+		if row is RichTextLabel:
+			(row as RichTextLabel).horizontal_alignment = horizontal_alignment
 	var overlay_rect := _get_pinned_overlay_rect_for_corner(_pinned_overlay_corner, overlay_size)
-	_pinned_overlay_label.position = overlay_rect.position
+	_pinned_overlay_root.position = overlay_rect.position
 
 
 func _refresh_pinned_display_variables() -> void:
-	if not _pinned_overlay_label:
+	if not _pinned_overlay_root or not _pinned_overlay_container:
 		return
 
+	var visible_addresses: Array[String] = []
+	var base_name_counts: Dictionary = {}
+	for address in _pinned_display_variables:
+		if not _has_display_variable(address):
+			continue
+		visible_addresses.append(address)
+		var base_name := _get_address_tail(address)
+		base_name_counts[base_name] = int(base_name_counts.get(base_name, 0)) + 1
+
+	_sync_pinned_overlay_rows(visible_addresses)
+	if visible_addresses.is_empty() or not _pinned_overlay_visible:
+		if _pinned_overlay_root:
+			_pinned_overlay_root.visible = false
+		return
+
+	for address in visible_addresses:
+		_refresh_pinned_display_variable_row(address, base_name_counts, true)
+
+	var overlay_size := _get_pinned_overlay_size()
+	if _update_pinned_overlay_corner_for_mouse(overlay_size):
+		overlay_size = _get_pinned_overlay_size()
+	_layout_pinned_overlay(overlay_size)
+	_pinned_overlay_root.visible = true
+
+
+func _sync_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
+	if not _pinned_overlay_container:
+		return
+
+	for existing_address in _pinned_overlay_rows.keys():
+		var normalized_existing := str(existing_address)
+		if visible_addresses.has(normalized_existing):
+			continue
+		var row = _pinned_overlay_rows[normalized_existing]
+		if row is RichTextLabel and is_instance_valid(row):
+			(row as RichTextLabel).queue_free()
+		_pinned_overlay_rows.erase(normalized_existing)
+		_pinned_row_render_cache.erase(normalized_existing)
+		_pinned_row_poll_signatures.erase(normalized_existing)
+
+	for index in range(visible_addresses.size()):
+		var address := visible_addresses[index]
+		var row = _pinned_overlay_rows.get(address, null)
+		if not (row is RichTextLabel) or not is_instance_valid(row):
+			row = _create_pinned_overlay_row()
+			_pinned_overlay_rows[address] = row
+			_pinned_overlay_container.add_child(row)
+		if row.get_parent() != _pinned_overlay_container:
+			_pinned_overlay_container.add_child(row)
+		_pinned_overlay_container.move_child(row, index)
+
+
+func _create_pinned_overlay_row() -> RichTextLabel:
+	var row := RichTextLabel.new()
+	row.bbcode_enabled = true
+	row.scroll_active = false
+	row.fit_content = true
+	row.autowrap_mode = TextServer.AUTOWRAP_OFF
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	if _main_container and _main_container.theme:
+		row.theme = _main_container.theme
+	return row
+
+
+func _refresh_pinned_display_variable_row(address: String, base_name_counts: Dictionary = {}, force: bool = false) -> void:
+	if not _pinned_overlay_rows.has(address):
+		return
+	if not _has_display_variable(address):
+		return
+
+	var row = _pinned_overlay_rows[address]
+	if not (row is RichTextLabel) or not is_instance_valid(row):
+		return
+
+	if base_name_counts.is_empty():
+		base_name_counts = _get_visible_pinned_display_variable_base_name_counts()
+
+	var snapshot := _get_display_variable_render_snapshot(address)
+	if not bool(snapshot.get("exists", false)):
+		return
+
+	var base_name := _get_address_tail(address)
+	var display_address := address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
+	var signature := var_to_str({
+		"display_address": display_address,
+		"render": str(snapshot.get("signature", "")),
+	})
+	if force or _pinned_row_render_cache.get(address, "") != signature:
+		var value_markup := _escape_overlay_bbcode(str(snapshot.get("text", "")))
+		var value_color: Color = snapshot.get("inline_color", Color.TRANSPARENT)
+		if value_color.a > 0.0:
+			value_markup = "[color=#%s]%s[/color]" % [value_color.to_html(false), value_markup]
+		(row as RichTextLabel).clear()
+		(row as RichTextLabel).append_text("[bgcolor=#1a202acc]  %s: %s  [/bgcolor]" % [
+			_escape_overlay_bbcode(display_address),
+			value_markup,
+		])
+		_pinned_row_render_cache[address] = signature
+
+	if str(snapshot.get("update_mode", "getter")) == "getter":
+		_pinned_row_poll_signatures[address] = str(snapshot.get("signature", ""))
+	else:
+		_pinned_row_poll_signatures.erase(address)
+
+	(row as RichTextLabel).visible = _pinned_overlay_visible
+	if _pinned_overlay_root and _pinned_overlay_root.visible:
+		var overlay_size := _get_pinned_overlay_size()
+		if _update_pinned_overlay_corner_for_mouse(overlay_size):
+			overlay_size = _get_pinned_overlay_size()
+		_layout_pinned_overlay(overlay_size)
+
+
+func _get_visible_pinned_display_variable_base_name_counts() -> Dictionary:
 	var base_name_counts: Dictionary = {}
 	for address in _pinned_display_variables:
 		if not _has_display_variable(address):
 			continue
 		var base_name := _get_address_tail(address)
 		base_name_counts[base_name] = int(base_name_counts.get(base_name, 0)) + 1
+	return base_name_counts
 
-	var lines: PackedStringArray = []
-	for address in _pinned_display_variables:
-		if not _has_display_variable(address):
-			continue
-		var value_text := _get_display_variable_display_text(address, true)
-		var base_name := _get_address_tail(address)
-		var display_address := address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
-		var escaped_address := _escape_overlay_bbcode(display_address)
-		var escaped_value := _escape_overlay_bbcode(value_text)
-		var value_markup := escaped_value
-		var value_color := _get_display_variable_inline_color(address)
-		if value_color.a > 0.0:
-			value_markup = "[color=#%s]%s[/color]" % [value_color.to_html(false), escaped_value]
-		lines.append("[bgcolor=#1a202acc]  %s: %s  [/bgcolor]" % [escaped_address, value_markup])
 
-	_pinned_overlay_label.clear()
-	if lines.is_empty() or not _pinned_overlay_visible:
-		_pinned_overlay_label.visible = false
+func _poll_visible_display_variable_consumers() -> void:
+	_poll_visible_pinned_display_variable_rows()
+	_poll_visible_autocomplete_display_variable_rows()
+
+
+func _poll_visible_pinned_display_variable_rows() -> void:
+	if not _pinned_overlay_visible or _pinned_overlay_root == null or not _pinned_overlay_root.visible:
 		return
 
-	_pinned_overlay_label.append_text("\n".join(lines))
-	var overlay_size := _get_pinned_overlay_size()
-	if _update_pinned_overlay_corner_for_mouse(overlay_size):
-		overlay_size = _get_pinned_overlay_size()
-	_layout_pinned_overlay(overlay_size)
-	_pinned_overlay_label.visible = true
+	var base_name_counts := _get_visible_pinned_display_variable_base_name_counts()
+	for address in _pinned_row_poll_signatures.keys():
+		if not _pinned_display_variables.has(str(address)) or not _has_display_variable(str(address)):
+			_pinned_row_poll_signatures.erase(address)
+
+	for address in _pinned_display_variables:
+		if not _pinned_overlay_rows.has(address) or not _has_display_variable(address):
+			continue
+		var snapshot := _get_display_variable_render_snapshot(address)
+		if str(snapshot.get("update_mode", "getter")) != "getter":
+			_pinned_row_poll_signatures.erase(address)
+			continue
+		var signature := str(snapshot.get("signature", ""))
+		if _pinned_row_poll_signatures.get(address, "") == signature:
+			continue
+		_pinned_row_poll_signatures[address] = signature
+		_refresh_pinned_display_variable_row(address, base_name_counts)
+
+
+func _get_display_variable_entry(address: String) -> Dictionary:
+	var resolved_address := _resolve_alias_command_path(address)
+	return {
+		"resolved_address": resolved_address,
+		"display_variable": _get_display_variables().get(resolved_address, null),
+	}
+
+
+func _is_signal_backed_display_variable(address: String) -> bool:
+	var entry := _get_display_variable_entry(address)
+	var display_variable = entry.get("display_variable", null)
+	if not (display_variable is LogotDisplayVariable):
+		return false
+
+	var display_variable_object := display_variable as LogotDisplayVariable
+	return (
+		display_variable_object.change_signal_source != null
+		and is_instance_valid(display_variable_object.change_signal_source)
+		and display_variable_object.change_signal_name != &""
+	)
+
+
+func _get_display_variable_render_snapshot(address: String) -> Dictionary:
+	var entry := _get_display_variable_entry(address)
+	var resolved_address := str(entry.get("resolved_address", ""))
+	var display_variable = entry.get("display_variable", null)
+	if resolved_address.is_empty() or display_variable == null:
+		return {"exists": false, "signature": "", "update_mode": "getter"}
+
+	var current_value: Variant = null
+	var items: Array[Dictionary] = []
+	var inline_color := Color.TRANSPARENT
+	if display_variable is LogotDisplayVariable:
+		var display_variable_object := display_variable as LogotDisplayVariable
+		if display_variable_object.getter.is_valid():
+			current_value = display_variable_object.getter.call()
+		if display_variable_object.items_provider.is_valid():
+			items = _normalize_display_variable_items(display_variable_object.items_provider.call())
+		if display_variable_object.inline_color_provider.is_valid():
+			inline_color = _resolve_display_variable_inline_color(display_variable_object.inline_color_provider.call())
+	elif display_variable is Callable:
+		var getter := display_variable as Callable
+		if getter.is_valid():
+			current_value = getter.call()
+
+	if items.is_empty():
+		var item_text := _get_command_option_label_for_value(resolved_address, current_value, 0)
+		if item_text.is_empty():
+			item_text = str(current_value).replace("\n", " ").replace("\r", " ")
+		if not item_text.is_empty():
+			var item_color := inline_color
+			if item_color.a <= 0.0:
+				item_color = _get_default_display_variable_inline_color(current_value)
+			var item: Dictionary = {"text": item_text}
+			if item_color.a > 0.0:
+				item["color"] = item_color
+			items.append(item)
+
+	if inline_color.a <= 0.0:
+		inline_color = _get_default_display_variable_inline_color(current_value)
+
+	var text_parts: PackedStringArray = []
+	var item_signatures: PackedStringArray = []
+	var autocomplete_color := inline_color
+	for item in items:
+		var item_dict := item as Dictionary
+		var item_text := str(item_dict.get("text", "")).replace("\n", " ").replace("\r", " ")
+		text_parts.append(item_text)
+		var item_color = item_dict.get("color", null)
+		var item_color_html := ""
+		if item_color is Color and (item_color as Color).a > 0.0:
+			item_color_html = (item_color as Color).to_html(false)
+			if autocomplete_color.a <= 0.0:
+				autocomplete_color = item_color as Color
+		item_signatures.append("%s|%s" % [item_text, item_color_html])
+
+	if autocomplete_color.a <= 0.0 and not items.is_empty():
+		var first_item_color = (items[0] as Dictionary).get("color", null)
+		if first_item_color is Color and (first_item_color as Color).a > 0.0:
+			autocomplete_color = first_item_color as Color
+
+	var text := " ".join(text_parts)
+	return {
+		"exists": true,
+		"resolved_address": resolved_address,
+		"text": text,
+		"items": items,
+		"inline_color": inline_color,
+		"autocomplete_color": autocomplete_color,
+		"update_mode": "signal" if _is_signal_backed_display_variable(resolved_address) else "getter",
+		"signature": var_to_str({
+			"text": text,
+			"items": item_signatures,
+			"inline_color": inline_color.to_html(false),
+			"autocomplete_color": autocomplete_color.to_html(false),
+		}),
+	}
 
 
 func _get_address_tail(address: String) -> String:
@@ -3056,21 +3333,33 @@ func _append_unique_address(addresses: Array[String], address: String) -> void:
 
 
 func _get_base_registered_addresses() -> Array[String]:
+	if not _command_catalog_dirty:
+		return _base_registered_addresses_cache.duplicate()
+
 	var addresses: Array[String] = []
 	for command in _get_commands():
 		_append_unique_address(addresses, str(command))
 	for address in _get_display_variables():
 		_append_unique_address(addresses, str(address))
+	_base_registered_addresses_cache = addresses.duplicate()
+	_command_catalog_dirty = false
 	return addresses
 
 
 func _get_default_menu_hierarchy_addresses(command_path: String) -> Array[String]:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	if _default_menu_hierarchy_cache.has(normalized_path):
+		var cached_addresses: Array[String] = []
+		for cached_address in _default_menu_hierarchy_cache[normalized_path]:
+			cached_addresses.append(str(cached_address))
+		return cached_addresses
+
 	var addresses: Array[String] = []
 	var base_addresses := _get_base_registered_addresses()
 	if normalized_path.is_empty():
 		for address in base_addresses:
 			_append_unique_address(addresses, address)
+		_default_menu_hierarchy_cache[normalized_path] = addresses.duplicate()
 		return addresses
 
 	var path_prefix := normalized_path + "/"
@@ -3086,6 +3375,7 @@ func _get_default_menu_hierarchy_addresses(command_path: String) -> Array[String
 		for pin_option_address in _get_display_variable_pin_action_subcommand_addresses(normalized_path):
 			_append_unique_address(addresses, pin_option_address)
 
+	_default_menu_hierarchy_cache[normalized_path] = addresses.duplicate()
 	return addresses
 
 
@@ -3734,6 +4024,9 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 
 
 func _get_all_known_autocomplete_tiers() -> Array[String]:
+	if _all_known_autocomplete_tiers_cache_valid:
+		return _all_known_autocomplete_tiers_cache.duplicate()
+
 	var tiers: Array[String] = []
 	var visited_menu_paths: Dictionary = {}
 	var queue: Array[String] = [""]
@@ -3762,6 +4055,8 @@ func _get_all_known_autocomplete_tiers() -> Array[String]:
 			if not visited_menu_paths.has(next_tier):
 				queue.append(next_tier)
 
+	_all_known_autocomplete_tiers_cache = tiers.duplicate()
+	_all_known_autocomplete_tiers_cache_valid = true
 	return tiers
 
 
@@ -3890,6 +4185,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 	var value_data := _get_autocomplete_display_variable_value_data(match_data)
 	var value_text_color: Variant
 	value_text_color = value_data.get("color", null)
+	var display_variable_address := str(value_data.get("address", ""))
 	return {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
 		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
@@ -3897,6 +4193,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		"value_text": "" if match_data.get("suppress_value_text", false) else str(value_data.get("text", "")),
 		"value_text_color": value_text_color,
 		"value_items": value_data.get("items", []),
+		"display_variable_address": display_variable_address,
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
 	}
@@ -3958,21 +4255,19 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 
 func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Dictionary:
 	if not match_data.get("has_display_variable", false):
-		return {"text": "", "color": null, "items": []}
+		return {"text": "", "color": null, "items": [], "address": ""}
 
-	var tier := str(match_data.get("tier", ""))
+	var tier := _resolve_alias_command_path(str(match_data.get("tier", "")))
 	if tier.is_empty():
-		return {"text": "", "color": null, "items": []}
+		return {"text": "", "color": null, "items": [], "address": ""}
 
-	var value_items := _get_display_variable_items(tier)
-	var first_item: Dictionary = {}
-	if not value_items.is_empty() and value_items[0] is Dictionary:
-		first_item = value_items[0] as Dictionary
-	var inline_color: Variant = first_item.get("color", null)
+	var snapshot := _get_display_variable_render_snapshot(tier)
+	var inline_color: Variant = snapshot.get("autocomplete_color", null)
 	return {
-		"text": _get_display_variable_display_text(tier, true),
+		"text": str(snapshot.get("text", "")),
 		"color": inline_color if inline_color is Color and (inline_color as Color).a > 0.0 else null,
-		"items": value_items,
+		"items": snapshot.get("items", []),
+		"address": tier,
 	}
 
 
@@ -5170,6 +5465,13 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		if row_variant is Dictionary:
 			rows.append(row_variant as Dictionary)
 	var selected_row_index := int(row_build_result.get("selected_row_index", -1))
+	var tracked_display_variable_addresses: Array[String] = []
+	for row_data in rows:
+		var tracked_address := _resolve_alias_command_path(str(row_data.get("display_variable_address", "")).strip_edges())
+		if tracked_address.is_empty() or tracked_display_variable_addresses.has(tracked_address):
+			continue
+		tracked_display_variable_addresses.append(tracked_address)
+	column_state["tracked_display_variable_addresses"] = tracked_display_variable_addresses
 
 	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
 	column_state["left_width"] = int(layout.get("name_width", 0))
@@ -5201,6 +5503,8 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0, scroll_to_
 	if not _command_autocomplete_popup or not _command_autocomplete_columns_container:
 		return
 	if _autocomplete_column_states.is_empty():
+		_autocomplete_visible_address_columns.clear()
+		_visible_getter_autocomplete_signatures.clear()
 		_hide_command_autocomplete_popup(false)
 		_debug_autocomplete("_sync_visible_command_autocomplete_columns.empty")
 		return
@@ -5265,6 +5569,7 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0, scroll_to_
 		_scroll_command_autocomplete_columns_to_end()
 	else:
 		_ensure_active_command_column_visible()
+	_refresh_autocomplete_visible_address_tracking()
 	var active_item_count := -1
 	if _autocomplete_active_column_index >= 0 and _autocomplete_active_column_index < _autocomplete_column_states.size():
 		active_item_count = _autocomplete_column_states[_autocomplete_active_column_index].get("matches", []).size()
@@ -5287,6 +5592,8 @@ func _render_command_autocomplete_popup() -> void:
 	if not _command_autocomplete_popup or not _command_autocomplete_columns_container:
 		return
 	if _autocomplete_column_states.is_empty():
+		_autocomplete_visible_address_columns.clear()
+		_visible_getter_autocomplete_signatures.clear()
 		_hide_command_autocomplete_popup(false)
 		return
 
@@ -5304,6 +5611,7 @@ func _render_command_autocomplete_popup() -> void:
 	_position_command_autocomplete_popup()
 	_show_command_autocomplete_popup()
 	_scroll_command_autocomplete_columns_to_end()
+	_refresh_autocomplete_visible_address_tracking()
 
 
 func _refresh_command_autocomplete_popup_values() -> void:
@@ -5356,6 +5664,94 @@ func _refresh_command_autocomplete_popup_values() -> void:
 	if needs_layout_refresh:
 		_position_command_autocomplete_popup()
 		_ensure_active_command_column_visible()
+	_refresh_autocomplete_visible_address_tracking()
+
+
+func _refresh_autocomplete_visible_address_tracking() -> void:
+	var previous_getter_signatures := _visible_getter_autocomplete_signatures.duplicate()
+	_autocomplete_visible_address_columns.clear()
+	_visible_getter_autocomplete_signatures.clear()
+	if not _is_command_popup_visible():
+		return
+
+	for column_index in range(mini(_autocomplete_column_nodes.size(), _autocomplete_column_states.size())):
+		var list := _autocomplete_column_nodes[column_index]
+		if not (list is AutocompleteCommandColumn):
+			continue
+		for raw_address in (list as AutocompleteCommandColumn).get_visible_display_variable_addresses():
+			var address := _resolve_alias_command_path(str(raw_address).strip_edges())
+			if address.is_empty():
+				continue
+			var tracked_columns: Array = _autocomplete_visible_address_columns.get(address, [])
+			if not tracked_columns.has(column_index):
+				tracked_columns.append(column_index)
+			_autocomplete_visible_address_columns[address] = tracked_columns
+			if _is_signal_backed_display_variable(address):
+				continue
+			if previous_getter_signatures.has(address):
+				_visible_getter_autocomplete_signatures[address] = str(previous_getter_signatures[address])
+				continue
+			var snapshot := _get_display_variable_render_snapshot(address)
+			_visible_getter_autocomplete_signatures[address] = str(snapshot.get("signature", ""))
+
+
+func _poll_visible_autocomplete_display_variable_rows() -> void:
+	if not _is_command_popup_visible():
+		_autocomplete_visible_address_columns.clear()
+		_visible_getter_autocomplete_signatures.clear()
+		return
+	_refresh_autocomplete_visible_address_tracking()
+
+	var changed_addresses: Array[String] = []
+	for raw_address in _visible_getter_autocomplete_signatures.keys():
+		var address := str(raw_address)
+		var snapshot := _get_display_variable_render_snapshot(address)
+		var signature := str(snapshot.get("signature", ""))
+		if _visible_getter_autocomplete_signatures.get(address, "") == signature:
+			continue
+		_visible_getter_autocomplete_signatures[address] = signature
+		changed_addresses.append(address)
+
+	if not changed_addresses.is_empty():
+		_refresh_command_autocomplete_columns_for_addresses(changed_addresses)
+
+
+func _refresh_command_autocomplete_columns_for_addresses(addresses: Array[String]) -> void:
+	if not _is_command_popup_visible():
+		return
+
+	var column_indices: Array[int] = []
+	for raw_address in addresses:
+		var address := _resolve_alias_command_path(str(raw_address).strip_edges())
+		var tracked_columns = _autocomplete_visible_address_columns.get(address, [])
+		for raw_column_index in tracked_columns:
+			var column_index := int(raw_column_index)
+			if column_indices.has(column_index):
+				continue
+			column_indices.append(column_index)
+
+	if column_indices.is_empty():
+		return
+
+	column_indices.sort()
+	var needs_layout_refresh := false
+	for column_index in column_indices:
+		if column_index < 0 or column_index >= _autocomplete_column_states.size() or column_index >= _autocomplete_column_nodes.size():
+			continue
+		var list := _autocomplete_column_nodes[column_index]
+		if not (list is AutocompleteCommandColumn):
+			continue
+		var previous_width := int(_autocomplete_column_states[column_index].get("width", 0))
+		var column_state: Dictionary = _refresh_command_preview_option_state(_autocomplete_column_states[column_index])
+		column_state = _configure_command_autocomplete_column(list as AutocompleteCommandColumn, column_state, column_index)
+		_autocomplete_column_states[column_index] = column_state
+		if int(column_state.get("width", 0)) != previous_width:
+			needs_layout_refresh = true
+
+	if needs_layout_refresh:
+		_position_command_autocomplete_popup()
+	_refresh_autocomplete_visible_address_tracking()
+	_ensure_active_command_column_visible()
 
 
 func refresh_setget_option_highlight(command_name: String) -> void:
@@ -5509,6 +5905,8 @@ func hide_autocomplete() -> void:
 	_pending_autocomplete_column_sync_start = -1
 	_autocomplete_column_sync_queued = false
 	_pending_autocomplete_column_sync_scroll_to_end = false
+	_autocomplete_visible_address_columns.clear()
+	_visible_getter_autocomplete_signatures.clear()
 	_debug_autocomplete("hide_autocomplete.end")
 
 

@@ -183,6 +183,7 @@ var console_history := []
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _external_displays: Array = []
+var _display_variable_signal_connections: Dictionary = {}
 var _console_interfacing_test_commands: RefCounted = null
 var _test_manager = null
 var _test_panel = null
@@ -515,6 +516,7 @@ func add_command(command_name : String, function : Callable, arguments = [], req
 		for argument in arguments:
 			str_args.append(str(argument))
 		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority)
+	_notify_command_catalog_changed()
 
 
 func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
@@ -534,9 +536,10 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		option_group_name,
 		option_group_priority
 	)
+	_notify_command_catalog_changed()
 
 
-func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
+func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
 	if not setter.is_valid():
 		push_warning("Cannot add set/get command '%s': invalid setter." % command_name)
 		return
@@ -563,7 +566,7 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		option_group_name,
 		option_group_priority
 	)
-	add_display_variable(command_name, getter, inline_color_provider)
+	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name)
 
 
 func _resolve_setget_option_values(getter: Callable, options_provider: Callable = Callable()) -> Array:
@@ -1106,35 +1109,52 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 
 func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
+	_notify_command_catalog_changed()
 
-
-func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0) -> void:
-	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority)
+func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name)
+	_register_display_variable_signal(address, change_signal_source, change_signal_name)
+	_notify_command_catalog_changed()
 
 
 func remove_display_variable(address: String) -> void:
+	_unregister_display_variable_signal(address)
 	display_variables.erase(address)
+	notify_display_variable_changed(address)
+	_notify_command_catalog_changed()
 
 
-func pin(key: String, value_or_getter: Variant) -> void:
+func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
 	var address := key.strip_edges()
 	if address.is_empty():
 		print_error("Pin key cannot be empty.")
 		return
 
 	var getter: Callable
+	var use_change_signal := false
 	if value_or_getter is Callable:
 		getter = value_or_getter as Callable
 		if not getter.is_valid():
 			print_error("Pin getter for '%s' is not valid." % address)
 			return
+		use_change_signal = true
 	else:
 		var pinned_value: Variant
 		pinned_value = value_or_getter
 		getter = func() -> Variant:
 			return pinned_value
 
-	add_display_variable(address, getter)
+	add_display_variable(
+		address,
+		getter,
+		Callable(),
+		Callable(),
+		true,
+		"",
+		0,
+		change_signal_source if use_change_signal else null,
+		change_signal_name if use_change_signal else &""
+	)
 	pin_display_variable(address)
 
 
@@ -1161,7 +1181,9 @@ func register_external_display(display: LogotDisplay) -> void:
 			return
 
 	_external_displays.append(weakref(display))
+	_sync_pinned_display_state_to(display)
 	_apply_pending_pinned_display_variables_to(display)
+	display.invalidate_command_catalog()
 
 
 func unregister_external_display(display: LogotDisplay) -> void:
@@ -1172,6 +1194,26 @@ func unregister_external_display(display: LogotDisplay) -> void:
 		var existing_display = _external_displays[index].get_ref()
 		if existing_display == null or existing_display == display:
 			_external_displays.remove_at(index)
+
+
+func _get_live_displays() -> Array[LogotDisplay]:
+	var live_displays: Array[LogotDisplay] = []
+	if _display != null:
+		live_displays.append(_display)
+
+	for index in range(_external_displays.size() - 1, -1, -1):
+		var external_display = _external_displays[index].get_ref()
+		if external_display == null:
+			_external_displays.remove_at(index)
+			continue
+		if not (external_display is LogotDisplay):
+			continue
+		var typed_display := external_display as LogotDisplay
+		if live_displays.has(typed_display):
+			continue
+		live_displays.append(typed_display)
+
+	return live_displays
 
 
 func _get_active_display() -> LogotDisplay:
@@ -1188,20 +1230,44 @@ func _get_active_display() -> LogotDisplay:
 	return null
 
 
+func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
+	if target_display == null:
+		return
+
+	var pinned_addresses: Array[String] = []
+	for live_display in _get_live_displays():
+		if live_display == target_display:
+			continue
+		for address in live_display.get_pinned_display_variables():
+			var normalized_address := str(address).strip_edges()
+			if normalized_address.is_empty() or pinned_addresses.has(normalized_address):
+				continue
+			pinned_addresses.append(normalized_address)
+
+	for address in pinned_addresses:
+		target_display.pin_display_variable(address)
+
+
 func pin_display_variable(address: String) -> void:
-	var active_display := _get_active_display()
-	if active_display:
-		active_display.pin_display_variable(address)
-	else:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
 		_pending_pinned_display_variables[address] = true
+		return
+
+	_pending_pinned_display_variables.erase(address)
+	for display in live_displays:
+		display.pin_display_variable(address)
 
 
 func unpin_display_variable(address: String) -> void:
-	var active_display := _get_active_display()
-	if active_display:
-		active_display.unpin_display_variable(address)
-	else:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
 		_pending_pinned_display_variables[address] = false
+		return
+
+	_pending_pinned_display_variables.erase(address)
+	for display in live_displays:
+		display.unpin_display_variable(address)
 
 
 func set_display_variable_pinned(address: String, pinned: bool) -> void:
@@ -1224,6 +1290,59 @@ func get_console_commands() -> Dictionary:
 
 func get_display_variables() -> Dictionary:
 	return display_variables
+
+
+func notify_display_variable_changed(address: String) -> void:
+	var normalized_address := address.strip_edges()
+	if normalized_address.is_empty():
+		return
+
+	for display in _get_live_displays():
+		display.invalidate_display_variable(normalized_address)
+
+
+func _register_display_variable_signal(address: String, source: Object, signal_name: StringName) -> void:
+	_unregister_display_variable_signal(address)
+	if source == null or not is_instance_valid(source) or signal_name == &"":
+		return
+	if not source.has_signal(signal_name):
+		return
+
+	var callback := func(_arg1 = null, _arg2 = null, _arg3 = null, _arg4 = null, _arg5 = null, _arg6 = null) -> void:
+		_on_display_variable_signal_emitted(address)
+	if not source.is_connected(signal_name, callback):
+		source.connect(signal_name, callback)
+	_display_variable_signal_connections[address] = {
+		"source": source,
+		"signal_name": signal_name,
+		"callback": callback,
+	}
+
+
+func _unregister_display_variable_signal(address: String) -> void:
+	if not _display_variable_signal_connections.has(address):
+		return
+
+	var connection = _display_variable_signal_connections[address]
+	_display_variable_signal_connections.erase(address)
+	var source = connection.get("source", null)
+	var signal_name = connection.get("signal_name", &"")
+	var callback = connection.get("callback", Callable())
+	if source == null or not is_instance_valid(source):
+		return
+	if signal_name == &"" or not (callback is Callable):
+		return
+	if source.is_connected(signal_name, callback):
+		source.disconnect(signal_name, callback)
+
+
+func _on_display_variable_signal_emitted(address: String) -> void:
+	notify_display_variable_changed(address)
+
+
+func _notify_command_catalog_changed() -> void:
+	for display in _get_live_displays():
+		display.invalidate_command_catalog()
 
 
 func set_ingame_overlay_edge_overrides(top: float = 0.0, left: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> void:
@@ -1566,6 +1685,7 @@ func _setup_game_ui() -> void:
 		line_edit.text_changed.connect(on_line_edit_text_changed)
 		line_edit.gui_input.connect(_on_line_edit_gui_input)
 
+	_sync_pinned_display_state_to(_display)
 	_apply_pending_pinned_display_variables()
 	_ensure_test_panel()
 
@@ -2469,12 +2589,15 @@ func _command_ingame_popup_levels_summary() -> void:
 
 
 func _apply_pending_pinned_display_variables() -> void:
-	if not _display:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
 		return
-	_apply_pending_pinned_display_variables_to(_display)
+	for live_display in live_displays:
+		_apply_pending_pinned_display_variables_to(live_display, false)
+	_pending_pinned_display_variables.clear()
 
 
-func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay) -> void:
+func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay, clear_pending: bool = true) -> void:
 	if not target_display:
 		return
 
@@ -2483,7 +2606,8 @@ func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay) ->
 			target_display.pin_display_variable(str(address))
 		else:
 			target_display.unpin_display_variable(str(address))
-	_pending_pinned_display_variables.clear()
+	if clear_pending:
+		_pending_pinned_display_variables.clear()
 
 
 func _on_display_cleared() -> void:
