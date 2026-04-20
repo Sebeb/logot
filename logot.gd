@@ -539,7 +539,7 @@ func add_command_with_options(command_name: String, function: Callable, argument
 	_notify_command_catalog_changed()
 
 
-func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
+func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
 	if not setter.is_valid():
 		push_warning("Cannot add set/get command '%s': invalid setter." % command_name)
 		return
@@ -566,7 +566,7 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		option_group_name,
 		option_group_priority
 	)
-	add_display_variable(command_name, getter, inline_color_provider)
+	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name)
 
 
 func _resolve_setget_option_values(getter: Callable, options_provider: Callable = Callable()) -> Array:
@@ -1308,7 +1308,8 @@ func _register_display_variable_signal(address: String, source: Object, signal_n
 	if not source.has_signal(signal_name):
 		return
 
-	var callback := Callable(self, "_on_display_variable_signal_emitted").bind(address)
+	var callback := func(_arg1 = null, _arg2 = null, _arg3 = null, _arg4 = null, _arg5 = null, _arg6 = null) -> void:
+		_on_display_variable_signal_emitted(address)
 	if not source.is_connected(signal_name, callback):
 		source.connect(signal_name, callback)
 	_display_variable_signal_connections[address] = {
