@@ -2,7 +2,7 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://de7gvc2jems6t"
+uid="uid://pxnt2b4qpq77"
 path="res://.godot/imported/IBMPlexMono-Regular.ttf-1602e4879071401ff2c382ef91adcd1b.fontdata"
 
 [deps]
@@ -22,7 +22,7 @@ msdf_size=48
 allow_system_fallback=true
 force_autohinter=false
 modulate_color_glyphs=false
-hinting=1
+hinting=3
 subpixel_positioning=4
 keep_rounding_remainders=true
 oversampling=0.0
