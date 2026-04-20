@@ -97,6 +97,30 @@ const SETTINGS_FILE := "user://console_filters.cfg"
 const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
 const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_interfacing/console_interfacing_commands.gd"
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
+const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
+const _UNKNOWN_GIT_BRANCH := "unknown"
+const DEFAULT_INGAME_POPUP_LIFETIME := 5.0
+const INGAME_POPUP_FADE_DURATION := 0.35
+const INGAME_POPUP_MAX_VISIBLE := 6
+const INGAME_POPUP_MAX_SPAWNS_PER_SECOND := 8
+const INGAME_POPUP_WIDTH := 440.0
+const INGAME_POPUP_HEIGHT := 280.0
+const INGAME_POPUP_MARGIN := 16.0
+const INGAME_POPUP_COMMAND_PALETTE_GAP := 10.0
+const INGAME_POPUP_SWIPE_DISMISS_THRESHOLD := 90.0
+const INGAME_POPUP_SWIPE_DISMISS_TIMEOUT_MSEC := 450
+const INGAME_POPUP_SWIPE_WHEEL_STEP := 36.0
+const INGAME_POPUP_SWIPE_EXIT_DISTANCE := 72.0
+const INGAME_POPUP_SWIPE_EXIT_DURATION := 0.18
+const INGAME_POPUP_SETTINGS_SECTION := "ingame_popups"
+const INGAME_POPUP_COMMAND_PATH := "console/settings/ingame_popups"
+const INGAME_POPUP_LEVELS_COMMAND_PATH := "console/settings/ingame_popups/levels"
+const INGAME_POPUP_LEVELS_DISABLE_ALL_COMMAND_PATH := "console/settings/ingame_popups/levels/off_all"
+const INGAME_POPUP_LEVELS_COPY_CONSOLE_COMMAND_PATH := "console/settings/ingame_popups/levels/copy_console"
+const INGAME_POPUP_LEVELS_MIRROR_MAIN_CONSOLE_COMMAND_PATH := "console/settings/ingame_popups/levels/mirror_main_console"
+const INGAME_POPUP_FADE_TIME_COMMAND_PATH := "console/settings/ingame_popups/fade_time"
+const INGAME_POPUP_ENABLED_MARK := "✓"
+const INGAME_POPUP_DISABLED_MARK := "✗"
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -113,6 +137,15 @@ const VisibilityMode = LogotDisplay.VisibilityMode
 const LogEntry = LogotDisplay.LogEntry
 const LogotCommand = LogotDisplay.LogotCommand
 const LogotDisplayVariable = LogotDisplay.LogotDisplayVariable
+const INGAME_POPUP_LEVELS := [
+	LogLevel.ERROR,
+	LogLevel.WARN,
+	LogLevel.COMMAND,
+	LogLevel.MESSAGE,
+	LogLevel.INFO,
+	LogLevel.VERBOSE,
+	LogLevel.DEBUG,
+]
 
 
 # =============================================================================
@@ -155,6 +188,7 @@ var _test_manager = null
 var _test_panel = null
 var _test_button: Button = null
 var _test_panel_input_row: HBoxContainer = null
+var _current_git_branch := ""
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -184,6 +218,20 @@ var _restore_full_console_after_command_entry := false
 var _collapse_duplicates := false
 var _wrap_text := false
 var _truncate_multiline := true
+var _ingame_popup_levels: Dictionary = {}
+var _ingame_popup_mirror_main_console := false
+var _ingame_popup_fade_time: float = DEFAULT_INGAME_POPUP_LIFETIME
+var _ingame_popup_fade_enabled := true
+var _ingame_popup_guard := false
+var _ingame_popup_spawn_timestamps: Array[float] = []
+var _ingame_popup_nodes: Dictionary = {}
+
+var _ingame_popup_overlay: Control
+var _ingame_popup_container: VBoxContainer
+var _ingame_overlay_top_edge_override := 0.0
+var _ingame_overlay_left_edge_override := 0.0
+var _ingame_overlay_right_edge_override := 0.0
+var _ingame_overlay_bottom_edge_override := 0.0
 
 
 # =============================================================================
@@ -229,6 +277,12 @@ func log(objects: Array, level: int = LogLevel.MESSAGE, channel: String = "", st
 		_display.update_sidebar_statistics()
 
 	_trim_old_entries()
+
+	if _should_show_ingame_popup_for_entry(entry):
+		if not _ingame_popup_guard:
+			_ingame_popup_guard = true
+			_show_ingame_popup(entry)
+			_ingame_popup_guard = false
 
 	# Send to editor via debugger (for running game instances)
 	_send_log_entry_to_editor(entry)
@@ -450,20 +504,20 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0) -> void:
+func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
 	if arguments is int:
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority)
 
 
-func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0) -> void:
+func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
 	var str_args: PackedStringArray = PackedStringArray()
 	for argument in arguments:
 		str_args.append(str(argument))
@@ -476,11 +530,13 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		argument_options_provider,
 		value_getter,
 		group_name,
-		group_priority
+		group_priority,
+		option_group_name,
+		option_group_priority
 	)
 
 
-func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0) -> void:
+func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
 	if not setter.is_valid():
 		push_warning("Cannot add set/get command '%s': invalid setter." % command_name)
 		return
@@ -503,7 +559,9 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		argument_options_provider,
 		getter,
 		group_name,
-		group_priority
+		group_priority,
+		option_group_name,
+		option_group_priority
 	)
 	add_display_variable(command_name, getter, inline_color_provider)
 
@@ -1050,8 +1108,8 @@ func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
 
 
-func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable()) -> void:
-	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider)
+func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0) -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority)
 
 
 func remove_display_variable(address: String) -> void:
@@ -1168,9 +1226,60 @@ func get_display_variables() -> Dictionary:
 	return display_variables
 
 
+func set_ingame_overlay_edge_overrides(top: float = 0.0, left: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> void:
+	_ingame_overlay_top_edge_override = maxf(0.0, top)
+	_ingame_overlay_left_edge_override = maxf(0.0, left)
+	_ingame_overlay_right_edge_override = maxf(0.0, right)
+	_ingame_overlay_bottom_edge_override = maxf(0.0, bottom)
+	_apply_ingame_overlay_edge_overrides()
+
+
+func set_ingame_overlay_top_edge_override(value: float) -> void:
+	set_ingame_overlay_edge_overrides(value, _ingame_overlay_left_edge_override, _ingame_overlay_right_edge_override, _ingame_overlay_bottom_edge_override)
+
+
+func set_ingame_overlay_left_edge_override(value: float) -> void:
+	set_ingame_overlay_edge_overrides(_ingame_overlay_top_edge_override, value, _ingame_overlay_right_edge_override, _ingame_overlay_bottom_edge_override)
+
+
+func set_ingame_overlay_right_edge_override(value: float) -> void:
+	set_ingame_overlay_edge_overrides(_ingame_overlay_top_edge_override, _ingame_overlay_left_edge_override, value, _ingame_overlay_bottom_edge_override)
+
+
+func set_ingame_overlay_bottom_edge_override(value: float) -> void:
+	set_ingame_overlay_edge_overrides(_ingame_overlay_top_edge_override, _ingame_overlay_left_edge_override, _ingame_overlay_right_edge_override, value)
+
+
+func get_ingame_overlay_top_edge_override() -> float:
+	return _ingame_overlay_top_edge_override
+
+
+func get_ingame_overlay_left_edge_override() -> float:
+	return _ingame_overlay_left_edge_override
+
+
+func get_ingame_overlay_right_edge_override() -> float:
+	return _ingame_overlay_right_edge_override
+
+
+func get_ingame_overlay_bottom_edge_override() -> float:
+	return _ingame_overlay_bottom_edge_override
+
+
 func rebuild_display_view() -> void:
 	if _display:
 		_display.rebuild_display()
+
+
+func _apply_ingame_overlay_edge_overrides() -> void:
+	if _display and _display.has_method("set_ingame_overlay_edge_overrides"):
+		_display.set_ingame_overlay_edge_overrides(
+			_ingame_overlay_top_edge_override,
+			_ingame_overlay_left_edge_override,
+			_ingame_overlay_right_edge_override,
+			_ingame_overlay_bottom_edge_override
+		)
+	_update_ingame_popup_layout()
 
 
 # =============================================================================
@@ -1189,10 +1298,17 @@ func _enter_tree() -> void:
 
 	# Only set up game UI when NOT in editor
 	if not Engine.is_editor_hint():
+		_load_ingame_popup_settings()
 		_setup_game_ui()
 		_setup_debugger_connection()
 
 	process_mode = PROCESS_MODE_ALWAYS
+
+
+func _process(_delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
+	_update_ingame_popup_layout()
 
 
 # =============================================================================
@@ -1416,13 +1532,14 @@ func _setup_game_ui() -> void:
 	_display.set_channel_visibility_provider(get_channel_visibility, set_channel_visibility)
 
 	# Connect signals for visibility changes
-	_display.custom_setting_changed.connect(_on_display_setting_changed)
 	_display.cleared.connect(_on_display_cleared)
 	_display.channel_deleted.connect(_on_channel_deleted)
 
 	# Initialize the display
 	_display.initialize_display()
 	_sync_console_setting_cache_from_display()
+	_ensure_ingame_popup_overlay()
+	_apply_ingame_overlay_edge_overrides()
 
 	# Get references to UI nodes from display
 	_logot_ui.visible = false
@@ -1453,6 +1570,904 @@ func _setup_game_ui() -> void:
 	_ensure_test_panel()
 
 
+func _ensure_ingame_popup_overlay() -> void:
+	if _ingame_popup_overlay or not _display:
+		return
+
+	var overlay := Control.new()
+	overlay.name = "IngamePopupOverlay"
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.process_mode = PROCESS_MODE_ALWAYS
+	overlay.z_index = 210
+	_display.add_child(overlay)
+	_ingame_popup_overlay = overlay
+
+	var container := VBoxContainer.new()
+	container.name = "IngamePopupContainer"
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.process_mode = PROCESS_MODE_ALWAYS
+	container.alignment = BoxContainer.ALIGNMENT_END
+	container.add_theme_constant_override("separation", 6)
+	container.anchor_left = 0.0
+	container.anchor_top = 1.0
+	container.anchor_right = 0.0
+	container.anchor_bottom = 1.0
+	container.offset_left = INGAME_POPUP_MARGIN
+	container.offset_top = -INGAME_POPUP_HEIGHT - INGAME_POPUP_MARGIN
+	container.offset_right = INGAME_POPUP_WIDTH + INGAME_POPUP_MARGIN
+	container.offset_bottom = -INGAME_POPUP_MARGIN
+	container.grow_horizontal = Control.GROW_DIRECTION_END
+	container.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	overlay.add_child(container)
+	_ingame_popup_container = container
+	_raise_ingame_popup_overlay()
+	_update_ingame_popup_layout()
+
+
+func _raise_ingame_popup_overlay() -> void:
+	if _display == null or _ingame_popup_overlay == null:
+		return
+	if _ingame_popup_overlay.get_parent() != _display:
+		return
+	_display.move_child(_ingame_popup_overlay, _display.get_child_count() - 1)
+
+
+func _is_command_palette_visible() -> bool:
+	if _display == null:
+		return false
+	return _display.is_command_palette_active()
+
+
+func _get_command_palette_reserved_height() -> float:
+	if _display == null:
+		return 0.0
+	return _display.get_command_palette_reserved_height()
+
+
+func _update_ingame_popup_layout() -> void:
+	if _ingame_popup_overlay == null or _ingame_popup_container == null:
+		return
+	var bottom_margin := INGAME_POPUP_MARGIN + _ingame_overlay_bottom_edge_override
+	var left_margin := INGAME_POPUP_MARGIN + _ingame_overlay_left_edge_override
+	var reserved_height := _get_command_palette_reserved_height()
+	if reserved_height > 0.0:
+		bottom_margin += reserved_height + INGAME_POPUP_COMMAND_PALETTE_GAP
+		_raise_ingame_popup_overlay()
+	_ingame_popup_container.offset_left = left_margin
+	_ingame_popup_container.offset_right = left_margin + INGAME_POPUP_WIDTH
+	_ingame_popup_container.offset_top = -INGAME_POPUP_HEIGHT - bottom_margin
+	_ingame_popup_container.offset_bottom = -bottom_margin
+
+
+func _should_suspend_ingame_popups() -> bool:
+	return control != null and control.visible and not _is_command_palette_visible()
+
+
+func _should_show_ingame_popup_for_entry(entry: LogEntry) -> bool:
+	return entry.visible and _is_ingame_popup_level_effectively_enabled(entry.level)
+
+
+func _show_ingame_popup(entry: LogEntry) -> void:
+	if Engine.is_editor_hint() or not _should_show_ingame_popup_for_entry(entry):
+		return
+	if _should_suspend_ingame_popups():
+		return
+
+	_ensure_ingame_popup_overlay()
+	if _ingame_popup_container == null:
+		return
+	_raise_ingame_popup_overlay()
+	_update_ingame_popup_layout()
+
+	var popup_signature := _get_ingame_popup_signature(entry)
+	var existing_popup := _find_ingame_popup(popup_signature)
+	if existing_popup != null:
+		if bool(existing_popup.get_meta("dismiss_animating", false)):
+			_free_ingame_popup(existing_popup)
+		else:
+			_update_existing_ingame_popup(existing_popup, entry)
+			return
+
+	if not _can_spawn_ingame_popup():
+		return
+
+	while _ingame_popup_container.get_child_count() >= INGAME_POPUP_MAX_VISIBLE:
+		var oldest_popup := _ingame_popup_container.get_child(0)
+		if oldest_popup:
+			_free_ingame_popup(oldest_popup)
+		else:
+			break
+
+	var popup_panel := PanelContainer.new()
+	popup_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	popup_panel.process_mode = PROCESS_MODE_ALWAYS
+	popup_panel.modulate = Color(1, 1, 1, 1)
+	popup_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	popup_panel.custom_minimum_size = Vector2(INGAME_POPUP_WIDTH, 0)
+	popup_panel.set_meta("signature", popup_signature)
+	popup_panel.set_meta("message_text", _format_objects(entry.objects))
+	popup_panel.set_meta("entry_level", entry.level)
+	popup_panel.set_meta("entry_channel", entry.channel)
+	popup_panel.set_meta("timestamp", entry.timestamp)
+	popup_panel.set_meta("extra_line_count", entry.extra_line_count)
+	popup_panel.set_meta("duplicate_count", 0)
+	popup_panel.set_meta("expanded", false)
+	popup_panel.set_meta("hovered", false)
+	popup_panel.set_meta("swipe_dismiss_progress", 0.0)
+	popup_panel.set_meta("swipe_dismiss_last_msec", 0)
+	popup_panel.set_meta("dismiss_animating", false)
+
+	var panel_style := _build_ingame_popup_panel_style(entry.level)
+	popup_panel.add_theme_stylebox_override("panel", panel_style)
+
+	var popup_label := RichTextLabel.new()
+	popup_label.bbcode_enabled = true
+	popup_label.fit_content = true
+	popup_label.clip_contents = false
+	popup_label.scroll_active = false
+	popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	popup_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	popup_label.focus_mode = Control.FOCUS_NONE
+	popup_label.meta_underlined = false
+	popup_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	popup_label.custom_minimum_size = Vector2(INGAME_POPUP_WIDTH - 46.0, 0)
+	if rich_label:
+		popup_label.theme = rich_label.theme
+		var popup_font := rich_label.get_theme_font("normal_font")
+		if popup_font:
+			popup_label.add_theme_font_override("normal_font", popup_font)
+		var popup_font_size := rich_label.get_theme_font_size("normal_font_size")
+		if popup_font_size > 0:
+			popup_label.add_theme_font_size_override("normal_font_size", popup_font_size)
+
+	var close_button := Button.new()
+	close_button.text = "×"
+	close_button.tooltip_text = "Close popup"
+	close_button.visible = false
+	close_button.focus_mode = Control.FOCUS_NONE
+	close_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	close_button.anchor_left = 1.0
+	close_button.anchor_top = 0.0
+	close_button.anchor_right = 1.0
+	close_button.anchor_bottom = 0.0
+	close_button.offset_left = 1.0
+	close_button.offset_top = -9.0
+	close_button.offset_right = 19.0
+	close_button.offset_bottom = 9.0
+	close_button.custom_minimum_size = Vector2(18.0, 18.0)
+	close_button.z_index = 2
+	_style_ingame_popup_close_button(close_button)
+	close_button.pressed.connect(func() -> void:
+		_free_ingame_popup(popup_panel)
+	)
+
+	var count_badge := PanelContainer.new()
+	count_badge.visible = false
+	count_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count_badge.anchor_left = 1.0
+	count_badge.anchor_top = 0.0
+	count_badge.anchor_right = 1.0
+	count_badge.anchor_bottom = 0.0
+	count_badge.offset_left = 1.0
+	count_badge.offset_top = -9.0
+	count_badge.offset_right = 19.0
+	count_badge.offset_bottom = 9.0
+	count_badge.custom_minimum_size = Vector2(18.0, 18.0)
+	count_badge.z_index = 2
+	_style_ingame_popup_count_badge(count_badge, entry.level)
+
+	var count_label := Label.new()
+	count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	count_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	count_label.add_theme_color_override("font_color", Color(0.08, 0.09, 0.11, 1.0))
+	count_label.add_theme_font_size_override("font_size", 10)
+	count_badge.add_child(count_label)
+
+	popup_panel.add_child(popup_label)
+	popup_label.add_child(close_button)
+	popup_label.add_child(count_badge)
+	_ingame_popup_container.add_child(popup_panel)
+	popup_panel.set_meta("popup_label", popup_label)
+	popup_panel.set_meta("close_button", close_button)
+	popup_panel.set_meta("count_badge", count_badge)
+	popup_panel.set_meta("count_label", count_label)
+	_register_ingame_popup(popup_signature, popup_panel)
+	_record_ingame_popup_spawn()
+	_render_ingame_popup(popup_panel)
+	popup_panel.mouse_entered.connect(func() -> void:
+		_set_ingame_popup_hover_state(popup_panel, true)
+	)
+	popup_panel.gui_input.connect(func(event: InputEvent) -> void:
+		_handle_ingame_popup_gui_input(popup_panel, event)
+	)
+	popup_panel.mouse_exited.connect(func() -> void:
+		_reset_ingame_popup_swipe_dismiss(popup_panel)
+		call_deferred("_refresh_ingame_popup_hover_state_by_signature", popup_signature)
+	)
+	close_button.mouse_entered.connect(func() -> void:
+		_set_ingame_popup_hover_state(popup_panel, true)
+	)
+	close_button.mouse_exited.connect(func() -> void:
+		call_deferred("_refresh_ingame_popup_hover_state_by_signature", popup_signature)
+	)
+	_schedule_ingame_popup_fade(popup_panel, true)
+
+
+func _build_ingame_popup_panel_style(level: int) -> StyleBoxFlat:
+	var level_color: Color = LogotDisplay.LEVEL_COLORS.get(level, Color.WHITE)
+	var tinted_background := Color(
+		level_color.r * 0.08 + 0.015,
+		level_color.g * 0.08 + 0.02,
+		level_color.b * 0.08 + 0.03,
+		1.0
+	)
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = tinted_background
+	panel_style.border_color = level_color.lerp(Color(1, 1, 1, 1), 0.18)
+	panel_style.border_width_left = 1
+	panel_style.border_width_top = 1
+	panel_style.border_width_right = 1
+	panel_style.border_width_bottom = 1
+	panel_style.corner_radius_top_left = 6
+	panel_style.corner_radius_top_right = 6
+	panel_style.corner_radius_bottom_right = 6
+	panel_style.corner_radius_bottom_left = 6
+	panel_style.content_margin_left = 10.0
+	panel_style.content_margin_top = 6.0
+	panel_style.content_margin_right = 10.0
+	panel_style.content_margin_bottom = 6.0
+	return panel_style
+
+
+func _style_ingame_popup_count_badge(badge: PanelContainer, level: int) -> void:
+	var level_color: Color = LogotDisplay.LEVEL_COLORS.get(level, Color.WHITE)
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.9)
+	badge_style.border_color = Color(level_color.r, level_color.g, level_color.b, 1.0)
+	badge_style.border_width_left = 1
+	badge_style.border_width_top = 1
+	badge_style.border_width_right = 1
+	badge_style.border_width_bottom = 1
+	badge_style.corner_radius_top_left = 9
+	badge_style.corner_radius_top_right = 9
+	badge_style.corner_radius_bottom_right = 9
+	badge_style.corner_radius_bottom_left = 9
+	badge_style.content_margin_left = 0.0
+	badge_style.content_margin_top = 0.0
+	badge_style.content_margin_right = 0.0
+	badge_style.content_margin_bottom = 0.0
+	badge.add_theme_stylebox_override("panel", badge_style)
+	badge.add_theme_color_override("font_color", Color(0.08, 0.09, 0.11, 1.0))
+	badge.add_theme_font_size_override("font_size", 10)
+
+
+func _get_ingame_popup_signature(entry: LogEntry) -> String:
+	return "%d|%s|%s" % [entry.level, entry.channel, _format_objects(entry.objects)]
+
+
+func _register_ingame_popup(signature: String, popup_panel: Control) -> void:
+	_ingame_popup_nodes[signature] = weakref(popup_panel)
+
+
+func _find_ingame_popup(signature: String) -> Control:
+	if not _ingame_popup_nodes.has(signature):
+		return null
+	var popup_ref = _ingame_popup_nodes[signature]
+	if popup_ref is WeakRef:
+		var popup_node = (popup_ref as WeakRef).get_ref()
+		if popup_node != null and is_instance_valid(popup_node):
+			return popup_node as Control
+	_ingame_popup_nodes.erase(signature)
+	return null
+
+
+func _prune_ingame_popup_spawn_timestamps(now_seconds: float) -> void:
+	var threshold := now_seconds - 1.0
+	while not _ingame_popup_spawn_timestamps.is_empty() and _ingame_popup_spawn_timestamps[0] < threshold:
+		_ingame_popup_spawn_timestamps.remove_at(0)
+
+
+func _can_spawn_ingame_popup() -> bool:
+	var now_seconds := Time.get_ticks_msec() / 1000.0
+	_prune_ingame_popup_spawn_timestamps(now_seconds)
+	return _ingame_popup_spawn_timestamps.size() < INGAME_POPUP_MAX_SPAWNS_PER_SECOND
+
+
+func _record_ingame_popup_spawn() -> void:
+	var now_seconds := Time.get_ticks_msec() / 1000.0
+	_prune_ingame_popup_spawn_timestamps(now_seconds)
+	_ingame_popup_spawn_timestamps.append(now_seconds)
+
+
+func _update_existing_ingame_popup(popup_panel: Control, entry: LogEntry) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	if bool(popup_panel.get_meta("dismiss_animating", false)):
+		return
+	popup_panel.set_meta("timestamp", entry.timestamp)
+	popup_panel.set_meta("extra_line_count", entry.extra_line_count)
+	popup_panel.set_meta("duplicate_count", int(popup_panel.get_meta("duplicate_count", 0)) + 1)
+	_reset_ingame_popup_swipe_dismiss(popup_panel)
+	_render_ingame_popup(popup_panel)
+	if _ingame_popup_container != null and popup_panel.get_parent() == _ingame_popup_container:
+		_ingame_popup_container.move_child(popup_panel, _ingame_popup_container.get_child_count() - 1)
+	if bool(popup_panel.get_meta("hovered", false)):
+		_stop_ingame_popup_fade(popup_panel)
+	else:
+		_schedule_ingame_popup_fade(popup_panel, true)
+
+
+func _render_ingame_popup(popup_panel: Control) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	var popup_label = popup_panel.get_meta("popup_label", null) as RichTextLabel
+	var count_badge = popup_panel.get_meta("count_badge", null) as PanelContainer
+	var count_label = popup_panel.get_meta("count_label", null) as Label
+	var close_button = popup_panel.get_meta("close_button", null) as Button
+	if popup_label:
+		popup_label.clear()
+		popup_label.append_text(_format_ingame_popup_text(
+			str(popup_panel.get_meta("message_text", "")),
+			int(popup_panel.get_meta("entry_level", LogLevel.MESSAGE)),
+			str(popup_panel.get_meta("entry_channel", "")),
+			int(popup_panel.get_meta("extra_line_count", 0)),
+			bool(popup_panel.get_meta("expanded", false))
+		))
+	if count_label:
+		count_label.text = str(int(popup_panel.get_meta("duplicate_count", 0)))
+	if count_badge and close_button:
+		var duplicate_count := int(popup_panel.get_meta("duplicate_count", 0))
+		count_badge.visible = duplicate_count > 0 and not bool(popup_panel.get_meta("hovered", false))
+		close_button.visible = bool(popup_panel.get_meta("hovered", false))
+
+
+func _set_ingame_popup_hover_state(popup_panel: Control, hovered: bool) -> void:
+	if popup_panel == null:
+		return
+	if not is_instance_valid(popup_panel):
+		return
+	var was_hovered := bool(popup_panel.get_meta("hovered", false))
+	if was_hovered == hovered:
+		return
+	popup_panel.set_meta("hovered", hovered)
+	_render_ingame_popup(popup_panel)
+	if hovered:
+		_stop_ingame_popup_fade(popup_panel)
+	else:
+		_reset_ingame_popup_swipe_dismiss(popup_panel)
+		_schedule_ingame_popup_fade(popup_panel, true)
+
+
+func _toggle_ingame_popup_expanded(popup_panel: Control) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	popup_panel.set_meta("expanded", not bool(popup_panel.get_meta("expanded", false)))
+	_render_ingame_popup(popup_panel)
+
+
+func _refresh_ingame_popup_hover_state(popup_panel) -> void:
+	if popup_panel == null:
+		return
+	if not (popup_panel is Control):
+		return
+	var popup_control := popup_panel as Control
+	if not is_instance_valid(popup_control):
+		return
+	var close_button = popup_control.get_meta("close_button", null) as Button
+	if close_button == null or not is_instance_valid(close_button):
+		return
+	var mouse_position := popup_control.get_global_mouse_position()
+	var hovered := popup_control.get_global_rect().has_point(mouse_position) or close_button.get_global_rect().has_point(mouse_position)
+	_set_ingame_popup_hover_state(popup_control, hovered)
+
+
+func _refresh_ingame_popup_hover_state_by_signature(signature: String) -> void:
+	if signature.is_empty():
+		return
+	var popup_panel := _find_ingame_popup(signature)
+	if popup_panel == null:
+		return
+	_refresh_ingame_popup_hover_state(popup_panel)
+
+
+func _handle_ingame_popup_gui_input(popup_panel: Control, event: InputEvent) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	if bool(popup_panel.get_meta("dismiss_animating", false)):
+		popup_panel.accept_event()
+		return
+
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+			_toggle_ingame_popup_expanded(popup_panel)
+			popup_panel.accept_event()
+			return
+		if not mouse_event.pressed:
+			return
+		if mouse_event.button_index == MOUSE_BUTTON_WHEEL_LEFT:
+			_accumulate_ingame_popup_swipe_dismiss(popup_panel, INGAME_POPUP_SWIPE_WHEEL_STEP)
+			popup_panel.accept_event()
+			return
+		if mouse_event.button_index == MOUSE_BUTTON_WHEEL_RIGHT:
+			_reset_ingame_popup_swipe_dismiss(popup_panel)
+			return
+
+	if event is InputEventPanGesture:
+		var pan_event := event as InputEventPanGesture
+		if absf(pan_event.delta.x) <= absf(pan_event.delta.y):
+			return
+		var horizontal_amount := absf(pan_event.delta.x)
+		if is_zero_approx(horizontal_amount):
+			return
+		# Trackpad pan direction can vary with platform scroll settings, so any
+		# dominant horizontal pan over the popup is treated as dismissal intent.
+		_accumulate_ingame_popup_swipe_dismiss(popup_panel, horizontal_amount)
+		popup_panel.accept_event()
+
+
+func _accumulate_ingame_popup_swipe_dismiss(popup_panel: Control, amount: float) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel) or amount <= 0.0:
+		return
+
+	var now_msec := Time.get_ticks_msec()
+	var last_input_msec := int(popup_panel.get_meta("swipe_dismiss_last_msec", 0))
+	var progress := 0.0
+	if last_input_msec > 0 and now_msec - last_input_msec <= INGAME_POPUP_SWIPE_DISMISS_TIMEOUT_MSEC:
+		progress = float(popup_panel.get_meta("swipe_dismiss_progress", 0.0))
+
+	progress += amount
+	popup_panel.set_meta("swipe_dismiss_progress", progress)
+	popup_panel.set_meta("swipe_dismiss_last_msec", now_msec)
+	_set_ingame_popup_hover_state(popup_panel, true)
+
+	if progress >= INGAME_POPUP_SWIPE_DISMISS_THRESHOLD:
+		_dismiss_ingame_popup_with_swipe(popup_panel)
+
+
+func _reset_ingame_popup_swipe_dismiss(popup_panel: Control) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	popup_panel.set_meta("swipe_dismiss_progress", 0.0)
+	popup_panel.set_meta("swipe_dismiss_last_msec", 0)
+
+
+func _dismiss_ingame_popup_with_swipe(popup_panel: Control) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	if bool(popup_panel.get_meta("dismiss_animating", false)):
+		return
+
+	popup_panel.set_meta("dismiss_animating", true)
+	_reset_ingame_popup_swipe_dismiss(popup_panel)
+	_stop_ingame_popup_fade(popup_panel)
+
+	var dismiss_tween := popup_panel.create_tween()
+	dismiss_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	dismiss_tween.set_trans(Tween.TRANS_CUBIC)
+	dismiss_tween.set_ease(Tween.EASE_OUT)
+	dismiss_tween.parallel().tween_property(
+		popup_panel,
+		"position:x",
+		popup_panel.position.x - INGAME_POPUP_SWIPE_EXIT_DISTANCE,
+		INGAME_POPUP_SWIPE_EXIT_DURATION
+	)
+	dismiss_tween.parallel().tween_property(
+		popup_panel,
+		"modulate:a",
+		0.0,
+		INGAME_POPUP_SWIPE_EXIT_DURATION
+	)
+	dismiss_tween.finished.connect(func() -> void:
+		if is_instance_valid(popup_panel):
+			_free_ingame_popup(popup_panel)
+	)
+
+
+func _style_ingame_popup_close_button(button: Button) -> void:
+	var radius := 9
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.12, 0.14, 0.18, 0.98)
+	normal.border_color = Color(0.5, 0.54, 0.64, 0.98)
+	normal.border_width_left = 1
+	normal.border_width_top = 1
+	normal.border_width_right = 1
+	normal.border_width_bottom = 1
+	normal.corner_radius_top_left = radius
+	normal.corner_radius_top_right = radius
+	normal.corner_radius_bottom_right = radius
+	normal.corner_radius_bottom_left = radius
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.22, 0.26, 0.34, 1.0)
+	hover.border_color = Color(0.72, 0.78, 0.92, 1.0)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.28, 0.18, 0.2, 1.0)
+	pressed.border_color = Color(0.9, 0.58, 0.62, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_font_size_override("font_size", 10)
+
+
+func _stop_ingame_popup_fade_internal(popup_panel: Control) -> void:
+	var fade_tween = popup_panel.get_meta("fade_tween", null)
+	if fade_tween != null and is_instance_valid(fade_tween):
+		(fade_tween as Tween).kill()
+	popup_panel.set_meta("fade_tween", null)
+	popup_panel.modulate = Color(1, 1, 1, 1)
+
+
+func _stop_ingame_popup_fade(popup_panel: Control) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	if _ingame_popup_guard:
+		return
+	_ingame_popup_guard = true
+	_stop_ingame_popup_fade_internal(popup_panel)
+	_ingame_popup_guard = false
+
+
+func _schedule_ingame_popup_fade(popup_panel: Control, reset_timer: bool = false) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	if _ingame_popup_guard:
+		return
+	_ingame_popup_guard = true
+
+	_stop_ingame_popup_fade_internal(popup_panel)
+	if not _ingame_popup_fade_enabled:
+		_ingame_popup_guard = false
+		return
+
+	if reset_timer:
+		popup_panel.modulate = Color(1, 1, 1, 1)
+
+	var popup_lifetime := maxf(0.0, _ingame_popup_fade_time)
+	var popup_fade_duration := minf(INGAME_POPUP_FADE_DURATION, popup_lifetime)
+	var popup_tween := popup_panel.create_tween()
+	popup_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	popup_panel.set_meta("fade_tween", popup_tween)
+	popup_tween.tween_interval(maxf(0.0, popup_lifetime - popup_fade_duration))
+	popup_tween.tween_property(popup_panel, "modulate:a", 0.0, popup_fade_duration)
+	popup_tween.finished.connect(func() -> void:
+		if is_instance_valid(popup_panel):
+			_free_ingame_popup(popup_panel)
+	)
+	_ingame_popup_guard = false
+
+
+func _free_ingame_popup(popup_panel: Node) -> void:
+	if popup_panel == null or not is_instance_valid(popup_panel):
+		return
+	var popup_parent := popup_panel.get_parent()
+	if popup_parent != null:
+		popup_parent.remove_child(popup_panel)
+	if _ingame_popup_guard:
+		_unregister_ingame_popup_node(popup_panel)
+		popup_panel.queue_free()
+		return
+	_ingame_popup_guard = true
+	_unregister_ingame_popup_node(popup_panel)
+	if popup_panel is Control:
+		_stop_ingame_popup_fade_internal(popup_panel as Control)
+	popup_panel.queue_free()
+	_ingame_popup_guard = false
+
+
+func _format_ingame_popup(entry: LogEntry) -> String:
+	var popup_text := _format_objects(entry.objects)
+	return _format_ingame_popup_text(popup_text, entry.level, entry.channel, entry.extra_line_count, false)
+
+
+func _unregister_ingame_popup_node(popup_panel: Node) -> void:
+	var signature := str(popup_panel.get_meta("signature", ""))
+	if signature.is_empty():
+		return
+	if not _ingame_popup_nodes.has(signature):
+		return
+	var popup_ref = _ingame_popup_nodes[signature]
+	if popup_ref is WeakRef:
+		var popup_node = (popup_ref as WeakRef).get_ref()
+		if popup_node == popup_panel or popup_node == null:
+			_ingame_popup_nodes.erase(signature)
+			return
+	_ingame_popup_nodes.erase(signature)
+
+
+func _format_ingame_popup_text(message_text: String, level: int, channel: String, extra_line_count: int = 0, expanded: bool = false) -> String:
+	var display_text := message_text if expanded else (message_text.split("\n")[0] if "\n" in message_text else message_text)
+	var extra_indicator := ""
+	if extra_line_count > 0 and not expanded:
+		extra_indicator = " [i][color=#98A5BA]+%d[/color][/i]" % extra_line_count
+
+	var level_color := LogotDisplay.LEVEL_COLORS.get(level, Color.WHITE) as Color
+	var message_color := level_color.lerp(Color(0.96, 0.98, 1.0, 1.0), 0.72)
+	var message_color_hex := "#" + message_color.to_html(false)
+	var channel_markup := ""
+	if not channel.is_empty():
+		channel_markup = "[color=#D8E0EE][%s][/color] " % [
+			_escape_ingame_popup_bbcode(channel),
+		]
+
+	return "%s[color=%s]%s[/color]%s" % [
+		channel_markup,
+		message_color_hex,
+		_escape_ingame_popup_bbcode(display_text),
+		extra_indicator,
+	]
+
+
+func _escape_ingame_popup_bbcode(text: String) -> String:
+	return text.replace("[", "[lb]").replace("]", "[rb]")
+
+
+func _clear_ingame_popups() -> void:
+	if _ingame_popup_container == null:
+		_ingame_popup_nodes.clear()
+		_ingame_popup_spawn_timestamps.clear()
+		return
+	for child in _ingame_popup_container.get_children():
+		child.queue_free()
+	_ingame_popup_nodes.clear()
+	_ingame_popup_spawn_timestamps.clear()
+
+
+func _init_ingame_popup_level_defaults() -> void:
+	for level in INGAME_POPUP_LEVELS:
+		if not _ingame_popup_levels.has(level):
+			_ingame_popup_levels[level] = false
+
+
+func _get_ingame_popup_level_key(level: int) -> String:
+	var level_name := str(LogLevel.names.get(level, "level_%d" % level))
+	return level_name.to_lower()
+
+
+func _get_ingame_popup_level_command_path(level: int) -> String:
+	return "%s/%s" % [INGAME_POPUP_LEVELS_COMMAND_PATH, _get_ingame_popup_level_key(level)]
+
+
+func _get_ingame_popup_level_label(level: int) -> String:
+	return _get_ingame_popup_level_key(level)
+
+
+func _get_ingame_popup_level_display_name(level: int) -> String:
+	return str(LogLevel.names.get(level, "LEVEL_%d" % level))
+
+
+func _is_ingame_popup_level_enabled(level: int) -> bool:
+	_init_ingame_popup_level_defaults()
+	return bool(_ingame_popup_levels.get(level, false))
+
+
+func _is_ingame_popup_level_available(level: int) -> bool:
+	return get_level_visibility(level) != VisibilityMode.OFF
+
+
+func _is_ingame_popup_level_effectively_enabled(level: int) -> bool:
+	if _ingame_popup_mirror_main_console:
+		return get_level_visibility(level) == VisibilityMode.SHOWN
+	return _is_ingame_popup_level_available(level) and _is_ingame_popup_level_enabled(level)
+
+
+func _get_ingame_popup_level_indicator(level: int) -> String:
+	return INGAME_POPUP_ENABLED_MARK if _is_ingame_popup_level_effectively_enabled(level) else INGAME_POPUP_DISABLED_MARK
+
+
+func _get_ingame_popup_level_indicator_color(level: int) -> Color:
+	if _ingame_popup_mirror_main_console:
+		return Color(0.36, 0.84, 0.55, 1.0) if _is_ingame_popup_level_effectively_enabled(level) else Color(0.55, 0.57, 0.62, 1.0)
+	if not _is_ingame_popup_level_available(level):
+		return Color(0.55, 0.57, 0.62, 1.0)
+	return Color(0.36, 0.84, 0.55, 1.0) if _is_ingame_popup_level_enabled(level) else Color(0.88, 0.44, 0.44, 1.0)
+
+
+func _get_visibility_mode_label(mode: int) -> String:
+	match mode:
+		VisibilityMode.SHOWN:
+			return "shown"
+		VisibilityMode.HIDDEN:
+			return "hidden"
+		VisibilityMode.OFF:
+			return "off"
+		_:
+			return "shown"
+
+
+func _save_ingame_popup_settings() -> void:
+	_init_ingame_popup_level_defaults()
+	var config := ConfigFile.new()
+	config.load(SETTINGS_FILE)
+	for level in INGAME_POPUP_LEVELS:
+		config.set_value(INGAME_POPUP_SETTINGS_SECTION, _get_ingame_popup_level_key(level), _is_ingame_popup_level_enabled(level))
+	config.set_value(
+		INGAME_POPUP_SETTINGS_SECTION,
+		"mirror_main_console",
+		_ingame_popup_mirror_main_console
+	)
+	config.set_value(
+		INGAME_POPUP_SETTINGS_SECTION,
+		"fade_time",
+		"off" if not _ingame_popup_fade_enabled else _get_ingame_popup_fade_time_setting_value()
+	)
+	config.save(SETTINGS_FILE)
+
+
+func _load_ingame_popup_settings() -> void:
+	_init_ingame_popup_level_defaults()
+
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_FILE) != OK:
+		return
+
+	if config.has_section(INGAME_POPUP_SETTINGS_SECTION):
+		for level in INGAME_POPUP_LEVELS:
+			_ingame_popup_levels[level] = bool(config.get_value(INGAME_POPUP_SETTINGS_SECTION, _get_ingame_popup_level_key(level), false))
+		_ingame_popup_mirror_main_console = bool(config.get_value(
+			INGAME_POPUP_SETTINGS_SECTION,
+			"mirror_main_console",
+			false
+		))
+		_set_ingame_popup_fade_time_setting(str(config.get_value(
+			INGAME_POPUP_SETTINGS_SECTION,
+			"fade_time",
+			str(DEFAULT_INGAME_POPUP_LIFETIME)
+		)), false)
+		return
+
+	if config.has_section_key("settings", "ingame_popups"):
+		var legacy_enabled := bool(config.get_value("settings", "ingame_popups", false))
+		for level in INGAME_POPUP_LEVELS:
+			_ingame_popup_levels[level] = legacy_enabled
+
+
+func _set_ingame_popup_level_enabled(level: int, enabled: bool) -> bool:
+	_init_ingame_popup_level_defaults()
+	if enabled and not _is_ingame_popup_level_available(level):
+		print_error("Cannot enable popup for %s while the main console level is OFF." % _get_ingame_popup_level_display_name(level))
+		return false
+
+	_ingame_popup_levels[level] = enabled
+	_save_ingame_popup_settings()
+	if not enabled:
+		_clear_ingame_popups()
+	return true
+
+
+func _toggle_ingame_popup_level(level: int) -> void:
+	var next_enabled := not _is_ingame_popup_level_enabled(level)
+	if not _set_ingame_popup_level_enabled(level, next_enabled):
+		return
+	var mirror_suffix := ""
+	if _ingame_popup_mirror_main_console:
+		mirror_suffix = " (stored for custom mode; currently bypassed by mirror main console)"
+	print_line("Ingame popup custom filter for %s: %s%s" % [
+		_get_ingame_popup_level_display_name(level),
+		"on" if next_enabled else "off",
+		mirror_suffix,
+	])
+
+
+func _disable_all_ingame_popup_levels() -> void:
+	_init_ingame_popup_level_defaults()
+	for level in INGAME_POPUP_LEVELS:
+		_ingame_popup_levels[level] = false
+	_save_ingame_popup_settings()
+	_clear_ingame_popups()
+	if _ingame_popup_mirror_main_console:
+		print_line("Stored custom ingame popup levels disabled for all log levels. Mirror main console is still active.")
+		return
+	print_line("Ingame popups disabled for all log levels.")
+
+
+func _copy_ingame_popup_levels_from_console() -> void:
+	_init_ingame_popup_level_defaults()
+	for level in INGAME_POPUP_LEVELS:
+		_ingame_popup_levels[level] = get_level_visibility(level) == VisibilityMode.SHOWN
+	_save_ingame_popup_settings()
+	if _ingame_popup_mirror_main_console:
+		print_line("Stored custom ingame popup levels copied from the main console visibility. Mirror main console is still active.")
+		return
+	print_line("Ingame popup levels copied from the main console visibility.")
+
+
+func _get_ingame_popup_mirror_main_console() -> bool:
+	return _ingame_popup_mirror_main_console
+
+
+func _set_ingame_popup_mirror_main_console(enabled: bool) -> void:
+	if _ingame_popup_mirror_main_console == enabled:
+		return
+	_ingame_popup_mirror_main_console = enabled
+	_save_ingame_popup_settings()
+	_clear_ingame_popups()
+
+
+func _get_ingame_popup_fade_time_options() -> Array:
+	return ["off", "1", "3", "5", "10"]
+
+
+func _get_ingame_popup_fade_time_setting_value() -> String:
+	return "off" if not _ingame_popup_fade_enabled else str(_ingame_popup_fade_time)
+
+
+func _set_ingame_popup_fade_time_setting(raw_value: String, persist: bool = true) -> bool:
+	var trimmed_value := raw_value.strip_edges().to_lower()
+	if trimmed_value == "off":
+		_ingame_popup_fade_enabled = false
+		if persist:
+			_save_ingame_popup_settings()
+		return true
+
+	var numeric_text := raw_value.strip_edges()
+	if not (numeric_text.is_valid_float() or numeric_text.is_valid_int()):
+		if persist:
+			print_error("Ingame popup fade time must be a number of seconds or 'off'.")
+		return false
+
+	var next_value := float(numeric_text)
+	if next_value < 0.0:
+		if persist:
+			print_error("Ingame popup fade time must be zero or greater.")
+		return false
+
+	_ingame_popup_fade_time = next_value
+	_ingame_popup_fade_enabled = true
+	if persist:
+		_save_ingame_popup_settings()
+	return true
+
+
+func _command_ingame_popups_summary() -> void:
+	var lines: PackedStringArray = []
+	lines.append("Ingame popup settings:")
+	lines.append("  /%s" % INGAME_POPUP_LEVELS_COMMAND_PATH)
+	lines.append("  /%s (%s)" % [INGAME_POPUP_FADE_TIME_COMMAND_PATH, _get_ingame_popup_fade_time_setting_value()])
+	lines.append("  log level mode: %s" % ("mirror main console" if _ingame_popup_mirror_main_console else "custom popup levels"))
+	print_line("\n".join(lines))
+
+
+func _command_ingame_popup_levels_summary() -> void:
+	var lines: PackedStringArray = []
+	lines.append("Ingame popup log levels:")
+	lines.append("  /%s (%s)" % [
+		INGAME_POPUP_LEVELS_MIRROR_MAIN_CONSOLE_COMMAND_PATH,
+		"on" if _ingame_popup_mirror_main_console else "off",
+	])
+	lines.append("  /%s" % INGAME_POPUP_LEVELS_DISABLE_ALL_COMMAND_PATH)
+	lines.append("  /%s" % INGAME_POPUP_LEVELS_COPY_CONSOLE_COMMAND_PATH)
+	if _ingame_popup_mirror_main_console:
+		lines.append("  mirroring the main console log level filter; custom popup level settings are bypassed.")
+	else:
+		lines.append("  using custom popup log level settings.")
+	for level in INGAME_POPUP_LEVELS:
+		if _ingame_popup_mirror_main_console:
+			lines.append("  %s %s (main: %s, custom stored: %s)" % [
+				_get_ingame_popup_level_indicator(level),
+				_get_ingame_popup_level_display_name(level),
+				_get_visibility_mode_label(get_level_visibility(level)),
+				"on" if _is_ingame_popup_level_enabled(level) else "off",
+			])
+		else:
+			lines.append("  %s %s (main: %s)" % [
+				_get_ingame_popup_level_indicator(level),
+				_get_ingame_popup_level_display_name(level),
+				_get_visibility_mode_label(get_level_visibility(level)),
+			])
+	print_line("\n".join(lines))
+
+
 func _apply_pending_pinned_display_variables() -> void:
 	if not _display:
 		return
@@ -1469,16 +2484,6 @@ func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay) ->
 		else:
 			target_display.unpin_display_variable(str(address))
 	_pending_pinned_display_variables.clear()
-
-
-func _on_display_setting_changed(setting_name: String, value: bool) -> void:
-	match setting_name:
-		"collapse_duplicates":
-			_collapse_duplicates = value
-		"wrap_text":
-			_wrap_text = value
-		"truncate_multiline":
-			_truncate_multiline = value
 
 
 func _on_display_cleared() -> void:
@@ -1587,6 +2592,119 @@ func _register_console_setting_commands() -> void:
 	)
 
 
+func _register_ingame_popup_commands() -> void:
+	add_command(
+		INGAME_POPUP_COMMAND_PATH,
+		_command_ingame_popups_summary,
+		[],
+		0,
+		"Configure in-game popup behavior."
+	)
+	add_command(
+		INGAME_POPUP_LEVELS_COMMAND_PATH,
+		_command_ingame_popup_levels_summary,
+		[],
+		0,
+		"Configure which log levels appear as in-game popups."
+	)
+	add_command(
+		INGAME_POPUP_LEVELS_DISABLE_ALL_COMMAND_PATH,
+		_disable_all_ingame_popup_levels,
+		[],
+		0,
+		"Disable in-game popups for every log level."
+	)
+	add_command(
+		INGAME_POPUP_LEVELS_COPY_CONSOLE_COMMAND_PATH,
+		_copy_ingame_popup_levels_from_console,
+		[],
+		0,
+		"Copy the main console's shown log levels into the custom popup filter."
+	)
+	add_setget_command(
+		INGAME_POPUP_LEVELS_MIRROR_MAIN_CONSOLE_COMMAND_PATH,
+		_set_ingame_popup_mirror_main_console,
+		_get_ingame_popup_mirror_main_console,
+		"Set whether popups mirror the main console's log level filter instead of using custom popup log levels."
+	)
+	add_setget_command(
+		INGAME_POPUP_FADE_TIME_COMMAND_PATH,
+		func(value: String) -> void:
+			_set_ingame_popup_fade_time_setting(value),
+		_get_ingame_popup_fade_time_setting_value,
+		"Set how long popups stay visible in seconds, or 'off' to disable auto-fading.",
+		_get_ingame_popup_fade_time_options
+	)
+
+	for level in INGAME_POPUP_LEVELS:
+		var command_path := _get_ingame_popup_level_command_path(level)
+		var level_label := _get_ingame_popup_level_display_name(level)
+		add_command(
+			command_path,
+			Callable(self, "_toggle_ingame_popup_level").bind(level),
+			[],
+			0,
+			"Toggle the custom in-game popup filter for %s logs." % level_label
+		)
+		add_display_variable(
+			command_path,
+			Callable(self, "_get_ingame_popup_level_indicator").bind(level),
+			Callable(self, "_get_ingame_popup_level_indicator_color").bind(level)
+		)
+
+
+func _register_dev_commands() -> void:
+	add_command(
+		_CURRENT_GIT_BRANCH_COMMAND_PATH,
+		_command_current_git_branch,
+		[],
+		0,
+		"Prints the current git branch name."
+	)
+	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch)
+
+
+func _command_current_git_branch() -> void:
+	print_line("Current git branch: %s" % _get_current_git_branch())
+
+
+func _get_current_git_branch() -> String:
+	if not _current_git_branch.is_empty():
+		return _current_git_branch
+
+	_current_git_branch = _resolve_current_git_branch()
+	if _current_git_branch.is_empty():
+		_current_git_branch = _UNKNOWN_GIT_BRANCH
+	return _current_git_branch
+
+
+func _resolve_current_git_branch() -> String:
+	var command_output: Array = []
+	var status := OS.execute("git", ["rev-parse", "--abbrev-ref", "HEAD"], command_output, true)
+	if status == OK and not command_output.is_empty():
+		var branch := str(command_output[0]).strip_edges()
+		if not branch.is_empty():
+			return branch
+
+	var head_file_path := ProjectSettings.globalize_path("res://.git/HEAD")
+	if head_file_path.is_empty() or not FileAccess.file_exists(head_file_path):
+		return ""
+
+	var head_file := FileAccess.open(head_file_path, FileAccess.READ)
+	if head_file == null:
+		return ""
+
+	var head_line := head_file.get_line().strip_edges()
+	if head_line.is_empty():
+		return ""
+	if head_line.begins_with("ref: "):
+		var ref_path := head_line.substr(5).strip_edges()
+		if ref_path.begins_with("refs/heads/"):
+			return ref_path.trim_prefix("refs/heads/")
+		return ref_path
+	return head_line
+
+
 func _register_pin_commands() -> void:
 	add_command("pins/view", _command_view_pins, [], 0, "Shows currently pinned display variables and their pin/unpin commands.")
 	add_command("pins/clear", _command_clear_pins, [], 0, "Clears all pinned display variables.")
@@ -1647,6 +2765,7 @@ func _ready() -> void:
 		add_command("console/test_nested_channels", _cmd_test_nested_channels, [], 0, "Test nested/hierarchical channel functionality")
 		_register_console_interfacing_test_commands()
 	_register_console_setting_commands()
+	_register_dev_commands()
 	_register_pin_commands()
 
 	# Game-only commands
@@ -1655,6 +2774,7 @@ func _ready() -> void:
 		add_command("exit", quit, 0, 0, "Quits the game.")
 		add_command("restart", restart_application, 0, 0, "Restarts the game application.")
 		add_command("console/delete_history", delete_history, 0, 0, "Deletes the history of previously entered commands.")
+		_register_ingame_popup_commands()
 
 
 # =============================================================================
@@ -1682,6 +2802,10 @@ func _input(event : InputEvent) -> void:
 					toggle_console(false)
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
+		elif event.physical_keycode == KEY_F4 and event.pressed and not event.echo:
+			if _display:
+				_display.toggle_pinned_display_variables_visible()
+				get_tree().get_root().set_input_as_handled()
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
 			_open_command_entry_view()
 			get_tree().get_root().set_input_as_handled()
@@ -1768,6 +2892,7 @@ func enable():
 func toggle_console(reset_on_hide: bool = true) -> void:
 	if enabled and not control.visible:
 		control.visible = true
+		_clear_ingame_popups()
 		_restore_full_console_after_command_entry = false
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled

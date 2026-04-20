@@ -61,7 +61,7 @@ func _ready() -> void:
 	add_child(_display)
 
 	# Add the logot UI as a child of the display
-	var logot_ui := LOGOT_UI_SCENE.instantiate()
+	var logot_ui: Control = LOGOT_UI_SCENE.instantiate() as Control
 	logot_ui.name = "LogotUI"
 	logot_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_display.add_child(logot_ui)
@@ -177,10 +177,10 @@ func _get_log_entries() -> Array:
 
 func _get_entry_display_text(entry, truncate: bool) -> String:
 	var full_text = _display.format_objects_for_display(entry.objects) if _display else str(entry.objects)
-	var instance_label := _get_instance_label(entry.session_id)
+	var instance_label: String = _get_instance_label(entry.session_id)
 
 	if entry.expanded:
-		var formatted_trace := ""
+		var formatted_trace: String = ""
 		if _display and entry.stack_trace != "":
 			formatted_trace = _display.format_stack_trace_for_display(entry.stack_trace)
 		return LogotDisplay.format_display_text(full_text, entry.level, entry.channel, entry.timestamp, entry.id, false, 0, entry.stack_trace, 0, formatted_trace, instance_label)
@@ -212,7 +212,7 @@ func _on_cleared() -> void:
 
 
 func _load_settings() -> void:
-	var config := ConfigFile.new()
+	var config: ConfigFile = ConfigFile.new()
 	if config.load(SETTINGS_FILE) == OK:
 		if config.has_section("editor_settings"):
 			_clear_on_play = config.get_value("editor_settings", "clear_on_play", true)
@@ -222,7 +222,7 @@ func _load_settings() -> void:
 
 
 func _save_settings() -> void:
-	var config := ConfigFile.new()
+	var config: ConfigFile = ConfigFile.new()
 	config.load(SETTINGS_FILE)  # Load existing to preserve other settings
 	config.set_value("editor_settings", "clear_on_play", _clear_on_play)
 	config.save(SETTINGS_FILE)
@@ -485,7 +485,7 @@ func _on_instance_started(session_id: int) -> void:
 		_register_game_instance(session_id)
 
 	# Log the connection
-	var instance_name := _instance_names.get(session_id, "Unknown")
+	var instance_name: String = str(_instance_names.get(session_id, "Unknown"))
 	_log_instance_event("[color=cyan]Instance connected:[/color] %s" % instance_name, session_id)
 
 
@@ -498,7 +498,7 @@ func _register_game_instance(session_id: int) -> void:
 		_next_game_instance_number += 1
 
 	# Generate a meaningful instance name
-	var instance_name := _generate_instance_name(session_id, instance_number)
+	var instance_name: String = _generate_instance_name(session_id, instance_number)
 	_instance_names[session_id] = instance_name
 
 	# Initialize storage for this instance
@@ -516,7 +516,7 @@ func _on_instance_stopped(session_id: int) -> void:
 		return
 
 	# Get instance name before removing
-	var instance_name := _instance_names.get(session_id, "Unknown")
+	var instance_name: String = str(_instance_names.get(session_id, "Unknown"))
 
 	# Mark instance as inactive in sidebar (keeps stats visible)
 	if _display.has_sidebar():
@@ -529,7 +529,7 @@ func _on_instance_stopped(session_id: int) -> void:
 ## Generate a meaningful name for an instance
 func _generate_instance_name(session_id: int, instance_number: int) -> String:
 	# Check if debugger plugin has a name from the game
-	var game_name := ""
+	var game_name: String = ""
 	if _debugger_plugin:
 		game_name = _debugger_plugin.get_session_name(session_id)
 
@@ -556,12 +556,12 @@ func _log_instance_event(message: String, session_id: int = EDITOR_SESSION_ID) -
 		return
 
 	# Get current timestamp
-	var time := Time.get_time_dict_from_system()
-	var timestamp := "%02d:%02d:%02d" % [time.hour, time.minute, time.second]
-	var instance_label := _get_instance_label(session_id)
+	var time_data: Dictionary = Time.get_time_dict_from_system()
+	var timestamp: String = "%02d:%02d:%02d" % [time_data.hour, time_data.minute, time_data.second]
+	var instance_label: String = _get_instance_label(session_id)
 
 	# Format and display the message
-	var formatted := "[color=dim_gray]%s[/color] [color=dim_gray][%s][/color] %s\n" % [timestamp, instance_label, message]
+	var formatted: String = "[color=dim_gray]%s[/color] [color=dim_gray][%s][/color] %s\n" % [timestamp, instance_label, message]
 	_display.rich_label.append_text(formatted)
 
 
@@ -623,7 +623,7 @@ func _on_instance_visibility_changed(instance_id: int, mode: int) -> void:
 ## Create a LogEntry from serialized data received from game instance
 func _create_entry_from_data(data: Dictionary, session_id: int) -> LogotDisplay.LogEntry:
 	# Get the instance name for this session
-	var instance_name := _instance_names.get(session_id, "")
+	var instance_name: String = str(_instance_names.get(session_id, ""))
 
 	var entry = LogotDisplay.LogEntry.new(
 		data.get("id", 0),
@@ -690,7 +690,7 @@ func _update_sidebar_instance_stats() -> void:
 
 	# Initialize counts for all known instances (include OFF counts from rejected logs)
 	for session_id in _instance_names:
-		var off_count := 0
+		var off_count: int = 0
 		# Sum up OFF counts from _instance_stats (logs rejected due to OFF visibility)
 		if session_id in _instance_stats:
 			var stats = _instance_stats[session_id]
@@ -725,7 +725,7 @@ func _on_text_entered(text: String) -> void:
 
 
 func _extract_command_name(command_input: String) -> String:
-	var parse_input := Callable()
+	var parse_input: Callable = Callable()
 	if _logot and _logot.has_method("parse_line_input"):
 		parse_input = Callable(_logot, "parse_line_input")
 	return LogotCommandInput.extract_command_name(command_input, parse_input)
@@ -736,11 +736,11 @@ func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bo
 
 
 func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_autocomplete_selection: bool = false) -> bool:
-	var submitted_text := _resolve_submitted_text(raw_text, prefer_autocomplete_selection)
+	var submitted_text: String = _resolve_submitted_text(raw_text, prefer_autocomplete_selection)
 	if submitted_text.is_empty():
 		return false
 
-	var is_command_input := submitted_text.begins_with("/")
+	var is_command_input: bool = submitted_text.begins_with("/")
 
 	if not keep_input:
 		if _display:
@@ -796,7 +796,7 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 	if not event is InputEventKey:
 		return
 
-	var key_event := event as InputEventKey
+	var key_event: InputEventKey = event as InputEventKey
 	if _handle_line_edit_autocomplete_input(key_event) or _handle_line_edit_submit_input(key_event):
 		_display.line_edit.accept_event()
 		_display.line_edit.call_deferred("grab_focus")
@@ -807,8 +807,8 @@ func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
 	if not LogotCommandInput.is_submit_event(event, line_edit):
 		return false
 
-	var keep_input := event.shift_pressed
-	var selected_history_command := LogotCommandInput.get_selected_history_command(_display)
+	var keep_input: bool = event.shift_pressed
+	var selected_history_command: String = LogotCommandInput.get_selected_history_command(_display)
 	if not selected_history_command.is_empty():
 		_submit_line_edit_input(selected_history_command, keep_input, false)
 		return true
