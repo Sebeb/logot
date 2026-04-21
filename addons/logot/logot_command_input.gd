@@ -55,9 +55,13 @@ static func handle_autocomplete_navigation(event: InputEventKey, display, line_e
 	if display.is_autocomplete_visible():
 		match event.keycode:
 			KEY_DOWN:
+				if event.is_command_or_control_pressed() and display.autocomplete_select_next_group():
+					return true
 				display.autocomplete_select_next()
 				return true
 			KEY_UP:
+				if event.is_command_or_control_pressed() and display.autocomplete_select_prev_group():
+					return true
 				display.autocomplete_select_prev()
 				return true
 			KEY_RIGHT:

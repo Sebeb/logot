@@ -3,7 +3,21 @@ version = 1
 name = "Godot"
 
 [setup]
-script = ""
+script = '''
+repo_root="${CODEX_WORKTREE_PATH:-${CODEX_SOURCE_TREE_PATH:-}}"
+
+if [ -z "$repo_root" ] && git rev-parse --show-toplevel >/dev/null 2>&1; then
+  repo_root="$(git rev-parse --show-toplevel)"
+fi
+
+if [ -z "$repo_root" ]; then
+  echo "Unable to determine the Codex workspace root for setup." >&2
+  exit 1
+fi
+
+cd "$repo_root"
+./scripts/codex_seed_godot.sh
+'''
 
 [[actions]]
 name = "Run"

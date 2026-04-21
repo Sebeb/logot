@@ -121,6 +121,8 @@ const INGAME_POPUP_LEVELS_MIRROR_MAIN_CONSOLE_COMMAND_PATH := "console/settings/
 const INGAME_POPUP_FADE_TIME_COMMAND_PATH := "console/settings/ingame_popups/fade_time"
 const INGAME_POPUP_ENABLED_MARK := "✓"
 const INGAME_POPUP_DISABLED_MARK := "✗"
+const TIMER_COMMAND_GROUP_NAME := "Timers"
+const TIMER_COMMAND_GROUP_PRIORITY := 225
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -172,6 +174,10 @@ signal log_entry_added(entry: LogEntry)
 signal logs_cleared
 signal channel_discovered(channel: String)
 signal off_log_tracked(level: int, channel: String)
+signal timer_started(key: String, name: String)
+signal timer_paused(key: String, name: String, elapsed_text: String)
+signal timer_resumed(key: String, name: String)
+signal timer_stopped(key: String, name: String, elapsed_text: String)
 
 var control: Control
 var rich_label: RichTextLabel
@@ -184,6 +190,7 @@ var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _external_displays: Array = []
 var _display_variable_signal_connections: Dictionary = {}
+var _timers: Dictionary = {}
 var _console_interfacing_test_commands: RefCounted = null
 var _test_manager = null
 var _test_panel = null
@@ -328,8 +335,8 @@ func _create_log_entry(objects: Array, level: int, channel: String, stack_trace:
 	var has_expandable := extra_line_count > 0 or stack_trace != ""
 
 	# Format first line only (collapsed view) and full text (expanded view)
-	var formatted_first = LogotDisplay.format_display_text(first_line, level, channel, timestamp, entry_id, true, extra_line_count, stack_trace)
-	var formatted_full = LogotDisplay.format_display_text(text, level, channel, timestamp, entry_id, false, 0, stack_trace)
+	var formatted_first := _format_display_text(first_line, level, channel, timestamp, entry_id, true, extra_line_count, stack_trace)
+	var formatted_full := _format_display_text(text, level, channel, timestamp, entry_id, false, 0, stack_trace)
 
 	var entry := LogEntry.new(entry_id, level, channel, objects, formatted_first, formatted_full, stack_trace, extra_line_count, timestamp)
 	_next_log_id += 1
@@ -355,7 +362,62 @@ func get_collapsed_display_text(entry: LogEntry, truncate_multiline := _truncate
 		display_text = _format_objects(entry.objects)
 
 	var extra_lines := entry.extra_line_count if truncate_multiline else 0
-	return LogotDisplay.format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
+	return _format_display_text(display_text, entry.level, entry.channel, entry.timestamp, entry.id, true, extra_lines, entry.stack_trace)
+
+
+func _format_display_text(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "", instance_name: String = "") -> String:
+	var formatter := Callable(LogotDisplay, "format_display_text")
+	if formatter.is_valid():
+		return str(formatter.call(text, level, channel, timestamp, entry_id, is_collapsed, extra_lines, stack_trace, collapse_count, formatted_stack_trace, instance_name))
+	return _format_display_text_fallback(text, level, channel, timestamp, entry_id, is_collapsed, extra_lines, stack_trace, collapse_count, formatted_stack_trace, instance_name)
+
+
+func _format_display_text_fallback(text: String, level: int, channel: String, timestamp: String, entry_id: int = -1, is_collapsed: bool = true, extra_lines: int = 0, stack_trace: String = "", collapse_count: int = 0, formatted_stack_trace: String = "", instance_name: String = "") -> String:
+	var color := _get_log_level_color_hex(level)
+	var extra_indicator := ""
+	if is_collapsed and extra_lines > 0:
+		extra_indicator = " [i][color=dim_gray]+%d[/color][/i]" % extra_lines
+
+	var has_expandable := extra_lines > 0 or stack_trace != ""
+	var toggle_action := "expand" if is_collapsed else "collapse"
+	var primary_message_content := "[color=%s]%s[/color]%s" % [color, text, extra_indicator]
+	var stack_trace_content := ""
+	if not is_collapsed and formatted_stack_trace != "":
+		stack_trace_content = "\n" + formatted_stack_trace
+
+	var timestamp_content := "[color=dim_gray]%s[/color]" % timestamp
+	var instance_content := ""
+	if instance_name != "":
+		instance_content = "[color=dim_gray][%s][/color] " % instance_name
+
+	var channel_content := ""
+	if channel != "":
+		channel_content = "[color=%s][%s][/color]" % [color, channel]
+
+	var count_content := ""
+	if collapse_count > 0:
+		var space := " " if channel_content != "" else ""
+		count_content = "%s[color=%s][%d][/color]" % [space, color, collapse_count]
+
+	if has_expandable and entry_id >= 0:
+		var url_action := "%s:%d" % [toggle_action, entry_id]
+		timestamp_content = "[url=%s]%s[/url]" % [url_action, timestamp_content]
+		if instance_content != "":
+			instance_content = "[url=%s]%s[/url]" % [url_action, instance_content]
+		if channel_content != "":
+			channel_content = "[url=%s]%s[/url]" % [url_action, channel_content]
+		if count_content != "":
+			count_content = "[url=%s]%s[/url]" % [url_action, count_content]
+		primary_message_content = "[url=%s]%s[/url]" % [url_action, primary_message_content]
+
+	var metadata_content := "%s%s%s" % [instance_content, channel_content, count_content]
+	var message_content := "%s%s" % [primary_message_content, stack_trace_content]
+	return "[table=3][cell expand=0 shrink=true]%s [/cell][cell expand=0 shrink=true]%s[/cell][cell expand=1 shrink=false]%s[/cell][/table]" % [timestamp_content, metadata_content, message_content]
+
+
+func _get_log_level_color_hex(level: int) -> String:
+	var color: Color = LogotDisplay.LEVEL_COLORS.get(level, Color.WHITE)
+	return "#" + color.to_html(false)
 
 
 func _trim_old_entries() -> void:
@@ -456,6 +518,7 @@ func get_channel_visibility(channel: String) -> int:
 ## Set channel visibility mode
 func set_channel_visibility(channel: String, mode: int) -> void:
 	_channel_visibility[channel] = mode
+	_sync_timers_for_channel(channel)
 
 
 func _init_default_levels() -> void:
@@ -1111,8 +1174,8 @@ func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
 	_notify_command_catalog_changed()
 
-func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
-	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name)
+func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"", display_label_provider: Callable = Callable()) -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name, display_label_provider)
 	_register_display_variable_signal(address, change_signal_source, change_signal_name)
 	_notify_command_catalog_changed()
 
@@ -1166,6 +1229,326 @@ func unpin(key: String) -> void:
 
 	unpin_display_variable(address)
 	remove_display_variable(address)
+
+
+func start_timer(key: String, name: String = "", channel: String = "") -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		print_error("Timer key cannot be empty.")
+		return false
+
+	var timer_name := name.strip_edges()
+	if timer_name.is_empty():
+		timer_name = normalized_key
+
+	var timer_channel := channel.strip_edges()
+	_ensure_channel_exists(timer_channel)
+	_timers[normalized_key] = {
+		"name": timer_name,
+		"channel": timer_channel,
+		"accumulated_usec": 0,
+		"running": true,
+		"counting": false,
+		"started_usec": 0,
+	}
+	_ensure_timer_display_variables(normalized_key)
+	_sync_timer_runtime_state(normalized_key)
+	timer_started.emit(normalized_key, timer_name)
+	return true
+
+
+func pause_timer(key: String) -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		print_error("Timer key cannot be empty.")
+		return false
+	if not _timers.has(normalized_key):
+		print_error("Timer not found: %s" % normalized_key)
+		return false
+
+	_sync_timer_runtime_state(normalized_key)
+	var timer_state: Dictionary = _timers[normalized_key]
+	if not bool(timer_state.get("running", false)):
+		print_error("Timer is not running: %s" % normalized_key)
+		return false
+
+	timer_state["accumulated_usec"] = _get_timer_elapsed_usec_from_state(timer_state)
+	timer_state["running"] = false
+	timer_state["counting"] = false
+	timer_state["started_usec"] = 0
+	_timers[normalized_key] = timer_state
+	_sync_timer_runtime_state(normalized_key)
+	timer_paused.emit(normalized_key, str(timer_state.get("name", normalized_key)), _format_duration_usec(_get_timer_elapsed_usec_from_state(timer_state)))
+	return true
+
+
+func resume_timer(key: String) -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		print_error("Timer key cannot be empty.")
+		return false
+	if not _timers.has(normalized_key):
+		print_error("Timer not found: %s" % normalized_key)
+		return false
+
+	_sync_timer_runtime_state(normalized_key)
+	var timer_state: Dictionary = _timers[normalized_key]
+	if bool(timer_state.get("running", false)):
+		print_error("Timer is already running: %s" % normalized_key)
+		return false
+
+	timer_state["running"] = true
+	timer_state["counting"] = false
+	timer_state["started_usec"] = 0
+	_timers[normalized_key] = timer_state
+	_sync_timer_runtime_state(normalized_key)
+	timer_resumed.emit(normalized_key, str(timer_state.get("name", normalized_key)))
+	return true
+
+
+func stop_timer(key: String) -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		print_error("Timer key cannot be empty.")
+		return false
+	if not _timers.has(normalized_key):
+		print_error("Timer not found: %s" % normalized_key)
+		return false
+
+	_sync_timer_runtime_state(normalized_key)
+	var timer_state: Dictionary = _timers[normalized_key]
+	var timer_name := str(timer_state.get("name", normalized_key))
+	var timer_channel := str(timer_state.get("channel", ""))
+	var final_duration_text := _format_duration_usec(_get_timer_elapsed_usec_from_state(timer_state))
+
+	_unpin_timer_display_variables(normalized_key)
+	_remove_timer_display_variables(normalized_key)
+	_timers.erase(normalized_key)
+	self.log(
+		["Timer [color=light_green]%s[/color] stopped at [color=light_green]%s[/color]." % [_escape_bbcode_text(timer_name), final_duration_text]],
+		LogLevel.MESSAGE,
+		timer_channel
+	)
+	timer_stopped.emit(normalized_key, timer_name, final_duration_text)
+	return true
+
+
+func has_timer(key: String) -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	return not normalized_key.is_empty() and _timers.has(normalized_key)
+
+
+func is_timer_running(key: String) -> bool:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return false
+	_sync_timer_runtime_state(normalized_key)
+	return bool((_timers[normalized_key] as Dictionary).get("counting", false))
+
+
+func get_timer_name(key: String) -> String:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return ""
+	return str((_timers[normalized_key] as Dictionary).get("name", normalized_key))
+
+
+func get_timer_channel(key: String) -> String:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return ""
+	return str((_timers[normalized_key] as Dictionary).get("channel", ""))
+
+
+func get_timer_elapsed_seconds(key: String) -> float:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return 0.0
+	_sync_timer_runtime_state(normalized_key)
+	return float(_get_timer_elapsed_usec_from_state(_timers[normalized_key])) / 1000000.0
+
+
+func get_timer_elapsed_text(key: String) -> String:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return ""
+	_sync_timer_runtime_state(normalized_key)
+	return _format_duration_usec(_get_timer_elapsed_usec_from_state(_timers[normalized_key]))
+
+
+func get_timer_keys() -> Array[String]:
+	var keys: Array[String] = []
+	for timer_key in _timers.keys():
+		keys.append(str(timer_key))
+	keys.sort()
+	return keys
+
+
+func _normalize_timer_key(key: String) -> String:
+	return key.strip_edges()
+
+
+func _get_timer_channel_visibility_mode(channel: String) -> int:
+	return get_channel_visibility(channel)
+
+
+func _should_timer_count(timer_state: Dictionary) -> bool:
+	return (
+		bool(timer_state.get("running", false))
+		and _get_timer_channel_visibility_mode(str(timer_state.get("channel", ""))) != VisibilityMode.OFF
+	)
+
+
+func _should_timer_pin(timer_state: Dictionary) -> bool:
+	return (
+		bool(timer_state.get("running", false))
+		and _get_timer_channel_visibility_mode(str(timer_state.get("channel", ""))) == VisibilityMode.SHOWN
+	)
+
+
+func _sync_timer_runtime_state(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return
+
+	var timer_state: Dictionary = _timers[normalized_key]
+	var counting := bool(timer_state.get("counting", false))
+	var should_count := _should_timer_count(timer_state)
+
+	if counting and not should_count:
+		timer_state["accumulated_usec"] = _get_timer_elapsed_usec_from_state(timer_state)
+		timer_state["counting"] = false
+		timer_state["started_usec"] = 0
+	elif should_count and not counting:
+		timer_state["counting"] = true
+		timer_state["started_usec"] = Time.get_ticks_usec()
+
+	_timers[normalized_key] = timer_state
+	if _should_timer_pin(timer_state):
+		_pin_timer_display_variables(normalized_key)
+	else:
+		_unpin_timer_display_variables(normalized_key)
+	_notify_timer_display_variables_changed(normalized_key)
+
+
+func _sync_timers_for_channel(channel: String) -> void:
+	var normalized_channel := channel.strip_edges()
+	for timer_key in get_timer_keys():
+		var timer_state: Dictionary = _timers[timer_key]
+		if str(timer_state.get("channel", "")) != normalized_channel:
+			continue
+		_sync_timer_runtime_state(timer_key)
+
+
+func _get_timer_elapsed_usec_from_state(timer_state: Dictionary) -> int:
+	var accumulated_usec := int(timer_state.get("accumulated_usec", 0))
+	if not bool(timer_state.get("counting", false)):
+		return maxi(0, accumulated_usec)
+
+	var started_usec := int(timer_state.get("started_usec", 0))
+	if started_usec <= 0:
+		return maxi(0, accumulated_usec)
+	return maxi(0, accumulated_usec + (Time.get_ticks_usec() - started_usec))
+
+
+func _format_duration_usec(duration_usec: int) -> String:
+	var safe_duration_usec := maxi(0, duration_usec)
+	var total_msec := int(safe_duration_usec / 1000)
+	var hours := int(total_msec / 3600000)
+	var minutes := int((total_msec / 60000) % 60)
+	var seconds := int((total_msec / 1000) % 60)
+	var milliseconds := int(total_msec % 1000)
+	return "%02d:%02d:%02d.%03d" % [hours, minutes, seconds, milliseconds]
+
+
+func _get_timer_display_address(key: String) -> String:
+	return "timers/%s" % key
+
+
+func _ensure_timer_display_variables(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		return
+
+	add_display_variable(
+		_get_timer_display_address(normalized_key),
+		Callable(self, "_get_timer_display_time").bind(normalized_key),
+		Callable(),
+		Callable(),
+		true,
+		TIMER_COMMAND_GROUP_NAME,
+		TIMER_COMMAND_GROUP_PRIORITY,
+		null,
+		&"",
+		Callable(self, "_get_timer_display_name").bind(normalized_key)
+	)
+
+
+func _remove_timer_display_variables(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		return
+	remove_display_variable(_get_timer_display_address(normalized_key))
+
+
+func _pin_timer_display_variables(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		return
+	pin_display_variable(_get_timer_display_address(normalized_key))
+
+
+func _unpin_timer_display_variables(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		return
+	unpin_display_variable(_get_timer_display_address(normalized_key))
+
+
+func _notify_timer_display_variables_changed(key: String) -> void:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty():
+		return
+	notify_display_variable_changed(_get_timer_display_address(normalized_key))
+
+
+func _get_timer_display_name(key: String) -> String:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return ""
+	return str((_timers[normalized_key] as Dictionary).get("name", normalized_key))
+
+
+func _get_timer_display_time(key: String) -> String:
+	var normalized_key := _normalize_timer_key(key)
+	if normalized_key.is_empty() or not _timers.has(normalized_key):
+		return ""
+	return _format_duration_usec(_get_timer_elapsed_usec_from_state(_timers[normalized_key]))
+
+
+func _get_running_timer_key_options() -> Array:
+	var keys: Array = []
+	for timer_key in get_timer_keys():
+		_sync_timer_runtime_state(timer_key)
+		if is_timer_running(timer_key):
+			keys.append(timer_key)
+	return keys
+
+
+func _get_paused_timer_key_options() -> Array:
+	var keys: Array = []
+	for timer_key in get_timer_keys():
+		_sync_timer_runtime_state(timer_key)
+		if not is_timer_running(timer_key):
+			keys.append(timer_key)
+	return keys
+
+
+func _get_known_timer_key_options() -> Array:
+	var keys: Array = []
+	for timer_key in get_timer_keys():
+		keys.append(timer_key)
+	return keys
 
 
 func register_external_display(display: LogotDisplay) -> void:
@@ -1765,6 +2148,8 @@ func _should_suspend_ingame_popups() -> bool:
 
 
 func _should_show_ingame_popup_for_entry(entry: LogEntry) -> bool:
+	if entry == null:
+		return false
 	return entry.visible and _is_ingame_popup_level_effectively_enabled(entry.level)
 
 
@@ -2221,7 +2606,7 @@ func _style_ingame_popup_close_button(button: Button) -> void:
 
 
 func _stop_ingame_popup_fade_internal(popup_panel: Control) -> void:
-	var fade_tween = popup_panel.get_meta("fade_tween", null)
+	var fade_tween = popup_panel.get_meta("fade_tween") if popup_panel.has_meta("fade_tween") else null
 	if fade_tween != null and is_instance_valid(fade_tween):
 		(fade_tween as Tween).kill()
 	popup_panel.set_meta("fade_tween", null)
@@ -2323,7 +2708,7 @@ func _format_ingame_popup_text(message_text: String, level: int, channel: String
 	return "%s[color=%s]%s[/color]%s" % [
 		channel_markup,
 		message_color_hex,
-		_escape_ingame_popup_bbcode(display_text),
+		display_text,
 		extra_indicator,
 	]
 
@@ -2850,6 +3235,51 @@ func _register_pin_commands() -> void:
 	)
 
 
+func _register_timer_commands() -> void:
+	add_command(
+		"timers/start",
+		_command_timer_start,
+		["key", "name", "channel"],
+		1,
+		"Start or restart a timer. Name defaults to the key when omitted. Channel controls pinning and the final stop log destination.",
+		TIMER_COMMAND_GROUP_NAME,
+		TIMER_COMMAND_GROUP_PRIORITY
+	)
+	add_command_with_options(
+		"timers/pause",
+		_command_timer_pause,
+		["key"],
+		1,
+		"Pause a running timer.",
+		_get_running_timer_key_options,
+		Callable(),
+		TIMER_COMMAND_GROUP_NAME,
+		TIMER_COMMAND_GROUP_PRIORITY
+	)
+	add_command_with_options(
+		"timers/resume",
+		_command_timer_resume,
+		["key"],
+		1,
+		"Resume a paused timer.",
+		_get_paused_timer_key_options,
+		Callable(),
+		TIMER_COMMAND_GROUP_NAME,
+		TIMER_COMMAND_GROUP_PRIORITY
+	)
+	add_command_with_options(
+		"timers/stop",
+		_command_timer_stop,
+		["key"],
+		1,
+		"Stop a timer and log its final duration.",
+		_get_known_timer_key_options,
+		Callable(),
+		TIMER_COMMAND_GROUP_NAME,
+		TIMER_COMMAND_GROUP_PRIORITY
+	)
+
+
 func _register_bridge_commands() -> void:
 	add_command(
 		"bridge/screenshot",
@@ -2891,6 +3321,7 @@ func _ready() -> void:
 	_register_console_setting_commands()
 	_register_dev_commands()
 	_register_pin_commands()
+	_register_timer_commands()
 
 	# Game-only commands
 	if not Engine.is_editor_hint():
@@ -2911,6 +3342,7 @@ func _input(event : InputEvent) -> void:
 		return
 
 	if event is InputEventKey:
+		var console_visible := _is_console_control_visible()
 		if _handle_line_edit_autocomplete_input(event):
 			get_tree().get_root().set_input_as_handled()
 			return
@@ -2920,7 +3352,7 @@ func _input(event : InputEvent) -> void:
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_QUOTELEFT and event.is_command_or_control_pressed():
 			if event.pressed:
-				if control.visible:
+				if console_visible:
 					toggle_size()
 				else:
 					toggle_console(false)
@@ -2933,11 +3365,11 @@ func _input(event : InputEvent) -> void:
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
 			_open_command_entry_view()
 			get_tree().get_root().set_input_as_handled()
-		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and control.visible:
+		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and console_visible:
 			if event.pressed:
 				_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
-		if control.visible and event.pressed:
+		if console_visible and event.pressed and rich_label != null and is_instance_valid(rich_label):
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
 				var scroll := rich_label.get_v_scroll_bar()
 				var tween := create_tween()
@@ -2950,18 +3382,45 @@ func _input(event : InputEvent) -> void:
 				get_tree().get_root().set_input_as_handled()
 
 
+func _is_console_control_visible() -> bool:
+	return control != null and is_instance_valid(control) and control.visible
+
+
 func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
 	if event and event.pressed and not event.echo and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
-		if control and control.visible and line_edit and line_edit.has_focus():
+		if _is_console_control_visible() and line_edit and line_edit.has_focus():
 			_handle_escape_input()
 			return true
 
-	return LogotCommandInput.handle_autocomplete_navigation(
-		event,
-		_display,
-		line_edit,
-		Callable(self, "_close_command_entry_view")
-	)
+	var autocomplete_handler := Callable(LogotCommandInput, "handle_autocomplete_navigation")
+	if autocomplete_handler.is_valid():
+		return bool(autocomplete_handler.call(
+			event,
+			_display,
+			line_edit,
+			Callable(self, "_close_command_entry_view")
+		))
+	return false
+
+
+func _is_line_edit_submit_event(event: InputEventKey) -> bool:
+	var submit_checker := Callable(LogotCommandInput, "is_submit_event")
+	if submit_checker.is_valid():
+		return bool(submit_checker.call(event, line_edit))
+	if not event.pressed or event.echo:
+		return false
+	if not line_edit or not line_edit.has_focus():
+		return false
+	return event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER
+
+
+func _get_selected_history_command() -> String:
+	var history_getter := Callable(LogotCommandInput, "get_selected_history_command")
+	if history_getter.is_valid():
+		return str(history_getter.call(_display)).strip_edges()
+	if not _display or not _display.has_method("get_selected_history_command"):
+		return ""
+	return str(_display.get_selected_history_command()).strip_edges()
 
 
 func _on_line_edit_gui_input(event: InputEvent) -> void:
@@ -2977,11 +3436,11 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 
 
 func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
-	if not LogotCommandInput.is_submit_event(event, line_edit):
+	if not _is_line_edit_submit_event(event):
 		return false
 
 	var keep_input := event.shift_pressed
-	var selected_history_command := LogotCommandInput.get_selected_history_command(_display)
+	var selected_history_command := _get_selected_history_command()
 	if not selected_history_command.is_empty():
 		_submit_line_edit_input(selected_history_command, keep_input, false)
 		return true
@@ -2998,6 +3457,8 @@ func _handle_line_edit_submit_input(event: InputEventKey) -> bool:
 # =============================================================================
 
 func toggle_size() -> void:
+	if control == null or not is_instance_valid(control):
+		return
 	if control.anchor_bottom == 1.0:
 		control.anchor_bottom = 1.9
 	else:
@@ -3014,13 +3475,16 @@ func enable():
 
 
 func toggle_console(reset_on_hide: bool = true) -> void:
+	if control == null or not is_instance_valid(control):
+		return
 	if enabled and not control.visible:
 		control.visible = true
 		_clear_ingame_popups()
 		_restore_full_console_after_command_entry = false
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
-		line_edit.grab_focus()
+		if line_edit != null and is_instance_valid(line_edit):
+			line_edit.grab_focus()
 		console_opened.emit()
 		return
 
@@ -3071,7 +3535,7 @@ func _reset_console_for_escape() -> void:
 
 
 func is_visible():
-	return control.visible
+	return _is_console_control_visible()
 
 
 func is_capturing_keyboard_input() -> bool:
@@ -3146,11 +3610,32 @@ func on_text_entered(new_text : String) -> void:
 
 
 func _extract_command_name(command_input: String) -> String:
-	return LogotCommandInput.extract_command_name(command_input, parse_line_input)
+	var extractor := Callable(LogotCommandInput, "extract_command_name")
+	if extractor.is_valid():
+		return str(extractor.call(command_input, parse_line_input))
+
+	var trimmed_input := command_input.strip_edges()
+	if not trimmed_input.begins_with("/"):
+		return ""
+	var text_split := parse_line_input(trimmed_input.substr(1))
+	if text_split.is_empty():
+		return ""
+	return str(text_split[0]).strip_edges()
 
 
 func _resolve_submitted_text(raw_text: String, prefer_autocomplete_selection: bool) -> String:
-	return LogotCommandInput.resolve_submitted_text(raw_text, prefer_autocomplete_selection, _display)
+	var resolver := Callable(LogotCommandInput, "resolve_submitted_text")
+	if resolver.is_valid():
+		return str(resolver.call(raw_text, prefer_autocomplete_selection, _display))
+
+	var submitted_text := raw_text.strip_edges()
+	if not prefer_autocomplete_selection:
+		return submitted_text
+	if not submitted_text.begins_with("/"):
+		return submitted_text
+	if not _display or not _display.has_active_command_autocomplete_match():
+		return submitted_text
+	return _display.get_active_command_submission_text().strip_edges()
 
 
 func _are_test_commands_enabled() -> bool:
@@ -3486,6 +3971,22 @@ func _command_bridge_screenshot(path: String = "", name: String = "") -> void:
 		resolved_name = resolved_path
 		resolved_path = ""
 	capture_screenshot(resolved_path, resolved_name, true)
+
+
+func _command_timer_start(key: String, name: String = "", channel: String = "") -> void:
+	start_timer(key, name, channel)
+
+
+func _command_timer_pause(key: String) -> void:
+	pause_timer(key)
+
+
+func _command_timer_resume(key: String) -> void:
+	resume_timer(key)
+
+
+func _command_timer_stop(key: String) -> void:
+	stop_timer(key)
 
 
 func _escape_bbcode_text(text: String) -> String:
