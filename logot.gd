@@ -99,6 +99,8 @@ const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_inte
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
 const _UNKNOWN_GIT_BRANCH := "unknown"
+const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
+const _PERFORMANCE_GRAPHS_WIDGET_PATH := "dev/performance/graphs"
 const DEFAULT_INGAME_POPUP_LIFETIME := 5.0
 const INGAME_POPUP_FADE_DURATION := 0.35
 const INGAME_POPUP_MAX_VISIBLE := 6
@@ -123,6 +125,16 @@ const INGAME_POPUP_ENABLED_MARK := "✓"
 const INGAME_POPUP_DISABLED_MARK := "✗"
 const TIMER_COMMAND_GROUP_NAME := "Timers"
 const TIMER_COMMAND_GROUP_PRIORITY := 225
+const PIN_CORNER_TOP_LEFT := "top_left"
+const PIN_CORNER_TOP_RIGHT := "top_right"
+const PIN_CORNER_BOTTOM_LEFT := "bottom_left"
+const PIN_CORNER_BOTTOM_RIGHT := "bottom_right"
+const PIN_CORNERS := [
+	PIN_CORNER_TOP_LEFT,
+	PIN_CORNER_TOP_RIGHT,
+	PIN_CORNER_BOTTOM_LEFT,
+	PIN_CORNER_BOTTOM_RIGHT,
+]
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -139,6 +151,7 @@ const VisibilityMode = LogotDisplay.VisibilityMode
 const LogEntry = LogotDisplay.LogEntry
 const LogotCommand = LogotDisplay.LogotCommand
 const LogotDisplayVariable = LogotDisplay.LogotDisplayVariable
+const LogotWidget = LogotDisplay.LogotWidget
 const INGAME_POPUP_LEVELS := [
 	LogLevel.ERROR,
 	LogLevel.WARN,
@@ -185,6 +198,7 @@ var line_edit: LineEdit
 
 var console_commands := {}
 var display_variables := {}
+var widgets := {}
 var console_history := []
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
@@ -955,13 +969,18 @@ func _get_pinned_display_variables_for_alias_resolution() -> Array[String]:
 	if active_display and active_display.has_method("get_pinned_display_variables"):
 		for address in active_display.get_pinned_display_variables():
 			var address_str := str(address)
-			if address_str.is_empty() or not display_variables.has(address_str) or pinned_addresses.has(address_str):
+			if address_str.is_empty() or (not display_variables.has(address_str) and not widgets.has(address_str)) or pinned_addresses.has(address_str):
 				continue
 			pinned_addresses.append(address_str)
 
 	for pending_address in _pending_pinned_display_variables:
 		var pending_address_str := str(pending_address)
-		if pending_address_str.is_empty() or not display_variables.has(pending_address_str) or pinned_addresses.has(pending_address_str):
+		if pending_address_str.is_empty() or (not display_variables.has(pending_address_str) and not widgets.has(pending_address_str)) or pinned_addresses.has(pending_address_str):
+			continue
+		var pending = _pending_pinned_display_variables[pending_address]
+		if pending is Dictionary and not bool((pending as Dictionary).get("pinned", false)):
+			continue
+		if not (pending is Dictionary) and not bool(pending):
 			continue
 		pinned_addresses.append(pending_address_str)
 
@@ -1037,14 +1056,32 @@ func _validate_command_option_segment(command_name: String, option_segment: Stri
 	return {"checked": false, "valid": false}
 
 
+func _normalize_pin_corner(corner: String) -> String:
+	var normalized_corner := corner.strip_edges().to_lower()
+	if PIN_CORNERS.has(normalized_corner):
+		return normalized_corner
+	return PIN_CORNER_TOP_LEFT
+
+
+func _is_pinnable_console_item(command_candidate: String) -> bool:
+	return display_variables.has(command_candidate) or widgets.has(command_candidate)
+
+
 func _resolve_display_variable_pin_subcommand(command_candidate: String, option_segment: String) -> Dictionary:
-	if command_candidate.is_empty() or not display_variables.has(command_candidate):
+	if command_candidate.is_empty() or not _is_pinnable_console_item(command_candidate):
 		return {"valid": false}
 
 	var option_lowered := option_segment.strip_edges().to_lower()
 	var pin_state: Variant = null
+	var pin_corner := PIN_CORNER_TOP_LEFT
 	if option_lowered == "pin":
 		pin_state = true
+	elif option_lowered.begins_with("pin/"):
+		var raw_corner := option_lowered.trim_prefix("pin/")
+		if not PIN_CORNERS.has(raw_corner):
+			return {"valid": false}
+		pin_state = true
+		pin_corner = raw_corner
 	elif option_lowered == "unpin":
 		pin_state = false
 	else:
@@ -1058,6 +1095,7 @@ func _resolve_display_variable_pin_subcommand(command_candidate: String, option_
 		"is_display_variable_pin_action": true,
 		"display_variable_address": command_candidate,
 		"display_variable_pin_state": bool(pin_state),
+		"display_variable_pin_corner": pin_corner,
 	}
 
 
@@ -1077,6 +1115,16 @@ func _resolve_console_command_path_internal(command_path: String, allow_alias_re
 			"command_name": normalized_path,
 			"injected_arguments": [],
 			"is_option_subcommand": false,
+		}
+
+	if widgets.has(normalized_path):
+		return {
+			"valid": true,
+			"command_name": "",
+			"injected_arguments": [],
+			"is_option_subcommand": false,
+			"is_widget_command": true,
+			"widget_address": normalized_path,
 		}
 
 	var segments := normalized_path.split("/", false)
@@ -1185,6 +1233,28 @@ func remove_display_variable(address: String) -> void:
 	display_variables.erase(address)
 	notify_display_variable_changed(address)
 	_notify_command_catalog_changed()
+
+
+func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO) -> void:
+	var normalized_address := address.strip_edges().trim_suffix("/")
+	if normalized_address.is_empty():
+		push_warning("Cannot add Logot widget with an empty address.")
+		return
+	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size)
+	_notify_command_catalog_changed()
+
+
+func remove_widget(address: String) -> void:
+	var normalized_address := address.strip_edges().trim_suffix("/")
+	if normalized_address.is_empty():
+		return
+	widgets.erase(normalized_address)
+	unpin_display_variable(normalized_address)
+	_notify_command_catalog_changed()
+
+
+func get_widgets() -> Dictionary:
+	return widgets
 
 
 func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
@@ -1617,7 +1687,7 @@ func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
 	if target_display == null:
 		return
 
-	var pinned_addresses: Array[String] = []
+	var pinned_addresses: Dictionary = {}
 	for live_display in _get_live_displays():
 		if live_display == target_display:
 			continue
@@ -1625,27 +1695,36 @@ func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
 			var normalized_address := str(address).strip_edges()
 			if normalized_address.is_empty() or pinned_addresses.has(normalized_address):
 				continue
-			pinned_addresses.append(normalized_address)
+			var corner := PIN_CORNER_TOP_LEFT
+			if live_display.has_method("get_pinned_display_variable_corner"):
+				corner = _normalize_pin_corner(str(live_display.get_pinned_display_variable_corner(normalized_address)))
+			pinned_addresses[normalized_address] = corner
 
 	for address in pinned_addresses:
-		target_display.pin_display_variable(address)
+		target_display.pin_display_variable(str(address), str(pinned_addresses[address]))
 
 
-func pin_display_variable(address: String) -> void:
+func pin_display_variable(address: String, corner: String = PIN_CORNER_TOP_LEFT) -> void:
 	var live_displays := _get_live_displays()
 	if live_displays.is_empty():
-		_pending_pinned_display_variables[address] = true
+		_pending_pinned_display_variables[address] = {
+			"pinned": true,
+			"corner": _normalize_pin_corner(corner),
+		}
 		return
 
 	_pending_pinned_display_variables.erase(address)
 	for display in live_displays:
-		display.pin_display_variable(address)
+		display.pin_display_variable(address, _normalize_pin_corner(corner))
 
 
 func unpin_display_variable(address: String) -> void:
 	var live_displays := _get_live_displays()
 	if live_displays.is_empty():
-		_pending_pinned_display_variables[address] = false
+		_pending_pinned_display_variables[address] = {
+			"pinned": false,
+			"corner": PIN_CORNER_TOP_LEFT,
+		}
 		return
 
 	_pending_pinned_display_variables.erase(address)
@@ -1653,9 +1732,9 @@ func unpin_display_variable(address: String) -> void:
 		display.unpin_display_variable(address)
 
 
-func set_display_variable_pinned(address: String, pinned: bool) -> void:
+func set_display_variable_pinned(address: String, pinned: bool, corner: String = PIN_CORNER_TOP_LEFT) -> void:
 	if pinned:
-		pin_display_variable(address)
+		pin_display_variable(address, corner)
 	else:
 		unpin_display_variable(address)
 
@@ -1664,7 +1743,10 @@ func is_display_variable_pinned(address: String) -> bool:
 	var active_display := _get_active_display()
 	if active_display:
 		return active_display.is_display_variable_pinned(address)
-	return bool(_pending_pinned_display_variables.get(address, false))
+	var pending = _pending_pinned_display_variables.get(address, false)
+	if pending is Dictionary:
+		return bool((pending as Dictionary).get("pinned", false))
+	return bool(pending)
 
 
 func get_console_commands() -> Dictionary:
@@ -2028,6 +2110,7 @@ func _setup_game_ui() -> void:
 	_display.set_entry_text_provider(func(entry, truncate): return get_collapsed_display_text(entry, truncate))
 	_display.set_commands_provider(func(): return console_commands)
 	_display.set_display_variables_provider(func(): return display_variables)
+	_display.set_widgets_provider(func(): return widgets)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))
 	_display.set_rejected_channel_count_provider(func(channel): return get_rejected_channel_count(channel))
 	_display.set_level_visibility_provider(get_level_visibility, set_level_visibility)
@@ -2987,8 +3070,16 @@ func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay, cl
 		return
 
 	for address in _pending_pinned_display_variables:
-		if bool(_pending_pinned_display_variables[address]):
-			target_display.pin_display_variable(str(address))
+		var pending = _pending_pinned_display_variables[address]
+		var pinned := false
+		var corner := PIN_CORNER_TOP_LEFT
+		if pending is Dictionary:
+			pinned = bool((pending as Dictionary).get("pinned", false))
+			corner = _normalize_pin_corner(str((pending as Dictionary).get("corner", PIN_CORNER_TOP_LEFT)))
+		else:
+			pinned = bool(pending)
+		if pinned:
+			target_display.pin_display_variable(str(address), corner)
 		else:
 			target_display.unpin_display_variable(str(address))
 	if clear_pending:
@@ -3074,6 +3165,23 @@ func _set_setting_wrap_text(value: bool) -> void:
 
 func _get_setting_truncate_multiline() -> bool:
 	return _get_console_setting_value("truncate_multiline", _truncate_multiline)
+
+
+func _cycle_performance_widget_pins() -> void:
+	var active_display := _get_active_display()
+	if active_display and active_display.has_method("set_pinned_display_variables_visible"):
+		active_display.set_pinned_display_variables_visible(true)
+
+	var fps_pinned := is_display_variable_pinned(_PERFORMANCE_FPS_PATH)
+	var graphs_pinned := is_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH)
+	if not fps_pinned and not graphs_pinned:
+		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_LEFT)
+	elif fps_pinned and not graphs_pinned:
+		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_LEFT)
+		set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, true, PIN_CORNER_TOP_LEFT)
+	else:
+		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
+		set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
 
 
 func _set_setting_truncate_multiline(value: bool) -> void:
@@ -3359,9 +3467,8 @@ func _input(event : InputEvent) -> void:
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_F4 and event.pressed and not event.echo:
-			if _display:
-				_display.toggle_pinned_display_variables_visible()
-				get_tree().get_root().set_input_as_handled()
+			_cycle_performance_widget_pins()
+			get_tree().get_root().set_input_as_handled()
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
 			_open_command_entry_view()
 			get_tree().get_root().set_input_as_handled()
@@ -3707,8 +3814,13 @@ func _execute_command(command_input: String) -> Dictionary:
 	if command_resolution.get("is_display_variable_pin_action", false):
 		_execute_display_variable_pin_action(
 			str(command_resolution.get("display_variable_address", "")),
-			bool(command_resolution.get("display_variable_pin_state", false))
+			bool(command_resolution.get("display_variable_pin_state", false)),
+			str(command_resolution.get("display_variable_pin_corner", PIN_CORNER_TOP_LEFT))
 		)
+		return {"ok": true}
+
+	if command_resolution.get("is_widget_command", false):
+		_execute_widget_command(str(command_resolution.get("widget_address", "")))
 		return {"ok": true}
 
 	var text_command := str(command_resolution.get("command_name", ""))
@@ -4012,18 +4124,29 @@ func _validate_pin_overlay_name(raw_name: String) -> Dictionary:
 	return {"ok": true, "name": overlay_name}
 
 
-func _execute_display_variable_pin_action(address: String, pinned: bool) -> void:
+func _execute_display_variable_pin_action(address: String, pinned: bool, corner: String = PIN_CORNER_TOP_LEFT) -> void:
 	var normalized_address := address.strip_edges()
 	if normalized_address.is_empty():
 		print_error("Display variable address is required for pin actions.")
 		return
-	if not display_variables.has(normalized_address):
-		print_error("Display variable not found: %s" % normalized_address)
+	if not _is_pinnable_console_item(normalized_address):
+		print_error("Pinnable item not found: %s" % normalized_address)
 		return
 
-	set_display_variable_pinned(normalized_address, pinned)
+	set_display_variable_pinned(normalized_address, pinned, _normalize_pin_corner(corner))
 	var action_text := "Pinned" if pinned else "Unpinned"
 	print_line("%s [color=light_green]%s[/color]." % [action_text, _escape_bbcode_text(normalized_address)])
+
+
+func _execute_widget_command(address: String) -> void:
+	var normalized_address := address.strip_edges()
+	if normalized_address.is_empty() or not widgets.has(normalized_address):
+		print_error("Widget not found: %s" % normalized_address)
+		return
+	print_line("Widget [color=light_green]%s[/color] can be previewed in the command palette or pinned with /%s/pin." % [
+		_escape_bbcode_text(normalized_address),
+		_escape_bbcode_text(normalized_address),
+	])
 
 
 func _command_view_pins() -> void:
@@ -4039,13 +4162,16 @@ func _command_view_pins() -> void:
 
 	pinned_addresses.sort()
 	var lines: PackedStringArray = []
-	lines.append("[color=cyan]Pinned display variables:[/color]")
+	lines.append("[color=cyan]Pinned items:[/color]")
 	for address in pinned_addresses:
 		var address_str := str(address)
 		if address_str.is_empty():
 			continue
 		var escaped_address := _escape_bbcode_text(address_str)
-		lines.append("  [color=light_green]%s[/color] [color=gray](on: /%s/pin | off: /%s/unpin)[/color]" % [escaped_address, escaped_address, escaped_address])
+		var corner := PIN_CORNER_TOP_LEFT
+		if active_display.has_method("get_pinned_display_variable_corner"):
+			corner = _normalize_pin_corner(str(active_display.get_pinned_display_variable_corner(address_str)))
+		lines.append("  [color=light_green]%s[/color] [color=gray](%s | move: /%s/pin/<corner> | off: /%s/unpin)[/color]" % [escaped_address, corner, escaped_address, escaped_address])
 	self.log(["\n".join(lines)], LogLevel.MESSAGE, "")
 
 

@@ -295,6 +295,8 @@ func _sync_existing_entries() -> void:
 		# Set up commands provider for autocomplete
 		_display.set_commands_provider(_get_commands)
 		_display.set_display_variables_provider(_get_display_variables)
+		if _display.has_method("set_widgets_provider"):
+			_display.set_widgets_provider(_get_widgets)
 
 		# Before setting up providers, capture the loaded visibility settings from display
 		# These were loaded from config in _init_base() before providers were set
@@ -386,6 +388,12 @@ func _get_commands() -> Dictionary:
 func _get_display_variables() -> Dictionary:
 	if _logot and _logot.has_method("get_display_variables"):
 		return _logot.get_display_variables()
+	return {}
+
+
+func _get_widgets() -> Dictionary:
+	if _logot and _logot.has_method("get_widgets"):
+		return _logot.get_widgets()
 	return {}
 
 
