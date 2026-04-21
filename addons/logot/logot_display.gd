@@ -1094,6 +1094,17 @@ const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
 const DEBUG_AUTOCOMPLETE_DEFAULT := false
 const DEBUG_AUTOCOMPLETE_ENV := "LOGOT_DEBUG_AUTOCOMPLETE"
 const DEBUG_AUTOCOMPLETE_SETTING := "debug/logot/autocomplete_trace"
+const INPUT_METHOD_KEYBOARD := "keyboard"
+const INPUT_METHOD_CONTROLLER := "controller"
+const RENDER_SCALE_TARGET_LOG := "log"
+const RENDER_SCALE_TARGET_COMMAND_PALETTE := "command_palette"
+const RENDER_SCALE_TARGET_PINNED_VARIABLES := "pinned_variables"
+const RENDER_SCALE_MIN_PERCENT := 50.0
+const RENDER_SCALE_MAX_PERCENT := 300.0
+const DEFAULT_RENDER_SCALE_KEYBOARD := 100.0
+const DEFAULT_RENDER_SCALE_CONTROLLER_LOG := 120.0
+const DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE := 120.0
+const DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES := 100.0
 
 
 # =============================================================================
@@ -1207,6 +1218,23 @@ var _ingame_overlay_right_edge_override := 0.0
 var _ingame_overlay_bottom_edge_override := 0.0
 var _scroll_to_bottom_tween: Tween
 var _pending_animated_scroll_to_bottom := false
+var _current_input_method := INPUT_METHOD_KEYBOARD
+var _render_scale_settings: Dictionary = {
+	INPUT_METHOD_KEYBOARD: {
+		RENDER_SCALE_TARGET_LOG: DEFAULT_RENDER_SCALE_KEYBOARD,
+		RENDER_SCALE_TARGET_COMMAND_PALETTE: DEFAULT_RENDER_SCALE_KEYBOARD,
+		RENDER_SCALE_TARGET_PINNED_VARIABLES: DEFAULT_RENDER_SCALE_KEYBOARD,
+	},
+	INPUT_METHOD_CONTROLLER: {
+		RENDER_SCALE_TARGET_LOG: DEFAULT_RENDER_SCALE_CONTROLLER_LOG,
+		RENDER_SCALE_TARGET_COMMAND_PALETTE: DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE,
+		RENDER_SCALE_TARGET_PINNED_VARIABLES: DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES,
+	},
+}
+var _base_log_font_size := 0
+var _base_command_font_size := 0
+var _base_pinned_font_size := 0
+var _base_line_edit_min_height := 0.0
 
 
 # =============================================================================
@@ -1359,6 +1387,7 @@ func set_command_autocomplete_popup(popup: PanelContainer, scroll: ScrollContain
 		_command_autocomplete_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 		_command_autocomplete_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		_command_autocomplete_scroll.clip_contents = true
+	_apply_command_palette_render_scale()
 
 
 func is_command_palette_active() -> bool:
@@ -1369,7 +1398,7 @@ func get_command_palette_reserved_height() -> float:
 	if not is_command_palette_active() or _command_autocomplete_popup == null:
 		return 0.0
 	var viewport_height := get_viewport_rect().size.y
-	return maxf(0.0, viewport_height - _command_autocomplete_popup.global_position.y + AUTOCOMPLETE_POPUP_GAP)
+	return maxf(0.0, viewport_height - _command_autocomplete_popup.global_position.y + _get_scaled_autocomplete_popup_gap())
 
 
 func add_custom_setting(name: String, label: String, default: bool) -> void:
@@ -1402,6 +1431,7 @@ func initialize_display() -> void:
 	_init_base()
 	_setup_ui_nodes()
 	_connect_ui_signals()
+	_apply_render_scales()
 	_setup_sidebar()
 	_init_display()
 
@@ -1471,6 +1501,37 @@ func apply_setting(name: String, value: bool) -> void:
 	if _sidebar:
 		_sidebar.set_setting(name, value)
 	_on_setting_changed(name, value)
+
+
+func get_current_input_method() -> String:
+	return _current_input_method
+
+
+func set_current_input_method(input_method: String) -> void:
+	var normalized_method := _normalize_input_method(input_method)
+	if _current_input_method == normalized_method:
+		return
+	_current_input_method = normalized_method
+	_apply_render_scales()
+
+
+func get_render_scale_percent(target: String, input_method: String = "") -> float:
+	var method_text := input_method.strip_edges()
+	var normalized_method := _normalize_input_method(method_text if not method_text.is_empty() else _current_input_method)
+	var normalized_target := _normalize_render_scale_target(target)
+	var method_settings: Dictionary = _render_scale_settings.get(normalized_method, {})
+	return float(method_settings.get(normalized_target, _get_default_render_scale_percent(normalized_method, normalized_target)))
+
+
+func set_render_scale_percent(target: String, input_method: String, percent: float) -> void:
+	var normalized_method := _normalize_input_method(input_method)
+	var normalized_target := _normalize_render_scale_target(target)
+	var method_settings: Dictionary = _render_scale_settings.get(normalized_method, {}).duplicate()
+	method_settings[normalized_target] = _normalize_render_scale_percent(percent)
+	_render_scale_settings[normalized_method] = method_settings
+	_save_filter_settings()
+	if normalized_method == _current_input_method:
+		_apply_render_scales()
 
 
 func has_sidebar() -> bool:
@@ -1752,6 +1813,134 @@ func _refresh_pin_option_autocomplete_state() -> void:
 ## Called when a custom setting changes
 func _on_custom_setting_changed(setting_name: String, value: bool) -> void:
 	custom_setting_changed.emit(setting_name, value)
+
+
+func _normalize_input_method(input_method: String) -> String:
+	var normalized := input_method.strip_edges().to_lower()
+	if normalized == INPUT_METHOD_CONTROLLER:
+		return INPUT_METHOD_CONTROLLER
+	return INPUT_METHOD_KEYBOARD
+
+
+func _normalize_render_scale_target(target: String) -> String:
+	var normalized := target.strip_edges().to_lower()
+	if normalized in [RENDER_SCALE_TARGET_COMMAND_PALETTE, "commands", "command", "palette"]:
+		return RENDER_SCALE_TARGET_COMMAND_PALETTE
+	if normalized in [RENDER_SCALE_TARGET_PINNED_VARIABLES, "pinned", "pins"]:
+		return RENDER_SCALE_TARGET_PINNED_VARIABLES
+	return RENDER_SCALE_TARGET_LOG
+
+
+func _get_default_render_scale_percent(input_method: String, target: String) -> float:
+	if input_method == INPUT_METHOD_CONTROLLER:
+		if target == RENDER_SCALE_TARGET_LOG:
+			return DEFAULT_RENDER_SCALE_CONTROLLER_LOG
+		if target == RENDER_SCALE_TARGET_COMMAND_PALETTE:
+			return DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE
+		if target == RENDER_SCALE_TARGET_PINNED_VARIABLES:
+			return DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES
+	return DEFAULT_RENDER_SCALE_KEYBOARD
+
+
+func _normalize_render_scale_percent(percent: float) -> float:
+	return clampf(percent, RENDER_SCALE_MIN_PERCENT, RENDER_SCALE_MAX_PERCENT)
+
+
+func _get_active_render_scale_percent(target: String) -> float:
+	return get_render_scale_percent(target, _current_input_method)
+
+
+func _get_render_scale_multiplier(target: String) -> float:
+	return _get_active_render_scale_percent(target) / 100.0
+
+
+func _get_control_font_size(control: Control, theme_item: String, fallback: int = 16) -> int:
+	if control == null:
+		return fallback
+	var font_size := control.get_theme_font_size(theme_item)
+	if font_size <= 0:
+		return fallback
+	return font_size
+
+
+func _get_scaled_font_size(base_size: int, target: String) -> int:
+	var scale := _get_render_scale_multiplier(target)
+	return maxi(1, int(round(float(base_size) * scale)))
+
+
+func _apply_rich_text_label_font_size(label: RichTextLabel, font_size: int) -> void:
+	if label == null:
+		return
+	label.add_theme_font_size_override("normal_font_size", font_size)
+	label.add_theme_font_size_override("bold_font_size", font_size)
+	label.add_theme_font_size_override("italics_font_size", font_size)
+	label.add_theme_font_size_override("bold_italics_font_size", font_size)
+	label.add_theme_font_size_override("mono_font_size", font_size)
+
+
+func _apply_render_scales() -> void:
+	_apply_log_render_scale()
+	_apply_command_palette_render_scale()
+	_apply_pinned_variables_render_scale()
+
+
+func _apply_log_render_scale() -> void:
+	if not rich_label:
+		return
+	if _base_log_font_size <= 0:
+		_base_log_font_size = _get_control_font_size(rich_label, "normal_font_size", 16)
+	_apply_rich_text_label_font_size(rich_label, _get_scaled_font_size(_base_log_font_size, RENDER_SCALE_TARGET_LOG))
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _apply_command_palette_render_scale() -> void:
+	if _base_command_font_size <= 0:
+		if line_edit:
+			_base_command_font_size = _get_control_font_size(line_edit, "font_size", 16)
+		elif _history_autocomplete_popup:
+			_base_command_font_size = _get_control_font_size(_history_autocomplete_popup, "font_size", 16)
+		else:
+			_base_command_font_size = 16
+
+	var font_size := _get_scaled_font_size(_base_command_font_size, RENDER_SCALE_TARGET_COMMAND_PALETTE)
+	if line_edit:
+		if _base_line_edit_min_height <= 0.0:
+			_base_line_edit_min_height = maxf(line_edit.custom_minimum_size.y, 0.0)
+		line_edit.add_theme_font_size_override("font_size", font_size)
+		if _base_line_edit_min_height > 0.0:
+			line_edit.custom_minimum_size.y = ceil(_base_line_edit_min_height * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))
+	if _history_autocomplete_popup:
+		_history_autocomplete_popup.add_theme_font_size_override("font_size", font_size)
+	for node in _autocomplete_column_nodes:
+		if node is AutocompleteCommandColumn and _history_autocomplete_popup:
+			(node as AutocompleteCommandColumn).configure_theme(_history_autocomplete_popup)
+	if _is_command_popup_visible():
+		_render_command_autocomplete_popup()
+	elif _is_history_popup_visible():
+		_position_history_autocomplete_popup()
+
+
+func _apply_pinned_variables_render_scale() -> void:
+	if _base_pinned_font_size <= 0:
+		if _main_container:
+			_base_pinned_font_size = _get_control_font_size(_main_container, "normal_font_size", 16)
+		else:
+			_base_pinned_font_size = 16
+	var font_size := _get_scaled_font_size(_base_pinned_font_size, RENDER_SCALE_TARGET_PINNED_VARIABLES)
+	for row in _pinned_overlay_rows.values():
+		if row is RichTextLabel and is_instance_valid(row):
+			_apply_rich_text_label_font_size(row as RichTextLabel, font_size)
+	_pinned_row_render_cache.clear()
+	_refresh_pinned_display_variables()
+
+
+func _get_scaled_autocomplete_item_height() -> int:
+	return maxi(1, int(round(float(AUTOCOMPLETE_ITEM_HEIGHT) * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))))
+
+
+func _get_scaled_autocomplete_popup_gap() -> float:
+	return AUTOCOMPLETE_POPUP_GAP * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
 
 
 ## Called after logs are cleared
@@ -2478,6 +2667,9 @@ func _create_pinned_overlay_row() -> RichTextLabel:
 	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	if _main_container and _main_container.theme:
 		row.theme = _main_container.theme
+	if _base_pinned_font_size <= 0:
+		_base_pinned_font_size = _get_control_font_size(row, "normal_font_size", 16)
+	_apply_rich_text_label_font_size(row, _get_scaled_font_size(_base_pinned_font_size, RENDER_SCALE_TARGET_PINNED_VARIABLES))
 	return row
 
 
@@ -3329,11 +3521,24 @@ func _load_filter_settings() -> void:
 
 
 func _save_custom_settings(_config: ConfigFile) -> void:
-	pass
+	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER]:
+		for target in [RENDER_SCALE_TARGET_LOG, RENDER_SCALE_TARGET_COMMAND_PALETTE, RENDER_SCALE_TARGET_PINNED_VARIABLES]:
+			_config.set_value("render_scale", "%s/%s" % [input_method, target], get_render_scale_percent(target, input_method))
 
 
 func _load_custom_settings(_config: ConfigFile) -> void:
-	pass
+	if not _config.has_section("render_scale"):
+		return
+	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER]:
+		var method_settings: Dictionary = _render_scale_settings.get(input_method, {}).duplicate()
+		for target in [RENDER_SCALE_TARGET_LOG, RENDER_SCALE_TARGET_COMMAND_PALETTE, RENDER_SCALE_TARGET_PINNED_VARIABLES]:
+			var key := "%s/%s" % [input_method, target]
+			method_settings[target] = _normalize_render_scale_percent(float(_config.get_value(
+				"render_scale",
+				key,
+				_get_default_render_scale_percent(input_method, target)
+			)))
+		_render_scale_settings[input_method] = method_settings
 
 
 func _sync_sidebar_state() -> void:
@@ -5314,10 +5519,11 @@ func _position_history_autocomplete_popup() -> void:
 
 	var line_edit_rect := line_edit.get_global_rect()
 	var item_count := mini(_history_autocomplete_popup.item_count, AUTOCOMPLETE_MAX_VISIBLE_ITEMS)
-	var desired_height := item_count * AUTOCOMPLETE_ITEM_HEIGHT + 8
-	var available_height := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP)
+	var desired_height := item_count * _get_scaled_autocomplete_item_height() + int(round(8.0 * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)))
+	var popup_gap := _get_scaled_autocomplete_popup_gap()
+	var available_height := maxi(0.0, line_edit_rect.position.y - popup_gap)
 	var popup_height := minf(desired_height, available_height)
-	var popup_y := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP - popup_height)
+	var popup_y := maxi(0.0, line_edit_rect.position.y - popup_gap - popup_height)
 	var popup_width := line_edit_rect.size.x
 	if line_edit.size.x > 0.0:
 		popup_width = minf(popup_width, line_edit.size.x)
@@ -5335,7 +5541,7 @@ func _position_command_autocomplete_popup() -> void:
 
 	var line_edit_rect := line_edit.get_global_rect()
 	var popup_height := _get_command_autocomplete_target_height()
-	var popup_y := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP - popup_height)
+	var popup_y := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap() - popup_height)
 	var popup_width := line_edit_rect.size.x
 	if line_edit.size.x > 0.0:
 		popup_width = minf(popup_width, line_edit.size.x)
@@ -5445,7 +5651,7 @@ func _debug_command_popup_height(source: String) -> void:
 
 
 func _get_command_autocomplete_popup_height() -> int:
-	return AUTOCOMPLETE_FIXED_VISIBLE_ITEMS * AUTOCOMPLETE_ITEM_HEIGHT + 8
+	return AUTOCOMPLETE_FIXED_VISIBLE_ITEMS * _get_scaled_autocomplete_item_height() + int(round(8.0 * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)))
 
 
 func _get_command_autocomplete_target_height() -> int:
@@ -5454,7 +5660,7 @@ func _get_command_autocomplete_target_height() -> int:
 
 	var line_edit_rect := line_edit.get_global_rect()
 	var desired_height := float(_get_command_autocomplete_popup_height())
-	var available_height := maxi(0.0, line_edit_rect.position.y - AUTOCOMPLETE_POPUP_GAP)
+	var available_height := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap())
 	return maxi(1, int(floor(minf(desired_height, available_height))))
 
 
@@ -5521,7 +5727,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		layout,
 		selected_row_index,
 		column_state.get("preview", false),
-		AUTOCOMPLETE_ITEM_HEIGHT,
+		_get_scaled_autocomplete_item_height(),
 		is_active_column,
 		column_name,
 		column_description
@@ -5686,7 +5892,7 @@ func _refresh_command_autocomplete_popup_values() -> void:
 			layout,
 			selected_row_index,
 			column_state.get("preview", false),
-			AUTOCOMPLETE_ITEM_HEIGHT,
+			_get_scaled_autocomplete_item_height(),
 			is_active_column,
 			column_name,
 			column_description
