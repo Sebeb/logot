@@ -117,6 +117,7 @@ class LogotDisplayVariable:
 	var group_priority: int
 	var change_signal_source: Object
 	var change_signal_name: StringName
+	var display_label_provider: Callable
 
 	func _init(
 		in_getter: Callable,
@@ -126,7 +127,8 @@ class LogotDisplayVariable:
 		in_group_name: String = "",
 		in_group_priority: int = 0,
 		in_change_signal_source: Object = null,
-		in_change_signal_name: StringName = &""
+		in_change_signal_name: StringName = &"",
+		in_display_label_provider: Callable = Callable()
 	):
 		getter = in_getter
 		inline_color_provider = in_inline_color_provider
@@ -136,6 +138,7 @@ class LogotDisplayVariable:
 		group_priority = in_group_priority if not group_name.is_empty() else 0
 		change_signal_source = in_change_signal_source
 		change_signal_name = in_change_signal_name
+		display_label_provider = in_display_label_provider
 
 
 class AutocompleteCommandColumn:
@@ -306,19 +309,40 @@ class AutocompleteCommandColumn:
 			_scroll_row = 0
 			return
 
-		_scroll_row = clampi(_scroll_row, 0, max_scroll)
-		if _selected_index < _scroll_row:
-			_scroll_row = _selected_index
-		elif not _is_row_visible_for_scroll(_scroll_row, _selected_index):
-			var next_scroll := _scroll_row
-			while next_scroll < max_scroll and not _is_row_visible_for_scroll(next_scroll, _selected_index):
-				next_scroll += 1
-			_scroll_row = next_scroll
-
-		_scroll_row = clampi(_scroll_row, 0, max_scroll)
+		_scroll_row = _find_best_scroll_row_for_selection(_selected_index, max_scroll)
 
 	func _get_visible_row_capacity() -> int:
 		return maxi(1, int(floor(maxf(0.0, size.y - _header_height) / maxf(1.0, float(_row_height)))))
+
+	func _find_best_scroll_row_for_selection(selected_row: int, max_scroll: int) -> int:
+		if selected_row < 0 or _rows.is_empty():
+			return 0
+
+		var current_scroll := clampi(_scroll_row, 0, max_scroll)
+		var best_scroll := current_scroll
+		var best_center_distance := INF
+		var best_scroll_delta := INF
+		for candidate in range(max_scroll + 1):
+			if not _is_row_visible_for_scroll(candidate, selected_row):
+				continue
+			var visible_rows := _get_visible_content_row_count_for_scroll(candidate)
+			if visible_rows <= 0:
+				continue
+
+			var center_row := float(visible_rows - 1) * 0.5
+			var selected_offset := float(selected_row - candidate)
+			var center_distance := absf(selected_offset - center_row)
+			var scroll_delta := absi(candidate - current_scroll)
+			if center_distance < best_center_distance:
+				best_center_distance = center_distance
+				best_scroll_delta = scroll_delta
+				best_scroll = candidate
+				continue
+			if is_equal_approx(center_distance, best_center_distance) and scroll_delta < best_scroll_delta:
+				best_scroll_delta = scroll_delta
+				best_scroll = candidate
+
+		return clampi(best_scroll, 0, max_scroll)
 
 	func _has_sticky_group_header_for_scroll(scroll_row: int) -> bool:
 		return not _get_sticky_group_header_row_data_for_scroll(scroll_row).is_empty()
@@ -2475,7 +2499,10 @@ func _refresh_pinned_display_variable_row(address: String, base_name_counts: Dic
 		return
 
 	var base_name := _get_address_tail(address)
-	var display_address := address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
+	var display_label := str(snapshot.get("display_label", "")).strip_edges()
+	var display_address := display_label
+	if display_address.is_empty():
+		display_address = address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
 	var signature := var_to_str({
 		"display_address": display_address,
 		"render": str(snapshot.get("signature", "")),
@@ -2575,6 +2602,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 	var current_value: Variant = null
 	var items: Array[Dictionary] = []
 	var inline_color := Color.TRANSPARENT
+	var display_label := ""
 	if display_variable is LogotDisplayVariable:
 		var display_variable_object := display_variable as LogotDisplayVariable
 		if display_variable_object.getter.is_valid():
@@ -2583,6 +2611,8 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 			items = _normalize_display_variable_items(display_variable_object.items_provider.call())
 		if display_variable_object.inline_color_provider.is_valid():
 			inline_color = _resolve_display_variable_inline_color(display_variable_object.inline_color_provider.call())
+		if display_variable_object.display_label_provider.is_valid():
+			display_label = str(display_variable_object.display_label_provider.call()).replace("\n", " ").replace("\r", " ").strip_edges()
 	elif display_variable is Callable:
 		var getter := display_variable as Callable
 		if getter.is_valid():
@@ -2629,12 +2659,14 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 		"exists": true,
 		"resolved_address": resolved_address,
 		"text": text,
+		"display_label": display_label,
 		"items": items,
 		"inline_color": inline_color,
 		"autocomplete_color": autocomplete_color,
 		"update_mode": "signal" if _is_signal_backed_display_variable(resolved_address) else "getter",
 		"signature": var_to_str({
 			"text": text,
+			"display_label": display_label,
 			"items": item_signatures,
 			"inline_color": inline_color.to_html(false),
 			"autocomplete_color": autocomplete_color.to_html(false),
@@ -6057,6 +6089,57 @@ func autocomplete_select_next() -> void:
 		next_index = 0
 
 	_set_history_autocomplete_selection(next_index)
+
+
+func _find_autocomplete_group_navigation_index(matches: Array, selected_index: int, direction: int) -> int:
+	if matches.is_empty() or direction == 0:
+		return -1
+	if selected_index < 0 or selected_index >= matches.size():
+		return -1
+
+	var current_group_name := str(matches[selected_index].get("group_name", "")).strip_edges()
+	if current_group_name.is_empty():
+		return -1
+
+	var candidate_index := selected_index + direction
+	while candidate_index >= 0 and candidate_index < matches.size():
+		var candidate_group_name := str(matches[candidate_index].get("group_name", "")).strip_edges()
+		if candidate_group_name.is_empty():
+			return -1
+		if candidate_group_name != current_group_name:
+			while candidate_index > 0 and str(matches[candidate_index - 1].get("group_name", "")).strip_edges() == candidate_group_name:
+				candidate_index -= 1
+			return candidate_index
+		candidate_index += direction
+
+	return -1
+
+
+func _select_autocomplete_group(direction: int) -> bool:
+	if not _is_command_popup_visible():
+		return false
+	if _autocomplete_active_column_index < 0 or _autocomplete_active_column_index >= _autocomplete_column_states.size():
+		return false
+
+	var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
+	var matches: Array = column_state.get("matches", [])
+	var selected_index := int(column_state.get("selected_index", -1))
+	var group_index := _find_autocomplete_group_navigation_index(matches, selected_index, direction)
+	if group_index == -1:
+		return false
+
+	_history_access_locked_until_reset = true
+	_root_command_selection_reset_pending = false
+	_set_active_command_column_selection(group_index)
+	return true
+
+
+func autocomplete_select_prev_group() -> bool:
+	return _select_autocomplete_group(-1)
+
+
+func autocomplete_select_next_group() -> bool:
+	return _select_autocomplete_group(1)
 
 
 func get_selected_history_command() -> String:
