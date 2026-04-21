@@ -135,6 +135,8 @@ const PIN_CORNERS := [
 	PIN_CORNER_BOTTOM_LEFT,
 	PIN_CORNER_BOTTOM_RIGHT,
 ]
+const RENDER_SCALE_COMMAND_GROUP_NAME := "Console render scale"
+const RENDER_SCALE_COMMAND_GROUP_PRIORITY := 210
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -3188,6 +3190,45 @@ func _set_setting_truncate_multiline(value: bool) -> void:
 	_set_console_setting_value("truncate_multiline", value)
 
 
+func _get_render_scale_setting(target: String, input_method: String) -> float:
+	if _display:
+		return _display.get_render_scale_percent(target, input_method)
+	var normalized_method := input_method.strip_edges().to_lower()
+	var normalized_target := target.strip_edges().to_lower()
+	if normalized_method == LogotDisplay.INPUT_METHOD_CONTROLLER:
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_LOG:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_CONTROLLER_LOG
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES
+	return LogotDisplay.DEFAULT_RENDER_SCALE_KEYBOARD
+
+
+func _set_render_scale_setting(target: String, input_method: String, value: float) -> void:
+	if _display:
+		_display.set_render_scale_percent(target, input_method, value)
+
+
+func _get_render_scale_options() -> Array:
+	return [50.0, 75.0, 100.0, 110.0, 120.0, 125.0, 150.0, 175.0, 200.0]
+
+
+func _register_render_scale_setting_command(command_name: String, target: String, input_method: String, description: String) -> void:
+	add_setget_command(
+		command_name,
+		func(value: float) -> void:
+			_set_render_scale_setting(target, input_method, value),
+		func() -> float:
+			return _get_render_scale_setting(target, input_method),
+		description,
+		_get_render_scale_options,
+		Callable(),
+		RENDER_SCALE_COMMAND_GROUP_NAME,
+		RENDER_SCALE_COMMAND_GROUP_PRIORITY
+	)
+
+
 func _register_console_setting_commands() -> void:
 	add_setget_command(
 		"console/settings/collapse_duplicates",
@@ -3206,6 +3247,42 @@ func _register_console_setting_commands() -> void:
 		_set_setting_truncate_multiline,
 		_get_setting_truncate_multiline,
 		"Set whether multi-line logs are truncated in collapsed view."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/log/keyboard",
+		LogotDisplay.RENDER_SCALE_TARGET_LOG,
+		LogotDisplay.INPUT_METHOD_KEYBOARD,
+		"Set the keyboard log render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/log/controller",
+		LogotDisplay.RENDER_SCALE_TARGET_LOG,
+		LogotDisplay.INPUT_METHOD_CONTROLLER,
+		"Set the controller log render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/command_palette/keyboard",
+		LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE,
+		LogotDisplay.INPUT_METHOD_KEYBOARD,
+		"Set the keyboard command palette render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/command_palette/controller",
+		LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE,
+		LogotDisplay.INPUT_METHOD_CONTROLLER,
+		"Set the controller command palette render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/pinned_variables/keyboard",
+		LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES,
+		LogotDisplay.INPUT_METHOD_KEYBOARD,
+		"Set the keyboard pinned variables render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/pinned_variables/controller",
+		LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES,
+		LogotDisplay.INPUT_METHOD_CONTROLLER,
+		"Set the controller pinned variables render scale percentage."
 	)
 
 
@@ -3449,17 +3526,31 @@ func _input(event : InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 
+	if event is InputEventJoypadButton:
+		var joypad_button_event := event as InputEventJoypadButton
+		if _handle_controller_shortcut_input(joypad_button_event):
+			get_tree().get_root().set_input_as_handled()
+			return
+
+	if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		if _handle_controller_log_input(event):
+			get_tree().get_root().set_input_as_handled()
+			return
+
 	if event is InputEventKey:
 		var console_visible := _is_console_control_visible()
 		if _handle_line_edit_autocomplete_input(event):
+			_set_current_input_method_keyboard()
 			get_tree().get_root().set_input_as_handled()
 			return
 		if event.get_physical_keycode_with_modifiers() == KEY_QUOTELEFT:
 			if event.pressed:
+				_set_current_input_method_keyboard()
 				toggle_console(false)
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_QUOTELEFT and event.is_command_or_control_pressed():
 			if event.pressed:
+				_set_current_input_method_keyboard()
 				if console_visible:
 					toggle_size()
 				else:
@@ -3470,23 +3561,124 @@ func _input(event : InputEvent) -> void:
 			_cycle_performance_widget_pins()
 			get_tree().get_root().set_input_as_handled()
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
+			_set_current_input_method_keyboard()
 			_open_command_entry_view()
 			get_tree().get_root().set_input_as_handled()
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and console_visible:
 			if event.pressed:
+				_set_current_input_method_keyboard()
 				_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
 		if console_visible and event.pressed and rich_label != null and is_instance_valid(rich_label):
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
+				_set_current_input_method_keyboard()
 				var scroll := rich_label.get_v_scroll_bar()
 				var tween := create_tween()
 				tween.tween_property(scroll, "value", scroll.value - (scroll.page - scroll.page * 0.1), 0.1)
 				get_tree().get_root().set_input_as_handled()
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEDOWN:
+				_set_current_input_method_keyboard()
 				var scroll := rich_label.get_v_scroll_bar()
 				var tween := create_tween()
 				tween.tween_property(scroll, "value", scroll.value + (scroll.page - scroll.page * 0.1), 0.1)
 				get_tree().get_root().set_input_as_handled()
+
+
+func _set_current_input_method_keyboard() -> void:
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_KEYBOARD)
+
+
+func _set_current_input_method_controller() -> void:
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_CONTROLLER)
+
+
+func _is_controller_modifier_held(device: int) -> bool:
+	return Input.is_joy_button_pressed(device, JOY_BUTTON_BACK)
+
+
+func _handle_controller_shortcut_input(event: InputEventJoypadButton) -> bool:
+	if event == null:
+		return false
+
+	if event.button_index == JOY_BUTTON_BACK:
+		return true
+
+	if not event.pressed:
+		return false
+
+	if not _is_controller_modifier_held(event.device):
+		return false
+
+	match event.button_index:
+		JOY_BUTTON_LEFT_SHOULDER:
+			_set_current_input_method_controller()
+			toggle_console(false)
+			return true
+		JOY_BUTTON_A:
+			_set_current_input_method_controller()
+			_open_command_entry_view()
+			return true
+	return false
+
+
+func _handle_controller_log_input(event: InputEvent) -> bool:
+	if not _is_console_control_visible():
+		return false
+
+	if event.is_action_pressed("ui_cancel"):
+		_set_current_input_method_controller()
+		_handle_escape_input()
+		return true
+
+	if not _display:
+		return false
+	if not _display.is_command_entry_mode() and not _display.is_autocomplete_visible():
+		return false
+
+	if event.is_action_pressed("ui_up"):
+		_set_current_input_method_controller()
+		_display.autocomplete_select_prev()
+		return true
+	if event.is_action_pressed("ui_down"):
+		_set_current_input_method_controller()
+		_display.autocomplete_select_next()
+		return true
+	if event.is_action_pressed("ui_left"):
+		_set_current_input_method_controller()
+		_display.autocomplete_move_left()
+		return true
+	if event.is_action_pressed("ui_right"):
+		_set_current_input_method_controller()
+		_display.autocomplete_move_right(true)
+		return true
+	if event.is_action_pressed("ui_accept"):
+		_set_current_input_method_controller()
+		_handle_controller_accept_input()
+		return true
+
+	return false
+
+
+func _handle_controller_accept_input() -> void:
+	if not _display or not line_edit:
+		return
+
+	var selected_history_command := _get_selected_history_command()
+	if not selected_history_command.is_empty():
+		_submit_line_edit_input(selected_history_command, false, false)
+		return
+
+	if _display.has_active_command_autocomplete_match():
+		if _display.is_active_command_match_submittable():
+			_submit_line_edit_input(line_edit.text, false, true)
+		else:
+			_display.confirm_autocomplete()
+		return
+
+	if line_edit.text.strip_edges().begins_with("/"):
+		_submit_line_edit_input(line_edit.text, false, true)
 
 
 func _is_console_control_visible() -> bool:
@@ -3538,6 +3730,7 @@ func _on_line_edit_gui_input(event: InputEvent) -> void:
 
 	var key_event := event as InputEventKey
 	if _handle_line_edit_autocomplete_input(key_event) or _handle_line_edit_submit_input(key_event):
+		_set_current_input_method_keyboard()
 		line_edit.accept_event()
 		line_edit.call_deferred("grab_focus")
 
