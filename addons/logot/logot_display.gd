@@ -2836,19 +2836,31 @@ func _apply_pinned_overlay_row_alignment(row: Node, horizontal_alignment: Horizo
 		_apply_pinned_overlay_row_alignment(child, horizontal_alignment, align_right)
 
 
-func _update_pinned_widget_header_markup(header: RichTextLabel, align_right: bool) -> void:
+func _update_pinned_widget_header_markup(header: RichTextLabel, align_right: bool, base_name_counts: Dictionary = {}) -> void:
 	if header == null or not is_instance_valid(header):
 		return
 	var address := str(header.get_meta("logot_pin_widget_address", "")).strip_edges()
 	if address.is_empty():
 		return
-	var markup := "[bgcolor=#1a202acc] %s [/bgcolor]" % _escape_overlay_bbcode(address)
+	var display_address := _get_pinned_item_display_address(address, base_name_counts)
+	if display_address.is_empty():
+		display_address = address
+	var markup := "[bgcolor=#1a202acc] %s [/bgcolor]" % _escape_overlay_bbcode(display_address)
 	if align_right:
 		markup = "[right]%s[/right]" % markup
 	header.set_meta("logot_pin_widget_header_alignment", "right" if align_right else "left")
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 	header.clear()
 	header.append_text(markup)
+
+
+func _update_pinned_widget_headers_in_row(node: Node, align_right: bool, base_name_counts: Dictionary) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	if node is RichTextLabel and bool((node as RichTextLabel).get_meta("logot_pin_widget_header", false)):
+		_update_pinned_widget_header_markup(node as RichTextLabel, align_right, base_name_counts)
+	for child in node.get_children():
+		_update_pinned_widget_headers_in_row(child, align_right, base_name_counts)
 
 
 func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
@@ -2858,6 +2870,7 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 			for child in container.get_children():
 				container.remove_child(child)
 
+	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 	var effective_indices: Dictionary = {}
 	var placed_row_ids: Dictionary = {}
 	for address in visible_addresses:
@@ -2885,8 +2898,9 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 		if row is Control:
 			(row as Control).size_flags_horizontal = Control.SIZE_SHRINK_END if align_right else Control.SIZE_SHRINK_BEGIN
 		if _has_display_variable(address):
-			_apply_pinned_display_variable_row_snapshot(address, {}, false)
+			_apply_pinned_display_variable_row_snapshot(address, base_name_counts, false)
 		_apply_pinned_overlay_row_alignment(row, horizontal_alignment, align_right)
+		_update_pinned_widget_headers_in_row(row as Node, align_right, base_name_counts)
 
 
 func _refresh_pinned_display_variables() -> void:
@@ -2894,14 +2908,11 @@ func _refresh_pinned_display_variables() -> void:
 		return
 
 	var visible_addresses: Array[String] = []
-	var base_name_counts: Dictionary = {}
 	for address in _pinned_display_variables:
 		if not _is_pinned_item_available(address):
 			continue
 		visible_addresses.append(address)
-		if _has_display_variable(address):
-			var base_name := _get_address_tail(address)
-			base_name_counts[base_name] = int(base_name_counts.get(base_name, 0)) + 1
+	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 
 	_sync_pinned_overlay_rows(visible_addresses)
 	if visible_addresses.is_empty() or not _pinned_overlay_visible:
@@ -3025,7 +3036,7 @@ func _refresh_pinned_display_variable_row(address: String, base_name_counts: Dic
 		return
 
 	if base_name_counts.is_empty():
-		base_name_counts = _get_visible_pinned_display_variable_base_name_counts()
+		base_name_counts = _get_visible_pinned_item_base_name_counts()
 
 	var snapshot := _get_display_variable_render_snapshot(address)
 	if not bool(snapshot.get("exists", false)):
@@ -3062,13 +3073,12 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 		return
 
 	if base_name_counts.is_empty():
-		base_name_counts = _get_visible_pinned_display_variable_base_name_counts()
+		base_name_counts = _get_visible_pinned_item_base_name_counts()
 
-	var base_name := _get_address_tail(address)
 	var display_label := str(snapshot.get("display_label", "")).strip_edges()
 	var display_address := display_label
 	if display_address.is_empty():
-		display_address = address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
+		display_address = _get_pinned_item_display_address(address, base_name_counts)
 	var effective_corner := _get_effective_pinned_corner_for_address(address)
 	var align_right := effective_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or effective_corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
 	var signature := var_to_str({
@@ -3097,14 +3107,24 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 	(row as RichTextLabel).visible = _pinned_overlay_visible
 
 
-func _get_visible_pinned_display_variable_base_name_counts() -> Dictionary:
+func _get_visible_pinned_item_base_name_counts() -> Dictionary:
 	var base_name_counts: Dictionary = {}
 	for address in _pinned_display_variables:
-		if not _has_display_variable(address):
+		if not _is_pinned_item_available(address):
 			continue
 		var base_name := _get_address_tail(address)
 		base_name_counts[base_name] = int(base_name_counts.get(base_name, 0)) + 1
 	return base_name_counts
+
+
+func _get_pinned_item_display_address(address: String, base_name_counts: Dictionary = {}) -> String:
+	var normalized_address := address.strip_edges().trim_suffix("/")
+	if normalized_address.is_empty():
+		return ""
+	if base_name_counts.is_empty():
+		base_name_counts = _get_visible_pinned_item_base_name_counts()
+	var base_name := _get_address_tail(normalized_address)
+	return normalized_address if int(base_name_counts.get(base_name, 0)) > 1 else base_name
 
 
 func _poll_visible_display_variable_consumers(delta: float) -> void:
@@ -3118,7 +3138,7 @@ func _poll_visible_pinned_display_variable_rows() -> void:
 		return
 
 	_update_pinned_corner_redirects()
-	var base_name_counts := _get_visible_pinned_display_variable_base_name_counts()
+	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 	for address in _pinned_row_poll_signatures.keys():
 		if not _pinned_display_variables.has(str(address)) or not _has_display_variable(str(address)):
 			_pinned_row_poll_signatures.erase(address)
