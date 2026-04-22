@@ -1251,7 +1251,6 @@ func remove_widget(address: String) -> void:
 	if normalized_address.is_empty():
 		return
 	widgets.erase(normalized_address)
-	unpin_display_variable(normalized_address)
 	_notify_command_catalog_changed()
 
 
