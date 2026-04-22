@@ -2799,15 +2799,24 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 				container.remove_child(child)
 
 	var effective_indices: Dictionary = {}
+	var placed_row_ids: Dictionary = {}
 	for address in visible_addresses:
 		var row = _pinned_overlay_rows.get(address, null)
 		if not (row is Control) or not is_instance_valid(row):
 			continue
+		var row_id := int((row as Node).get_instance_id())
+		if placed_row_ids.has(row_id):
+			continue
+		placed_row_ids[row_id] = true
 		var effective_corner := _get_effective_pinned_corner_for_address(address)
 		var container := _get_pinned_overlay_container(effective_corner)
 		if container == null:
 			continue
-		container.add_child(row)
+		var parent := (row as Node).get_parent()
+		if parent != null and parent != container:
+			(parent as Node).remove_child(row)
+		if (row as Node).get_parent() != container:
+			container.add_child(row)
 		var target_index := int(effective_indices.get(effective_corner, 0))
 		container.move_child(row, target_index)
 		effective_indices[effective_corner] = target_index + 1
