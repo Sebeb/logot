@@ -1246,6 +1246,25 @@ func add_widget(address: String, scene_or_path: Variant, description: String = "
 	_notify_command_catalog_changed()
 
 
+func add_render_texture_widget(address: String, texture_getter: Callable, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2(220, 160)) -> void:
+	var normalized_address := address.strip_edges().trim_suffix("/")
+	if normalized_address.is_empty():
+		push_warning("Cannot add Logot render texture widget with an empty address.")
+		return
+	if not texture_getter.is_valid():
+		push_warning("Cannot add Logot render texture widget '%s': invalid texture getter." % normalized_address)
+		return
+	widgets[normalized_address] = {
+		"widget_type": "render_texture",
+		"texture_getter": texture_getter,
+		"description": description,
+		"group_name": group_name.strip_edges(),
+		"group_priority": group_priority if not group_name.strip_edges().is_empty() else 0,
+		"default_minimum_size": default_minimum_size,
+	}
+	_notify_command_catalog_changed()
+
+
 func remove_widget(address: String) -> void:
 	var normalized_address := address.strip_edges().trim_suffix("/")
 	if normalized_address.is_empty():
@@ -2711,13 +2730,12 @@ func _stop_ingame_popup_fade(popup_panel: Control) -> void:
 func _schedule_ingame_popup_fade(popup_panel: Control, reset_timer: bool = false) -> void:
 	if popup_panel == null or not is_instance_valid(popup_panel):
 		return
-	if _ingame_popup_guard:
-		return
+	var was_guarded := _ingame_popup_guard
 	_ingame_popup_guard = true
 
 	_stop_ingame_popup_fade_internal(popup_panel)
 	if not _ingame_popup_fade_enabled:
-		_ingame_popup_guard = false
+		_ingame_popup_guard = was_guarded
 		return
 
 	if reset_timer:
@@ -2734,7 +2752,7 @@ func _schedule_ingame_popup_fade(popup_panel: Control, reset_timer: bool = false
 		if is_instance_valid(popup_panel):
 			_free_ingame_popup(popup_panel)
 	)
-	_ingame_popup_guard = false
+	_ingame_popup_guard = was_guarded
 
 
 func _free_ingame_popup(popup_panel: Node) -> void:
@@ -3653,6 +3671,12 @@ func _handle_controller_log_input(event: InputEvent) -> bool:
 		_set_current_input_method_controller()
 		_display.autocomplete_move_right(true)
 		return true
+	if event is InputEventJoypadButton:
+		var joypad_button_event := event as InputEventJoypadButton
+		if joypad_button_event.pressed and joypad_button_event.button_index == JOY_BUTTON_X:
+			_set_current_input_method_controller()
+			_handle_controller_keep_palette_execute_input()
+			return true
 	if event.is_action_pressed("ui_accept"):
 		_set_current_input_method_controller()
 		_handle_controller_accept_input()
@@ -3679,6 +3703,24 @@ func _handle_controller_accept_input() -> void:
 
 	if line_edit.text.strip_edges().begins_with("/"):
 		_submit_line_edit_input(line_edit.text, false, true)
+
+
+func _handle_controller_keep_palette_execute_input() -> void:
+	if not _display or not line_edit:
+		return
+
+	var selected_history_command := _get_selected_history_command()
+	if not selected_history_command.is_empty():
+		_submit_line_edit_input(selected_history_command, true, false)
+		return
+
+	if _display.has_active_command_autocomplete_match():
+		if _display.is_active_command_match_submittable():
+			_submit_line_edit_input(line_edit.text, true, true)
+		return
+
+	if line_edit.text.strip_edges().begins_with("/"):
+		_submit_line_edit_input(line_edit.text, true, true)
 
 
 func _is_console_control_visible() -> bool:

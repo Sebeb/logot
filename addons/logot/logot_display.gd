@@ -162,6 +162,66 @@ class LogotWidget:
 		default_minimum_size = in_default_minimum_size
 
 
+class RenderTextureWidget:
+	extends PanelContainer
+
+	var refresh_in_background := true
+	var _texture_getter: Callable = Callable()
+	var _texture_rect: TextureRect = null
+	var _empty_label: Label = null
+	var _last_texture: Texture2D = null
+
+	func setup(widget_data: Dictionary, minimum_size: Vector2) -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if minimum_size.x > 0.0 or minimum_size.y > 0.0:
+			custom_minimum_size = minimum_size
+
+		var panel_style := StyleBoxFlat.new()
+		panel_style.bg_color = Color(0.02, 0.025, 0.035, 0.72)
+		panel_style.border_color = Color(0.55, 0.65, 0.82, 0.22)
+		panel_style.set_border_width_all(1)
+		panel_style.set_content_margin_all(2.0)
+		add_theme_stylebox_override("panel", panel_style)
+
+		var stack := Control.new()
+		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		add_child(stack)
+
+		_texture_rect = TextureRect.new()
+		_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_texture_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+		stack.add_child(_texture_rect)
+
+		_empty_label = Label.new()
+		_empty_label.text = "No texture"
+		_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_empty_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_empty_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+		stack.add_child(_empty_label)
+
+		var getter_variant: Variant = widget_data.get("texture_getter", Callable())
+		if getter_variant is Callable:
+			_texture_getter = getter_variant as Callable
+		refresh_logot_widget(0.0)
+
+	func refresh_logot_widget(_delta: float) -> void:
+		var next_texture: Texture2D = null
+		if _texture_getter.is_valid():
+			var texture_variant: Variant = _texture_getter.call()
+			if texture_variant is Texture2D:
+				next_texture = texture_variant as Texture2D
+		if next_texture != _last_texture and _texture_rect != null:
+			_last_texture = next_texture
+			_texture_rect.texture = next_texture
+		if _empty_label != null:
+			_empty_label.visible = next_texture == null
+
+
 class AutocompleteCommandColumn:
 	extends Control
 
@@ -4005,11 +4065,24 @@ func _get_widget_default_minimum_size(widget: Variant) -> Vector2:
 	return Vector2.ZERO
 
 
+func _is_render_texture_widget_data(widget: Variant) -> bool:
+	return widget is Dictionary and str((widget as Dictionary).get("widget_type", "")).strip_edges().to_lower() == "render_texture"
+
+
 func _create_widget_instance(address: String, mode: String, corner: String = PINNED_OVERLAY_CORNER_TOP_LEFT) -> Control:
 	var resolved_address := _resolve_alias_command_path(address)
 	var widget = _get_widgets().get(resolved_address, null)
 	if widget == null:
 		return null
+
+	if _is_render_texture_widget_data(widget):
+		var render_widget := RenderTextureWidget.new()
+		var min_size := _get_widget_default_minimum_size(widget)
+		render_widget.setup(widget as Dictionary, min_size)
+		render_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if render_widget.has_method("configure_logot_widget"):
+			render_widget.call("configure_logot_widget", resolved_address, mode, _normalize_pin_corner(corner))
+		return render_widget
 
 	var scene_or_path: Variant = widget
 	if widget is LogotWidget:
