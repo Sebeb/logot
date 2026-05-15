@@ -101,6 +101,7 @@ const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
 const _UNKNOWN_GIT_BRANCH := "unknown"
 const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
 const _PERFORMANCE_GRAPHS_WIDGET_PATH := "dev/performance/graphs"
+const _PERFORMANCE_GRAPHS_TIME_RANGE_PATH := "dev/performance/graphs/time_range"
 const DEFAULT_INGAME_POPUP_LIFETIME := 5.0
 const INGAME_POPUP_FADE_DURATION := 0.35
 const INGAME_POPUP_MAX_VISIBLE := 6
@@ -125,6 +126,19 @@ const INGAME_POPUP_ENABLED_MARK := "✓"
 const INGAME_POPUP_DISABLED_MARK := "✗"
 const TIMER_COMMAND_GROUP_NAME := "Timers"
 const TIMER_COMMAND_GROUP_PRIORITY := 225
+const PERFORMANCE_COMMAND_GROUP_NAME := "Performance"
+const PERFORMANCE_COMMAND_GROUP_PRIORITY := 230
+const PERFORMANCE_HISTORY_NUM_FRAMES := 500
+const PERFORMANCE_FPS_NUM_FRAMES := 25
+const PERFORMANCE_GRAPH_MIN_FPS := 10
+const PERFORMANCE_GRAPH_MAX_FPS := 160
+const PERFORMANCE_SETTINGS_SECTION := "performance"
+const PERFORMANCE_SETTINGS_KEY_MODE := "pin_mode"
+const PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE := "graph_time_range_sec"
+const PERFORMANCE_MODE_HIDDEN := "hidden"
+const PERFORMANCE_MODE_FPS := "fps"
+const PERFORMANCE_MODE_DETAILED := "detailed"
+const PERFORMANCE_GRAPH_TIME_RANGE_ALL := 0.0
 const PIN_CORNER_TOP_LEFT := "top_left"
 const PIN_CORNER_TOP_RIGHT := "top_right"
 const PIN_CORNER_BOTTOM_LEFT := "bottom_left"
@@ -137,12 +151,15 @@ const PIN_CORNERS := [
 ]
 const RENDER_SCALE_COMMAND_GROUP_NAME := "Console render scale"
 const RENDER_SCALE_COMMAND_GROUP_PRIORITY := 210
+const TOUCH_TOGGLE_BUTTON_SIZE := Vector2(64.0, 36.0)
+const TOUCH_TOGGLE_BUTTON_MARGIN := 10.0
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
 const LogotDisplay = preload("res://addons/logot/logot_display.gd")
 const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
 const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
+const PERFORMANCE_GRAPHS_WIDGET_SCENE := preload("res://addons/logot/widgets/performance_graphs_widget.tscn")
 const LogotTestManagerScript = preload("res://addons/logot/testing/logot_test_manager.gd")
 const LogotTestPanelScript = preload("res://addons/logot/testing/logot_test_panel.gd")
 
@@ -193,6 +210,7 @@ signal timer_started(key: String, name: String)
 signal timer_paused(key: String, name: String, elapsed_text: String)
 signal timer_resumed(key: String, name: String)
 signal timer_stopped(key: String, name: String, elapsed_text: String)
+signal performance_fps_changed()
 
 var control: Control
 var rich_label: RichTextLabel
@@ -204,6 +222,7 @@ var widgets := {}
 var console_history := []
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
+var _pending_render_texture_widget_view_mode: Dictionary = {}
 var _external_displays: Array = []
 var _display_variable_signal_connections: Dictionary = {}
 var _timers: Dictionary = {}
@@ -212,7 +231,26 @@ var _test_manager = null
 var _test_panel = null
 var _test_button: Button = null
 var _test_panel_input_row: HBoxContainer = null
+var _touch_toggle_button: Button = null
 var _current_git_branch := ""
+var _performance_last_tick_usec := 0
+var _performance_frame_history_total: Array[float] = []
+var _performance_frame_history_cpu: Array[float] = []
+var _performance_frame_history_gpu: Array[float] = []
+var _performance_fps_history: Array[float] = []
+var _performance_frames_per_second := float(PERFORMANCE_GRAPH_MIN_FPS)
+var _performance_frametime_msec := 1000.0 / float(PERFORMANCE_GRAPH_MIN_FPS)
+var _performance_frametime_cpu_msec := 1000.0 / float(PERFORMANCE_GRAPH_MIN_FPS)
+var _performance_frametime_gpu_msec := 1000.0 / float(PERFORMANCE_GRAPH_MIN_FPS)
+var _performance_frame_time_gradient := Gradient.new()
+var _performance_monitor_initialized := false
+var _performance_pin_mode := PERFORMANCE_MODE_HIDDEN
+var _performance_graph_time_range_sec := 10.0
+var _performance_fps_signal_accum_sec := 0.0
+var _performance_fps_display_text := str(PERFORMANCE_GRAPH_MIN_FPS)
+var _performance_fps_display_color := Color.WHITE
+var _performance_frame_time_display_text := "0.00 mspf"
+var _performance_frame_time_display_color := Color.WHITE
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -242,6 +280,7 @@ var _restore_full_console_after_command_entry := false
 var _collapse_duplicates := false
 var _wrap_text := false
 var _truncate_multiline := true
+var _touch_mode_enabled := false
 var _ingame_popup_levels: Dictionary = {}
 var _ingame_popup_mirror_main_console := false
 var _ingame_popup_fade_time: float = DEFAULT_INGAME_POPUP_LIFETIME
@@ -1069,6 +1108,22 @@ func _is_pinnable_console_item(command_candidate: String) -> bool:
 	return display_variables.has(command_candidate) or widgets.has(command_candidate)
 
 
+func _is_render_texture_widget_console_item(command_candidate: String) -> bool:
+	if command_candidate.is_empty() or not widgets.has(command_candidate):
+		return false
+	var widget_data = widgets.get(command_candidate, null)
+	return widget_data is Dictionary and str((widget_data as Dictionary).get("widget_type", "")).strip_edges().to_lower() == "render_texture"
+
+
+func _normalize_render_texture_widget_view_mode(mode: String) -> String:
+	var normalized_mode := mode.strip_edges().to_lower()
+	if normalized_mode == LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+		return LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN
+	if normalized_mode in [LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY, "overlay", "fullscreen/overlay"]:
+		return LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY
+	return LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE
+
+
 func _resolve_display_variable_pin_subcommand(command_candidate: String, option_segment: String) -> Dictionary:
 	if command_candidate.is_empty() or not _is_pinnable_console_item(command_candidate):
 		return {"valid": false}
@@ -1076,6 +1131,7 @@ func _resolve_display_variable_pin_subcommand(command_candidate: String, option_
 	var option_lowered := option_segment.strip_edges().to_lower()
 	var pin_state: Variant = null
 	var pin_corner := PIN_CORNER_TOP_LEFT
+	var render_texture_view_mode := ""
 	if option_lowered == "pin":
 		pin_state = true
 	elif option_lowered.begins_with("pin/"):
@@ -1086,19 +1142,34 @@ func _resolve_display_variable_pin_subcommand(command_candidate: String, option_
 		pin_corner = raw_corner
 	elif option_lowered == "unpin":
 		pin_state = false
+	elif _is_render_texture_widget_console_item(command_candidate):
+		if option_lowered in [
+			LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN,
+			LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY,
+			"overlay",
+			"fullscreen/overlay"
+		]:
+			render_texture_view_mode = _normalize_render_texture_widget_view_mode(option_lowered)
+		elif option_lowered in ["fullscreen_off", "fullscreen/off", "fullscreen_none", "fullscreen/none"]:
+			render_texture_view_mode = LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE
+		else:
+			return {"valid": false}
 	else:
 		return {"valid": false}
 
-	return {
+	var resolution := {
 		"valid": true,
 		"command_name": "",
 		"injected_arguments": [],
 		"is_option_subcommand": true,
 		"is_display_variable_pin_action": true,
 		"display_variable_address": command_candidate,
-		"display_variable_pin_state": bool(pin_state),
+		"display_variable_pin_state": pin_state == true,
 		"display_variable_pin_corner": pin_corner,
 	}
+	if not render_texture_view_mode.is_empty():
+		resolution["display_variable_render_texture_view_mode"] = render_texture_view_mode
+	return resolution
 
 
 func _resolve_console_command_path_internal(command_path: String, allow_alias_resolution: bool) -> Dictionary:
@@ -1655,7 +1726,9 @@ func register_external_display(display: LogotDisplay) -> void:
 
 	_external_displays.append(weakref(display))
 	_sync_pinned_display_state_to(display)
+	_sync_render_texture_widget_view_mode_to(display)
 	_apply_pending_pinned_display_variables_to(display)
+	_apply_pending_render_texture_widget_view_mode_to(display)
 	display.invalidate_command_catalog()
 
 
@@ -1724,6 +1797,26 @@ func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
 		target_display.pin_display_variable(str(address), str(pinned_addresses[address]))
 
 
+func _sync_render_texture_widget_view_mode_to(target_display: LogotDisplay) -> void:
+	if target_display == null or not target_display.has_method("set_render_texture_widget_view_mode"):
+		return
+
+	for live_display in _get_live_displays():
+		if live_display == target_display:
+			continue
+		if not live_display.has_method("get_render_texture_widget_view_mode"):
+			continue
+		for widget_address in widgets.keys():
+			var address_str := str(widget_address).strip_edges()
+			if address_str.is_empty() or not _is_render_texture_widget_console_item(address_str):
+				continue
+			var active_mode := _normalize_render_texture_widget_view_mode(str(live_display.get_render_texture_widget_view_mode(address_str)))
+			if active_mode == LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE:
+				continue
+			target_display.set_render_texture_widget_view_mode(address_str, active_mode)
+			return
+
+
 func pin_display_variable(address: String, corner: String = PIN_CORNER_TOP_LEFT) -> void:
 	var live_displays := _get_live_displays()
 	if live_displays.is_empty():
@@ -1767,6 +1860,42 @@ func is_display_variable_pinned(address: String) -> bool:
 	if pending is Dictionary:
 		return bool((pending as Dictionary).get("pinned", false))
 	return bool(pending)
+
+
+func set_render_texture_widget_view_mode(address: String, mode: String) -> bool:
+	var normalized_mode := _normalize_render_texture_widget_view_mode(mode)
+	var normalized_address := address.strip_edges()
+	if normalized_mode != LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE:
+		if normalized_address.is_empty() or not _is_render_texture_widget_console_item(normalized_address):
+			return false
+
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
+		_pending_render_texture_widget_view_mode = {
+			"address": normalized_address,
+			"mode": normalized_mode,
+		}
+		return true
+
+	var applied := false
+	for display in live_displays:
+		if display != null and display.has_method("set_render_texture_widget_view_mode"):
+			applied = (display.set_render_texture_widget_view_mode(normalized_address, normalized_mode) == true) or applied
+	if applied:
+		_pending_render_texture_widget_view_mode.clear()
+	return applied
+
+
+func get_render_texture_widget_view_mode(address: String) -> String:
+	var normalized_address := address.strip_edges()
+	var active_display := _get_active_display()
+	if active_display and active_display.has_method("get_render_texture_widget_view_mode"):
+		return str(active_display.get_render_texture_widget_view_mode(normalized_address))
+	if _pending_render_texture_widget_view_mode.is_empty():
+		return LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE
+	if str(_pending_render_texture_widget_view_mode.get("address", "")) != normalized_address:
+		return LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE
+	return _normalize_render_texture_widget_view_mode(str(_pending_render_texture_widget_view_mode.get("mode", LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE)))
 
 
 func get_console_commands() -> Dictionary:
@@ -1893,6 +2022,7 @@ func _apply_ingame_overlay_edge_overrides() -> void:
 func _enter_tree() -> void:
 	# Initialize log system
 	_init_default_levels()
+	_load_performance_pin_mode()
 
 	# Register engine logger to intercept Godot's internal logging
 	if _engine_logger == null:
@@ -1905,6 +2035,7 @@ func _enter_tree() -> void:
 		_load_ingame_popup_settings()
 		_setup_game_ui()
 		_setup_debugger_connection()
+		call_deferred("_apply_saved_performance_pin_mode")
 
 	process_mode = PROCESS_MODE_ALWAYS
 
@@ -1912,6 +2043,7 @@ func _enter_tree() -> void:
 func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	_update_performance_monitor(_delta)
 	_update_ingame_popup_layout()
 
 
@@ -2135,16 +2267,20 @@ func _setup_game_ui() -> void:
 	_display.set_rejected_channel_count_provider(func(channel): return get_rejected_channel_count(channel))
 	_display.set_level_visibility_provider(get_level_visibility, set_level_visibility)
 	_display.set_channel_visibility_provider(get_channel_visibility, set_channel_visibility)
+	_display.add_custom_setting("touch_mode", "Touch mode", _should_enable_touch_mode_by_default())
 
 	# Connect signals for visibility changes
 	_display.cleared.connect(_on_display_cleared)
 	_display.channel_deleted.connect(_on_channel_deleted)
+	_display.custom_setting_changed.connect(_on_display_custom_setting_changed)
 
 	# Initialize the display
 	_display.initialize_display()
 	_sync_console_setting_cache_from_display()
+	_set_touch_mode_enabled(_get_console_setting_value("touch_mode", _should_enable_touch_mode_by_default()), false)
 	_ensure_ingame_popup_overlay()
 	_apply_ingame_overlay_edge_overrides()
+	_ensure_touch_toggle_button(canvas_layer)
 
 	# Get references to UI nodes from display
 	_logot_ui.visible = false
@@ -2172,7 +2308,9 @@ func _setup_game_ui() -> void:
 		line_edit.gui_input.connect(_on_line_edit_gui_input)
 
 	_sync_pinned_display_state_to(_display)
+	_sync_render_texture_widget_view_mode_to(_display)
 	_apply_pending_pinned_display_variables()
+	_apply_pending_render_texture_widget_view_mode()
 	_ensure_test_panel()
 
 
@@ -3105,6 +3243,28 @@ func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay, cl
 		_pending_pinned_display_variables.clear()
 
 
+func _apply_pending_render_texture_widget_view_mode() -> void:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
+		return
+	for live_display in live_displays:
+		_apply_pending_render_texture_widget_view_mode_to(live_display, false)
+	_pending_render_texture_widget_view_mode.clear()
+
+
+func _apply_pending_render_texture_widget_view_mode_to(target_display: LogotDisplay, clear_pending: bool = true) -> void:
+	if not target_display or _pending_render_texture_widget_view_mode.is_empty():
+		return
+	if not target_display.has_method("set_render_texture_widget_view_mode"):
+		return
+
+	var pending_address := str(_pending_render_texture_widget_view_mode.get("address", ""))
+	var pending_mode := _normalize_render_texture_widget_view_mode(str(_pending_render_texture_widget_view_mode.get("mode", LogotDisplay.RENDER_TEXTURE_VIEW_MODE_NONE)))
+	target_display.set_render_texture_widget_view_mode(pending_address, pending_mode)
+	if clear_pending:
+		_pending_render_texture_widget_view_mode.clear()
+
+
 func _on_display_cleared() -> void:
 	# Display was cleared, sync our log entries
 	_log_entries.clear()
@@ -3153,6 +3313,104 @@ func _get_console_setting_value(setting_name: String, fallback: bool) -> bool:
 	return fallback
 
 
+func _on_display_custom_setting_changed(setting_name: String, value: bool) -> void:
+	if setting_name == "touch_mode":
+		_set_touch_mode_enabled(value, false)
+
+
+func _should_enable_touch_mode_by_default() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
+
+
+func _get_setting_touch_mode() -> bool:
+	return _get_console_setting_value("touch_mode", _touch_mode_enabled)
+
+
+func _set_setting_touch_mode(value: bool) -> void:
+	_set_console_setting_value("touch_mode", value)
+
+
+func _set_touch_mode_enabled(value: bool, sync_display_setting: bool = true) -> void:
+	_touch_mode_enabled = value
+	if sync_display_setting and _display:
+		_display.apply_setting("touch_mode", value)
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH if _touch_mode_enabled else LogotDisplay.INPUT_METHOD_KEYBOARD)
+	_update_touch_toggle_button()
+
+
+func _ensure_touch_toggle_button(parent: Node) -> void:
+	if _touch_toggle_button != null and is_instance_valid(_touch_toggle_button):
+		_update_touch_toggle_button()
+		return
+	if parent == null:
+		return
+
+	var button := Button.new()
+	button.name = "TouchConsoleToggleButton"
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.z_index = 200
+	button.custom_minimum_size = TOUCH_TOGGLE_BUTTON_SIZE
+	button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	button.offset_left = -TOUCH_TOGGLE_BUTTON_SIZE.x - TOUCH_TOGGLE_BUTTON_MARGIN
+	button.offset_top = -TOUCH_TOGGLE_BUTTON_SIZE.y - TOUCH_TOGGLE_BUTTON_MARGIN
+	button.offset_right = -TOUCH_TOGGLE_BUTTON_MARGIN
+	button.offset_bottom = -TOUCH_TOGGLE_BUTTON_MARGIN
+	_style_touch_toggle_button(button)
+	button.pressed.connect(_on_touch_toggle_button_pressed)
+	parent.add_child(button)
+	_touch_toggle_button = button
+	_update_touch_toggle_button()
+
+
+func _style_touch_toggle_button(button: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.08, 0.1, 0.13, 0.9)
+	normal.border_color = Color(0.5, 0.55, 0.65, 0.95)
+	normal.border_width_left = 1
+	normal.border_width_top = 1
+	normal.border_width_right = 1
+	normal.border_width_bottom = 1
+	normal.corner_radius_top_left = 6
+	normal.corner_radius_top_right = 6
+	normal.corner_radius_bottom_right = 6
+	normal.corner_radius_bottom_left = 6
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.12, 0.16, 0.22, 0.96)
+	hover.border_color = Color(0.68, 0.76, 0.88, 1.0)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.08, 0.14, 0.2, 0.98)
+	pressed.border_color = Color(0.58, 0.7, 0.88, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_font_size_override("font_size", 13)
+
+
+func _update_touch_toggle_button() -> void:
+	if _touch_toggle_button == null or not is_instance_valid(_touch_toggle_button):
+		return
+	_touch_toggle_button.visible = _touch_mode_enabled
+	_touch_toggle_button.text = "Hide" if _is_console_control_visible() else "Log"
+	_touch_toggle_button.tooltip_text = "Hide log" if _is_console_control_visible() else "Show log"
+
+
+func _on_touch_toggle_button_pressed() -> void:
+	if not _touch_mode_enabled:
+		return
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
+	toggle_console(false)
+
+
 func _set_console_setting_value(setting_name: String, value: bool) -> void:
 	match setting_name:
 		"collapse_duplicates":
@@ -3161,6 +3419,8 @@ func _set_console_setting_value(setting_name: String, value: bool) -> void:
 			_wrap_text = value
 		"truncate_multiline":
 			_truncate_multiline = value
+		"touch_mode":
+			_touch_mode_enabled = value
 
 	if _display:
 		_display.apply_setting(setting_name, value)
@@ -3186,21 +3446,94 @@ func _get_setting_truncate_multiline() -> bool:
 	return _get_console_setting_value("truncate_multiline", _truncate_multiline)
 
 
-func _cycle_performance_widget_pins() -> void:
+func _cycle_performance_pin_mode() -> void:
+	match _performance_pin_mode:
+		PERFORMANCE_MODE_HIDDEN:
+			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
+		PERFORMANCE_MODE_FPS:
+			_set_performance_pin_mode(PERFORMANCE_MODE_DETAILED)
+		_:
+			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
+
+
+func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
+	var normalized_mode := _normalize_performance_pin_mode(mode)
+	_performance_pin_mode = normalized_mode
+
 	var active_display := _get_active_display()
 	if active_display and active_display.has_method("set_pinned_display_variables_visible"):
 		active_display.set_pinned_display_variables_visible(true)
 
-	var fps_pinned := is_display_variable_pinned(_PERFORMANCE_FPS_PATH)
-	var graphs_pinned := is_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH)
-	if not fps_pinned and not graphs_pinned:
-		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_LEFT)
-	elif fps_pinned and not graphs_pinned:
-		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_LEFT)
-		set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, true, PIN_CORNER_TOP_LEFT)
+	match normalized_mode:
+		PERFORMANCE_MODE_FPS:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
+		PERFORMANCE_MODE_DETAILED:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+		_:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
+
+	if save:
+		_save_performance_pin_mode()
+
+
+func _apply_saved_performance_pin_mode() -> void:
+	_set_performance_pin_mode(_performance_pin_mode, false)
+
+
+func _normalize_performance_pin_mode(mode: String) -> String:
+	var normalized_mode := mode.strip_edges().to_lower()
+	if normalized_mode in [PERFORMANCE_MODE_FPS, PERFORMANCE_MODE_DETAILED, PERFORMANCE_MODE_HIDDEN]:
+		return normalized_mode
+	return PERFORMANCE_MODE_HIDDEN
+
+
+func _save_performance_pin_mode() -> void:
+	var config := ConfigFile.new()
+	config.load(SETTINGS_FILE)
+	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_MODE, _performance_pin_mode)
+	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE, _performance_graph_time_range_sec)
+	config.save(SETTINGS_FILE)
+
+
+func _load_performance_pin_mode() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_FILE) != OK:
+		_performance_pin_mode = PERFORMANCE_MODE_HIDDEN
+		return
+	_performance_pin_mode = _normalize_performance_pin_mode(str(config.get_value(
+		PERFORMANCE_SETTINGS_SECTION,
+		PERFORMANCE_SETTINGS_KEY_MODE,
+		PERFORMANCE_MODE_HIDDEN
+	)))
+	_performance_graph_time_range_sec = _normalize_performance_graph_time_range(float(config.get_value(
+		PERFORMANCE_SETTINGS_SECTION,
+		PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE,
+		_performance_graph_time_range_sec
+	)))
+
+
+func _toggle_all_pins_visibility() -> void:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
+		return
+
+	var active_display := _get_active_display()
+	var next_visible := true
+	if active_display and active_display.has_method("toggle_pinned_display_variables_visible"):
+		next_visible = bool(active_display.toggle_pinned_display_variables_visible())
 	else:
-		set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-		set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
+		var first_display := live_displays[0]
+		if first_display.has_method("is_pinned_display_variables_visible"):
+			next_visible = not bool(first_display.is_pinned_display_variables_visible())
+
+	for display in live_displays:
+		if display == active_display:
+			continue
+		if display.has_method("set_pinned_display_variables_visible"):
+			display.set_pinned_display_variables_visible(next_visible)
 
 
 func _set_setting_truncate_multiline(value: bool) -> void:
@@ -3219,6 +3552,13 @@ func _get_render_scale_setting(target: String, input_method: String) -> float:
 			return LogotDisplay.DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE
 		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES:
 			return LogotDisplay.DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES
+	if normalized_method == LogotDisplay.INPUT_METHOD_TOUCH:
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_LOG:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_TOUCH_LOG
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_TOUCH_COMMAND_PALETTE
+		if normalized_target == LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES:
+			return LogotDisplay.DEFAULT_RENDER_SCALE_TOUCH_PINNED_VARIABLES
 	return LogotDisplay.DEFAULT_RENDER_SCALE_KEYBOARD
 
 
@@ -3265,6 +3605,12 @@ func _register_console_setting_commands() -> void:
 		_get_setting_truncate_multiline,
 		"Set whether multi-line logs are truncated in collapsed view."
 	)
+	add_setget_command(
+		"console/settings/touch_mode",
+		_set_setting_touch_mode,
+		_get_setting_touch_mode,
+		"Set whether touch mode is enabled."
+	)
 	_register_render_scale_setting_command(
 		"console/settings/render_scale/log/keyboard",
 		LogotDisplay.RENDER_SCALE_TARGET_LOG,
@@ -3276,6 +3622,12 @@ func _register_console_setting_commands() -> void:
 		LogotDisplay.RENDER_SCALE_TARGET_LOG,
 		LogotDisplay.INPUT_METHOD_CONTROLLER,
 		"Set the controller log render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/log/touch",
+		LogotDisplay.RENDER_SCALE_TARGET_LOG,
+		LogotDisplay.INPUT_METHOD_TOUCH,
+		"Set the touch log render scale percentage."
 	)
 	_register_render_scale_setting_command(
 		"console/settings/render_scale/command_palette/keyboard",
@@ -3290,6 +3642,12 @@ func _register_console_setting_commands() -> void:
 		"Set the controller command palette render scale percentage."
 	)
 	_register_render_scale_setting_command(
+		"console/settings/render_scale/command_palette/touch",
+		LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE,
+		LogotDisplay.INPUT_METHOD_TOUCH,
+		"Set the touch command palette render scale percentage."
+	)
+	_register_render_scale_setting_command(
 		"console/settings/render_scale/pinned_variables/keyboard",
 		LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES,
 		LogotDisplay.INPUT_METHOD_KEYBOARD,
@@ -3300,6 +3658,12 @@ func _register_console_setting_commands() -> void:
 		LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES,
 		LogotDisplay.INPUT_METHOD_CONTROLLER,
 		"Set the controller pinned variables render scale percentage."
+	)
+	_register_render_scale_setting_command(
+		"console/settings/render_scale/pinned_variables/touch",
+		LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES,
+		LogotDisplay.INPUT_METHOD_TOUCH,
+		"Set the touch pinned variables render scale percentage."
 	)
 
 
@@ -3373,6 +3737,394 @@ func _register_dev_commands() -> void:
 		"Prints the current git branch name."
 	)
 	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch)
+	_register_performance_commands()
+
+
+func _register_performance_commands() -> void:
+	_ensure_performance_monitor_initialized()
+	add_command(
+		_PERFORMANCE_FPS_PATH,
+		_command_performance_fps,
+		[],
+		0,
+		"Prints the current FPS.",
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+	add_display_variable(
+		_PERFORMANCE_FPS_PATH,
+		_get_performance_fps_text,
+		_get_performance_fps_color,
+		Callable(),
+		true,
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		self,
+		&"performance_fps_changed"
+	)
+	add_widget(
+		_PERFORMANCE_GRAPHS_WIDGET_PATH,
+		PERFORMANCE_GRAPHS_WIDGET_SCENE,
+		"Shows FPS and frame timing graphs.",
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		Vector2(210.0, 170.0)
+	)
+	add_setget_command(
+		_PERFORMANCE_GRAPHS_TIME_RANGE_PATH,
+		_set_performance_graph_time_range,
+		_get_performance_graph_time_range,
+		"Set the performance graph time range.",
+		_get_performance_graph_time_range_options,
+		Callable(),
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+
+
+func _command_performance_fps() -> void:
+	print_line("Current FPS: %s" % _get_performance_fps_text())
+
+
+func _set_performance_graph_time_range(value: Variant) -> void:
+	_performance_graph_time_range_sec = _normalize_performance_graph_time_range(float(value))
+	_save_performance_pin_mode()
+
+
+func _get_performance_graph_time_range() -> float:
+	return _performance_graph_time_range_sec
+
+
+func _get_performance_graph_time_range_options() -> Array:
+	return [
+		{"label": "2s", "value": 2.0},
+		{"label": "5s", "value": 5.0},
+		{"label": "10s", "value": 10.0},
+		{"label": "30s", "value": 30.0},
+		{"label": "60s", "value": 60.0},
+		{"label": "All", "value": PERFORMANCE_GRAPH_TIME_RANGE_ALL},
+	]
+
+
+func _normalize_performance_graph_time_range(value: float) -> float:
+	if value <= 0.0:
+		return PERFORMANCE_GRAPH_TIME_RANGE_ALL
+	return clampf(value, 1.0, 300.0)
+
+
+func _ensure_performance_monitor_initialized() -> void:
+	if _performance_monitor_initialized:
+		return
+	_performance_monitor_initialized = true
+	_performance_frame_history_total.resize(PERFORMANCE_HISTORY_NUM_FRAMES)
+	_performance_frame_history_total.fill(_performance_frametime_msec)
+	_performance_frame_history_cpu.resize(PERFORMANCE_HISTORY_NUM_FRAMES)
+	_performance_frame_history_cpu.fill(_performance_frametime_cpu_msec)
+	_performance_frame_history_gpu.resize(PERFORMANCE_HISTORY_NUM_FRAMES)
+	_performance_frame_history_gpu.fill(_performance_frametime_gpu_msec)
+	_performance_fps_history.resize(PERFORMANCE_HISTORY_NUM_FRAMES)
+	_performance_fps_history.fill(_performance_frames_per_second)
+
+	# Match DebugMenu's non-linear FPS color mapping:
+	# red = 10 FPS, yellow = 60 FPS, green = 110 FPS, cyan = 160 FPS.
+	_performance_frame_time_gradient.set_color(0, Color8(239, 68, 68))
+	_performance_frame_time_gradient.set_color(1, Color8(56, 189, 248))
+	_performance_frame_time_gradient.add_point(0.3333, Color8(250, 204, 21))
+	_performance_frame_time_gradient.add_point(0.6667, Color8(128, 226, 95))
+	_update_performance_fps_display_cache(false)
+
+	if not Engine.is_editor_hint() and get_viewport() != null:
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+
+
+func _update_performance_monitor(delta: float) -> void:
+	_ensure_performance_monitor_initialized()
+
+	var current_tick := Time.get_ticks_usec()
+	var frame_time_msec := maxf(delta * 1000.0, 0.001)
+	if _performance_last_tick_usec > 0:
+		frame_time_msec = maxf(float(current_tick - _performance_last_tick_usec) / 1000.0, 0.001)
+	_performance_last_tick_usec = current_tick
+	_performance_frametime_msec = frame_time_msec
+
+	_performance_frame_history_total.push_back(frame_time_msec)
+	if _performance_frame_history_total.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
+		_performance_frame_history_total.pop_front()
+
+	var viewport_rid := get_viewport().get_viewport_rid()
+	_performance_frametime_cpu_msec = RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid) + RenderingServer.get_frame_setup_time_cpu()
+	_performance_frame_history_cpu.push_back(_performance_frametime_cpu_msec)
+	if _performance_frame_history_cpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
+		_performance_frame_history_cpu.pop_front()
+
+	_performance_frametime_gpu_msec = RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
+	_performance_frame_history_gpu.push_back(_performance_frametime_gpu_msec)
+	if _performance_frame_history_gpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
+		_performance_frame_history_gpu.pop_front()
+
+	var fps_frametime_avg := _avg_last_float(_performance_frame_history_total, PERFORMANCE_FPS_NUM_FRAMES)
+	_performance_frames_per_second = 1000.0 / fps_frametime_avg if fps_frametime_avg > 0.0 else 0.0
+	_performance_fps_history.push_back(_performance_frames_per_second)
+	if _performance_fps_history.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
+		_performance_fps_history.pop_front()
+
+	_performance_fps_signal_accum_sec += delta
+	if _performance_fps_signal_accum_sec >= 1.0:
+		_performance_fps_signal_accum_sec = fmod(_performance_fps_signal_accum_sec, 1.0)
+		_update_performance_fps_display_cache(true)
+
+
+func _avg_last_float(values: Array[float], num_values: int) -> float:
+	if values.is_empty():
+		return 0.0
+	var count := mini(num_values, values.size())
+	var start_index := values.size() - count
+	var sum := 0.0
+	for i in range(start_index, values.size()):
+		sum += values[i]
+	return sum / float(count)
+
+
+func _get_performance_fps_text() -> String:
+	_ensure_performance_monitor_initialized()
+	return _performance_fps_display_text
+
+
+func _get_performance_fps_color() -> Color:
+	_ensure_performance_monitor_initialized()
+	return _performance_fps_display_color
+
+
+func _update_performance_fps_display_cache(emit_changed: bool) -> void:
+	_performance_fps_display_text = "%d" % floori(_performance_frames_per_second)
+	_performance_fps_display_color = _performance_color_for_fps(_performance_frames_per_second)
+	_performance_frame_time_display_text = _get_performance_frame_time_text()
+	_performance_frame_time_display_color = _performance_color_for_frametime(_performance_frametime_msec)
+	if emit_changed:
+		performance_fps_changed.emit()
+
+
+func _performance_color_for_fps(fps: float) -> Color:
+	return _performance_frame_time_gradient.sample(remap(fps, PERFORMANCE_GRAPH_MIN_FPS, PERFORMANCE_GRAPH_MAX_FPS, 0.0, 1.0))
+
+
+func _performance_color_for_frametime(frametime_msec: float) -> Color:
+	var fps := 1000.0 / frametime_msec if frametime_msec > 0.0 else 0.0
+	return _performance_color_for_fps(fps)
+
+
+func get_performance_snapshot() -> Dictionary:
+	_ensure_performance_monitor_initialized()
+	var total_stats := _performance_history_stats(_performance_frame_history_total)
+	var cpu_stats := _performance_history_stats(_performance_frame_history_cpu)
+	var gpu_stats := _performance_history_stats(_performance_frame_history_gpu)
+	return {
+		"fps": _performance_frames_per_second,
+		"frametime_msec": _performance_frametime_msec,
+		"frame_number": Engine.get_frames_drawn(),
+		"fps_history": _performance_fps_history.duplicate(),
+		"total_history": _performance_frame_history_total.duplicate(),
+		"cpu_history": _performance_frame_history_cpu.duplicate(),
+		"gpu_history": _performance_frame_history_gpu.duplicate(),
+	"total_stats": total_stats,
+		"cpu_stats": cpu_stats,
+		"gpu_stats": gpu_stats,
+		"fps_display_text": _performance_fps_display_text,
+		"fps_display_color": _performance_fps_display_color,
+		"frame_time_text": _performance_frame_time_display_text,
+		"frame_time_color": _performance_frame_time_display_color,
+		"history_num_frames": PERFORMANCE_HISTORY_NUM_FRAMES,
+		"graph_min_fps": PERFORMANCE_GRAPH_MIN_FPS,
+		"graph_max_fps": PERFORMANCE_GRAPH_MAX_FPS,
+		"graph_time_range_sec": _performance_graph_time_range_sec,
+		"color": _performance_color_for_fps(_performance_frames_per_second),
+		"total_color": _performance_color_for_frametime(float(total_stats.get("avg", 0.0))),
+		"cpu_color": _performance_color_for_frametime(float(cpu_stats.get("avg", 0.0))),
+		"gpu_color": _performance_color_for_frametime(float(gpu_stats.get("avg", 0.0))),
+		"settings_text": _get_performance_settings_text(),
+		"information_text": _get_performance_information_text(),
+	}
+
+
+func _performance_history_stats(values: Array[float]) -> Dictionary:
+	if values.is_empty():
+		return {"avg": 0.0, "min": 0.0, "max": 0.0, "last": 0.0}
+	var sum := 0.0
+	var min_value := values[0]
+	var max_value := values[0]
+	for value in values:
+		sum += value
+		min_value = minf(min_value, value)
+		max_value = maxf(max_value, value)
+	return {
+		"avg": sum / float(values.size()),
+		"min": min_value,
+		"max": max_value,
+		"last": values[values.size() - 1],
+	}
+
+
+func _get_performance_frame_time_text() -> String:
+	var text := str(_performance_frametime_msec).pad_decimals(2) + " mspf"
+	var vsync_string := ""
+	match DisplayServer.window_get_vsync_mode():
+		DisplayServer.VSYNC_ENABLED:
+			vsync_string = "V-Sync"
+		DisplayServer.VSYNC_ADAPTIVE:
+			vsync_string = "Adaptive V-Sync"
+		DisplayServer.VSYNC_MAILBOX:
+			vsync_string = "Mailbox V-Sync"
+
+	if Engine.max_fps > 0 or OS.low_processor_usage_mode:
+		var low_processor_max_fps := roundi(1000000.0 / OS.low_processor_usage_mode_sleep_usec)
+		var fps_cap := low_processor_max_fps
+		if Engine.max_fps > 0:
+			fps_cap = mini(Engine.max_fps, low_processor_max_fps)
+		text += " (cap: " + str(fps_cap) + " FPS"
+		if not vsync_string.is_empty():
+			text += " + " + vsync_string
+		text += ")"
+	elif not vsync_string.is_empty():
+		text += " (" + vsync_string + ")"
+	return text
+
+
+func _get_performance_settings_text() -> String:
+	var lines: PackedStringArray = []
+	if ProjectSettings.has_setting("application/config/version"):
+		lines.append("Project Version: %s" % ProjectSettings.get_setting("application/config/version"))
+
+	var rendering_method := str(ProjectSettings.get_setting_with_override("rendering/renderer/rendering_method"))
+	var rendering_method_string := rendering_method
+	match rendering_method:
+		"forward_plus":
+			rendering_method_string = "Forward+"
+		"mobile":
+			rendering_method_string = "Forward Mobile"
+		"gl_compatibility":
+			rendering_method_string = "Compatibility"
+	lines.append("Rendering Method: %s" % rendering_method_string)
+
+	var viewport := get_viewport()
+	if viewport == null:
+		return "\n".join(lines)
+
+	var viewport_render_size := Vector2i()
+	if viewport.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT:
+		viewport_render_size = viewport.get_visible_rect().size
+		lines.append("Viewport: %d x %d, Window: %d x %d" % [
+			viewport.get_visible_rect().size.x,
+			viewport.get_visible_rect().size.y,
+			viewport.size.x,
+			viewport.size.y,
+		])
+	else:
+		viewport_render_size = viewport.size
+		lines.append("Viewport: %d x %d" % [viewport.size.x, viewport.size.y])
+
+	if viewport.get_camera_3d():
+		var scaling_3d_mode_string := "(unknown)"
+		match viewport.scaling_3d_mode:
+			Viewport.SCALING_3D_MODE_BILINEAR:
+				scaling_3d_mode_string = "Bilinear"
+			Viewport.SCALING_3D_MODE_FSR:
+				scaling_3d_mode_string = "FSR 1.0"
+			Viewport.SCALING_3D_MODE_FSR2:
+				scaling_3d_mode_string = "FSR 2.2"
+
+		var antialiasing_3d_string := ""
+		if viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR2:
+			antialiasing_3d_string += (" + " if not antialiasing_3d_string.is_empty() else "") + "FSR 2.2"
+		if viewport.scaling_3d_mode != Viewport.SCALING_3D_MODE_FSR2 and viewport.use_taa:
+			antialiasing_3d_string += (" + " if not antialiasing_3d_string.is_empty() else "") + "TAA"
+		if viewport.msaa_3d >= Viewport.MSAA_2X:
+			antialiasing_3d_string += (" + " if not antialiasing_3d_string.is_empty() else "") + "%d x MSAA" % pow(2, viewport.msaa_3d)
+		if viewport.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA:
+			antialiasing_3d_string += (" + " if not antialiasing_3d_string.is_empty() else "") + "FXAA"
+
+		lines.append("3D scale (%s): %d%% = %d x %d" % [
+			scaling_3d_mode_string,
+			viewport.scaling_3d_scale * 100,
+			viewport_render_size.x * viewport.scaling_3d_scale,
+			viewport_render_size.y * viewport.scaling_3d_scale,
+		])
+
+		if not antialiasing_3d_string.is_empty():
+			lines.append("3D Antialiasing: %s" % antialiasing_3d_string)
+
+		var environment := viewport.get_camera_3d().get_world_3d().environment
+		if environment:
+			if environment.ssr_enabled:
+				lines.append("SSR: %d Steps" % environment.ssr_max_steps)
+			if environment.ssao_enabled:
+				lines.append("SSAO: On")
+			if environment.ssil_enabled:
+				lines.append("SSIL: On")
+			if environment.sdfgi_enabled:
+				lines.append("SDFGI: %d Cascades" % environment.sdfgi_cascades)
+			if environment.glow_enabled:
+				lines.append("Glow: On")
+			if environment.volumetric_fog_enabled:
+				lines.append("Volumetric Fog: On")
+
+	var antialiasing_2d_string := ""
+	if viewport.msaa_2d >= Viewport.MSAA_2X:
+		antialiasing_2d_string = "%d x MSAA" % pow(2, viewport.msaa_2d)
+	if not antialiasing_2d_string.is_empty():
+		lines.append("2D Antialiasing: %s" % antialiasing_2d_string)
+	return "\n".join(lines)
+
+
+func _get_performance_information_text() -> String:
+	var adapter_string := ""
+	if RenderingServer.get_video_adapter_vendor().trim_suffix(" Corporation") in RenderingServer.get_video_adapter_name():
+		adapter_string = RenderingServer.get_video_adapter_name().trim_suffix("/PCIe/SSE2")
+	else:
+		adapter_string = RenderingServer.get_video_adapter_vendor() + " - " + RenderingServer.get_video_adapter_name().trim_suffix("/PCIe/SSE2")
+
+	var driver_info := OS.get_video_adapter_driver_info()
+	var driver_info_string := ""
+	if driver_info.size() >= 2:
+		driver_info_string = driver_info[1]
+	else:
+		driver_info_string = "(unknown)"
+
+	var release_string := ""
+	if OS.has_feature("editor"):
+		release_string = "editor"
+	elif OS.has_feature("debug"):
+		release_string = "debug"
+	else:
+		release_string = "release"
+
+	var rendering_method := str(ProjectSettings.get_setting_with_override("rendering/renderer/rendering_method"))
+	var rendering_driver := str(ProjectSettings.get_setting_with_override("rendering/rendering_device/driver"))
+	var graphics_api_string := rendering_driver
+	if rendering_method != "gl_compatibility":
+		if rendering_driver == "d3d12":
+			graphics_api_string = "Direct3D 12"
+		elif rendering_driver == "metal":
+			graphics_api_string = "Metal"
+		elif rendering_driver == "vulkan":
+			if OS.has_feature("macos") or OS.has_feature("ios"):
+				graphics_api_string = "Vulkan via MoltenVK"
+			else:
+				graphics_api_string = "Vulkan"
+	else:
+		if rendering_driver == "opengl3_angle":
+			graphics_api_string = "OpenGL via ANGLE"
+		elif OS.has_feature("mobile") or rendering_driver == "opengl3_es":
+			graphics_api_string = "OpenGL ES"
+		elif OS.has_feature("web"):
+			graphics_api_string = "WebGL"
+		elif rendering_driver == "opengl3":
+			graphics_api_string = "OpenGL"
+
+	return (
+		"%s, %d threads\n" % [OS.get_processor_name().replace("(R)", "").replace("(TM)", ""), OS.get_processor_count()]
+		+ "%s %s (%s %s), %s %s\n" % [OS.get_name(), "64-bit" if OS.has_feature("64") else "32-bit", release_string, "double" if OS.has_feature("double") else "single", graphics_api_string, RenderingServer.get_video_adapter_api_version()]
+		+ "%s, %s" % [adapter_string, driver_info_string]
+	)
 
 
 func _command_current_git_branch() -> void:
@@ -3574,8 +4326,11 @@ func _input(event : InputEvent) -> void:
 					toggle_console(false)
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
+		elif event.physical_keycode == KEY_F3 and event.pressed and not event.echo:
+			_cycle_performance_pin_mode()
+			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_F4 and event.pressed and not event.echo:
-			_cycle_performance_widget_pins()
+			_toggle_all_pins_visibility()
 			get_tree().get_root().set_input_as_handled()
 		elif event.pressed and not event.echo and event.unicode == "/".unicode_at(0) and enabled and control and _display and not control.visible:
 			_set_current_input_method_keyboard()
@@ -3603,7 +4358,7 @@ func _input(event : InputEvent) -> void:
 
 func _set_current_input_method_keyboard() -> void:
 	if _display:
-		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_KEYBOARD)
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH if _touch_mode_enabled else LogotDisplay.INPUT_METHOD_KEYBOARD)
 
 
 func _set_current_input_method_controller() -> void:
@@ -3827,6 +4582,7 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 		if line_edit != null and is_instance_valid(line_edit):
 			line_edit.grab_focus()
 		console_opened.emit()
+		_update_touch_toggle_button()
 		return
 
 	control.visible = false
@@ -3842,17 +4598,27 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 	if pause_enabled and !was_paused_already:
 		get_tree().paused = false
 	console_closed.emit()
+	_update_touch_toggle_button()
 
 
 func _handle_escape_input() -> void:
 	if _test_panel != null and is_instance_valid(_test_panel) and _test_panel.visible:
 		_test_panel.hide()
 		return
+	if _is_render_texture_preview_active():
+		_display.clear_render_texture_widget_view_mode()
+		if line_edit != null and is_instance_valid(line_edit):
+			line_edit.grab_focus()
+		return
 	if _is_escape_close_state():
 		toggle_console(true)
 		return
 
 	_reset_console_for_escape()
+
+
+func _is_render_texture_preview_active() -> bool:
+	return _display != null and _display.has_method("is_render_texture_widget_view_mode_active") and _display.is_render_texture_widget_view_mode_active()
 
 
 func _is_escape_close_state() -> bool:
@@ -4046,11 +4812,19 @@ func _execute_command(command_input: String) -> Dictionary:
 		return {"ok": false, "error": "Command not found: /%s" % requested_command}
 
 	if command_resolution.get("is_display_variable_pin_action", false):
-		_execute_display_variable_pin_action(
-			str(command_resolution.get("display_variable_address", "")),
-			bool(command_resolution.get("display_variable_pin_state", false)),
-			str(command_resolution.get("display_variable_pin_corner", PIN_CORNER_TOP_LEFT))
-		)
+		var resolved_display_address := str(command_resolution.get("display_variable_address", ""))
+		var render_texture_view_mode := str(command_resolution.get("display_variable_render_texture_view_mode", "")).strip_edges()
+		if not render_texture_view_mode.is_empty():
+			_execute_render_texture_widget_view_mode_action(
+				resolved_display_address,
+				_normalize_render_texture_widget_view_mode(render_texture_view_mode)
+			)
+		else:
+			_execute_display_variable_pin_action(
+				resolved_display_address,
+				command_resolution.get("display_variable_pin_state", false) == true,
+				str(command_resolution.get("display_variable_pin_corner", PIN_CORNER_TOP_LEFT))
+			)
 		return {"ok": true}
 
 	if command_resolution.get("is_widget_command", false):
@@ -4100,6 +4874,7 @@ func _open_command_entry_view() -> void:
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
 		console_opened.emit()
+		_update_touch_toggle_button()
 
 	_display.show_command_entry_mode("/")
 
@@ -4120,6 +4895,7 @@ func _close_command_entry_view() -> void:
 		if pause_enabled and !was_paused_already:
 			get_tree().paused = false
 		console_closed.emit()
+		_update_touch_toggle_button()
 
 	_restore_full_console_after_command_entry = false
 
@@ -4372,10 +5148,42 @@ func _execute_display_variable_pin_action(address: String, pinned: bool, corner:
 	print_line("%s [color=light_green]%s[/color]." % [action_text, _escape_bbcode_text(normalized_address)])
 
 
+func _execute_render_texture_widget_view_mode_action(address: String, mode: String) -> void:
+	var normalized_address := address.strip_edges()
+	if normalized_address.is_empty():
+		print_error("Render texture widget address is required.")
+		return
+	if not _is_render_texture_widget_console_item(normalized_address):
+		print_error("Render texture widget not found: %s" % normalized_address)
+		return
+
+	var normalized_mode := _normalize_render_texture_widget_view_mode(mode)
+	if not set_render_texture_widget_view_mode(normalized_address, normalized_mode):
+		print_error("Failed to update render texture view mode for '%s'." % normalized_address)
+		return
+
+	match normalized_mode:
+		LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+			print_line("Showing [color=light_green]%s[/color] in fullscreen mode." % _escape_bbcode_text(normalized_address))
+		LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY:
+			print_line("Showing [color=light_green]%s[/color] in fullscreen overlay mode." % _escape_bbcode_text(normalized_address))
+		_:
+			print_line("Closed fullscreen render texture mode for [color=light_green]%s[/color]." % _escape_bbcode_text(normalized_address))
+
+
 func _execute_widget_command(address: String) -> void:
 	var normalized_address := address.strip_edges()
 	if normalized_address.is_empty() or not widgets.has(normalized_address):
 		print_error("Widget not found: %s" % normalized_address)
+		return
+	if _is_render_texture_widget_console_item(normalized_address):
+		print_line("Widget [color=light_green]%s[/color] supports /%s/pin, /%s/fullscreen, /%s/fullscreen_overlay, and /%s/fullscreen_off." % [
+			_escape_bbcode_text(normalized_address),
+			_escape_bbcode_text(normalized_address),
+			_escape_bbcode_text(normalized_address),
+			_escape_bbcode_text(normalized_address),
+			_escape_bbcode_text(normalized_address),
+		])
 		return
 	print_line("Widget [color=light_green]%s[/color] can be previewed in the command palette or pinned with /%s/pin." % [
 		_escape_bbcode_text(normalized_address),

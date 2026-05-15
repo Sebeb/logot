@@ -48,7 +48,8 @@ static func init():
 	var console = _get_console()
 	if console:
 		console.add_command("log_level", print_log_level)
-		EngineDebugger.register_message_capture("LogLevel", on_remote_filter_change)
+		if EngineDebugger.is_active():
+			EngineDebugger.register_message_capture("LogLevel", on_remote_filter_change)
 		console.log(["LogLevel: Initialized " + str(EngineDebugger.has_capture("LogLevel"))], LogLevel.DEBUG, "Editor")
 
 static func print_log_level():
