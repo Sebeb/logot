@@ -417,7 +417,10 @@ class AutocompleteCommandColumn:
 		_scroll_row = _find_best_scroll_row_for_selection(_selected_index, max_scroll)
 
 	func _get_visible_row_capacity() -> int:
-		return maxi(1, int(floor(maxf(0.0, size.y - _get_rows_top()) / maxf(1.0, float(_row_height)))))
+		return _get_visible_row_capacity_for_scroll(_scroll_row)
+
+	func _get_visible_row_capacity_for_scroll(scroll_row: int) -> int:
+		return maxi(1, int(floor(maxf(0.0, size.y - _get_rows_top_for_scroll(scroll_row)) / maxf(1.0, float(_row_height)))))
 
 	func _find_best_scroll_row_for_selection(selected_row: int, max_scroll: int) -> int:
 		if selected_row < 0 or _rows.is_empty():
@@ -455,7 +458,7 @@ class AutocompleteCommandColumn:
 	func _get_effective_content_visible_row_capacity(scroll_row: int) -> int:
 		if _rows.is_empty():
 			return 0
-		var total_visible_rows := _get_visible_row_capacity()
+		var total_visible_rows := _get_visible_row_capacity_for_scroll(scroll_row)
 		if _has_sticky_group_header_for_scroll(scroll_row):
 			return maxi(1, total_visible_rows - 1)
 		return total_visible_rows
@@ -482,14 +485,14 @@ class AutocompleteCommandColumn:
 		return maxi(0, _rows.size() - 1)
 
 	func _draw() -> void:
-		var total_visible_rows := _get_visible_row_capacity()
 		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
+		var total_visible_rows := _get_visible_row_capacity_for_scroll(start_index)
 		var sticky_group_header_row := _get_sticky_group_header_row_data_for_scroll(start_index)
 		var sticky_group_header_visible := not sticky_group_header_row.is_empty()
 		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
 		var end_index := mini(_rows.size(), start_index + content_visible_rows)
 		var baseline_offset := _get_baseline_offset()
-		var rows_top := _get_rows_top()
+		var rows_top := _get_rows_top_for_scroll(start_index)
 		var rows_area_height := maxf(0.0, size.y - rows_top)
 		var content_width := _get_column_content_width()
 		if sticky_group_header_visible:
@@ -570,11 +573,20 @@ class AutocompleteCommandColumn:
 		var widget_width := maxf(0.0, content_width - CONTENT_PADDING_X * 2.0)
 		var widget_min := _embedded_widget.get_combined_minimum_size()
 		_embedded_widget_height = ceil(maxf(0.0, widget_min.y))
+		_embedded_widget.visible = _is_embedded_widget_visible_for_scroll(_scroll_row)
 		_embedded_widget.position = Vector2(CONTENT_PADDING_X, _header_height + WIDGET_TOP_GAP)
 		_embedded_widget.size = Vector2(widget_width, _embedded_widget_height)
 
 	func _get_rows_top() -> float:
+		return _get_rows_top_for_scroll(_scroll_row)
+
+	func _is_embedded_widget_visible_for_scroll(scroll_row: int) -> bool:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
+			return false
+		return clampi(scroll_row, 0, maxi(0, _rows.size())) == 0
+
+	func _get_rows_top_for_scroll(scroll_row: int) -> float:
+		if not _is_embedded_widget_visible_for_scroll(scroll_row):
 			return _header_height
 		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
 
@@ -594,6 +606,7 @@ class AutocompleteCommandColumn:
 	func _update_row_scrollbar() -> void:
 		if _row_scrollbar == null:
 			return
+		_update_embedded_widget_layout()
 
 		var max_scroll := _get_max_scroll_row()
 		var has_overflow := max_scroll > 0
@@ -612,7 +625,7 @@ class AutocompleteCommandColumn:
 		var visible_rows := _get_visible_content_row_count_for_scroll(_scroll_row)
 
 		var scrollbar_width := maxf(8.0, _row_scrollbar.custom_minimum_size.x)
-		var rows_top := _get_rows_top()
+		var rows_top := _get_rows_top_for_scroll(_scroll_row)
 		_row_scrollbar.position = Vector2(maxf(0.0, size.x - scrollbar_width), rows_top)
 		_row_scrollbar.size = Vector2(scrollbar_width, maxf(0.0, size.y - rows_top))
 
@@ -631,6 +644,7 @@ class AutocompleteCommandColumn:
 		if next_scroll == _scroll_row:
 			return
 		_scroll_row = next_scroll
+		_update_row_scrollbar()
 		queue_redraw()
 
 	func _escape_bbcode(text: String) -> String:
@@ -1235,6 +1249,7 @@ const DEBUG_AUTOCOMPLETE_ENV := "LOGOT_DEBUG_AUTOCOMPLETE"
 const DEBUG_AUTOCOMPLETE_SETTING := "debug/logot/autocomplete_trace"
 const INPUT_METHOD_KEYBOARD := "keyboard"
 const INPUT_METHOD_CONTROLLER := "controller"
+const INPUT_METHOD_TOUCH := "touch"
 const RENDER_SCALE_TARGET_LOG := "log"
 const RENDER_SCALE_TARGET_COMMAND_PALETTE := "command_palette"
 const RENDER_SCALE_TARGET_PINNED_VARIABLES := "pinned_variables"
@@ -1244,6 +1259,15 @@ const DEFAULT_RENDER_SCALE_KEYBOARD := 100.0
 const DEFAULT_RENDER_SCALE_CONTROLLER_LOG := 120.0
 const DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE := 120.0
 const DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES := 100.0
+const DEFAULT_RENDER_SCALE_TOUCH_LOG := 125.0
+const DEFAULT_RENDER_SCALE_TOUCH_COMMAND_PALETTE := 135.0
+const DEFAULT_RENDER_SCALE_TOUCH_PINNED_VARIABLES := 110.0
+const PINNED_OVERLAY_MAX_VARIABLE_WIDTH := 500.0
+const PINNED_OVERLAY_VARIABLE_WIDTH_PADDING := 18.0
+const PINNED_OVERLAY_ROW_BG_COLOR := Color(0.102, 0.125, 0.165, 0.8)
+const RENDER_TEXTURE_VIEW_MODE_NONE := "none"
+const RENDER_TEXTURE_VIEW_MODE_FULLSCREEN := "fullscreen"
+const RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY := "fullscreen_overlay"
 
 
 # =============================================================================
@@ -1260,6 +1284,7 @@ var _collapsed_level_buttons_row: HBoxContainer
 var _main_container: Control
 var _logot_container: VBoxContainer
 var _input_row: HBoxContainer
+var _command_palette_log_spacer: Control
 var _scroll_to_bottom_button: Button
 var _rich_label_scrollbar: VScrollBar
 
@@ -1347,6 +1372,12 @@ var _pinned_display_variable_corners: Dictionary = {}
 var _pinned_overlay_visible := true
 var _pinned_corner_redirects: Dictionary = {}
 var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
+var _render_texture_fullscreen_root: Control
+var _render_texture_fullscreen_backdrop: ColorRect
+var _render_texture_fullscreen_container: Control
+var _render_texture_fullscreen_widget: Control
+var _render_texture_fullscreen_address := ""
+var _render_texture_fullscreen_mode := RENDER_TEXTURE_VIEW_MODE_NONE
 var _palette_widget_instances: Dictionary = {}
 var _command_catalog_dirty := true
 var _base_registered_addresses_cache: Array[String] = []
@@ -1372,6 +1403,11 @@ var _render_scale_settings: Dictionary = {
 		RENDER_SCALE_TARGET_LOG: DEFAULT_RENDER_SCALE_CONTROLLER_LOG,
 		RENDER_SCALE_TARGET_COMMAND_PALETTE: DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE,
 		RENDER_SCALE_TARGET_PINNED_VARIABLES: DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES,
+	},
+	INPUT_METHOD_TOUCH: {
+		RENDER_SCALE_TARGET_LOG: DEFAULT_RENDER_SCALE_TOUCH_LOG,
+		RENDER_SCALE_TARGET_COMMAND_PALETTE: DEFAULT_RENDER_SCALE_TOUCH_COMMAND_PALETTE,
+		RENDER_SCALE_TARGET_PINNED_VARIABLES: DEFAULT_RENDER_SCALE_TOUCH_PINNED_VARIABLES,
 	},
 }
 var _base_log_font_size := 0
@@ -1549,6 +1585,12 @@ func get_command_palette_reserved_height() -> float:
 		return 0.0
 	var viewport_height := get_viewport_rect().size.y
 	return maxf(0.0, viewport_height - _command_autocomplete_popup.global_position.y + _get_scaled_autocomplete_popup_gap())
+
+
+func get_command_palette_log_reserved_height() -> float:
+	if _command_palette_log_spacer == null:
+		return 0.0
+	return _command_palette_log_spacer.custom_minimum_size.y
 
 
 func add_custom_setting(name: String, label: String, default: bool) -> void:
@@ -1773,6 +1815,7 @@ func _update_command_entry_mode_visibility() -> void:
 		_sidebar.visible = _sidebar_visible and not _command_entry_mode
 
 	_update_collapsed_level_buttons_visibility()
+	_update_command_palette_log_reserved_space()
 
 	_refresh_pinned_display_variables()
 
@@ -2008,6 +2051,8 @@ func _normalize_input_method(input_method: String) -> String:
 	var normalized := input_method.strip_edges().to_lower()
 	if normalized == INPUT_METHOD_CONTROLLER:
 		return INPUT_METHOD_CONTROLLER
+	if normalized == INPUT_METHOD_TOUCH:
+		return INPUT_METHOD_TOUCH
 	return INPUT_METHOD_KEYBOARD
 
 
@@ -2028,6 +2073,13 @@ func _get_default_render_scale_percent(input_method: String, target: String) -> 
 			return DEFAULT_RENDER_SCALE_CONTROLLER_COMMAND_PALETTE
 		if target == RENDER_SCALE_TARGET_PINNED_VARIABLES:
 			return DEFAULT_RENDER_SCALE_CONTROLLER_PINNED_VARIABLES
+	if input_method == INPUT_METHOD_TOUCH:
+		if target == RENDER_SCALE_TARGET_LOG:
+			return DEFAULT_RENDER_SCALE_TOUCH_LOG
+		if target == RENDER_SCALE_TARGET_COMMAND_PALETTE:
+			return DEFAULT_RENDER_SCALE_TOUCH_COMMAND_PALETTE
+		if target == RENDER_SCALE_TARGET_PINNED_VARIABLES:
+			return DEFAULT_RENDER_SCALE_TOUCH_PINNED_VARIABLES
 	return DEFAULT_RENDER_SCALE_KEYBOARD
 
 
@@ -2065,6 +2117,68 @@ func _apply_rich_text_label_font_size(label: RichTextLabel, font_size: int) -> v
 	label.add_theme_font_size_override("italics_font_size", font_size)
 	label.add_theme_font_size_override("bold_italics_font_size", font_size)
 	label.add_theme_font_size_override("mono_font_size", font_size)
+
+
+func _measure_pinned_variable_text_width(row: RichTextLabel, text: String) -> float:
+	if row == null or text.is_empty():
+		return 0.0
+	var font := row.get_theme_font("normal_font")
+	if font == null:
+		font = row.get_theme_font("font")
+	var font_size := row.get_theme_font_size("normal_font_size")
+	if font_size <= 0:
+		font_size = _get_scaled_font_size(_base_pinned_font_size, RENDER_SCALE_TARGET_PINNED_VARIABLES) if _base_pinned_font_size > 0 else 16
+	if font != null:
+		return font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	return float(text.length() * maxi(1, font_size)) * 0.5
+
+
+func _apply_pinned_variable_width_cap(row: RichTextLabel, plain_text: String = "") -> void:
+	if row == null:
+		return
+	var content_width := float(row.get_content_width())
+	if not plain_text.is_empty():
+		content_width = maxf(content_width, _measure_pinned_variable_text_width(row, plain_text))
+	if content_width <= 0.0:
+		content_width = PINNED_OVERLAY_MAX_VARIABLE_WIDTH
+	var capped_width := minf(ceil(content_width + PINNED_OVERLAY_VARIABLE_WIDTH_PADDING), PINNED_OVERLAY_MAX_VARIABLE_WIDTH)
+	row.custom_minimum_size.x = capped_width
+	row.size.x = capped_width
+
+
+func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool) -> void:
+	if row == null:
+		return
+	row.push_bgcolor(PINNED_OVERLAY_ROW_BG_COLOR)
+	row.push_table(2)
+	if align_right:
+		row.set_table_column_expand(0, true)
+		row.set_table_column_expand(1, false)
+		row.push_cell()
+		if value_color.a > 0.0:
+			row.push_color(value_color)
+		row.add_text(value_text)
+		if value_color.a > 0.0:
+			row.pop()
+		row.pop()
+		row.push_cell()
+		row.add_text(display_address)
+		row.pop()
+	else:
+		row.set_table_column_expand(0, false)
+		row.set_table_column_expand(1, true)
+		row.push_cell()
+		row.add_text("%s:" % display_address)
+		row.pop()
+		row.push_cell()
+		if value_color.a > 0.0:
+			row.push_color(value_color)
+		row.add_text(value_text)
+		if value_color.a > 0.0:
+			row.pop()
+		row.pop()
+	row.pop()
+	row.pop()
 
 
 func _apply_render_scales() -> void:
@@ -2169,6 +2283,7 @@ func _setup_ui_nodes() -> void:
 		_logot_container = _main_container.get_node("LogotContainer")
 	if _logot_container and _logot_container.has_node("RichTextLabel"):
 		rich_label = _logot_container.get_node("RichTextLabel")
+		_ensure_command_palette_log_spacer()
 	if _logot_container and _logot_container.has_node("InputRow"):
 		_input_row = _logot_container.get_node("InputRow")
 	elif _logot_container and _logot_container.has_node("VBoxContainer/InputRow"):
@@ -2274,6 +2389,63 @@ func _connect_rich_label_scroll_tracking() -> void:
 		_rich_label_scrollbar.value_changed.connect(_on_rich_label_scrollbar_value_changed)
 	if not _rich_label_scrollbar.changed.is_connected(_on_rich_label_scrollbar_changed):
 		_rich_label_scrollbar.changed.connect(_on_rich_label_scrollbar_changed)
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
+
+
+func _ensure_command_palette_log_spacer() -> void:
+	if _command_palette_log_spacer != null and is_instance_valid(_command_palette_log_spacer):
+		return
+	if _logot_container == null or rich_label == null:
+		return
+
+	var spacer := Control.new()
+	spacer.name = "CommandPaletteLogSpacer"
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	spacer.visible = false
+	spacer.custom_minimum_size = Vector2.ZERO
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_logot_container.add_child(spacer)
+	_logot_container.move_child(spacer, rich_label.get_index() + 1)
+	_command_palette_log_spacer = spacer
+
+
+func _should_reserve_command_palette_log_space() -> bool:
+	return (
+		_command_autocomplete_popup != null
+		and _command_autocomplete_popup.visible
+		and not _autocomplete_column_states.is_empty()
+		and rich_label != null
+		and rich_label.visible
+		and not _command_entry_mode
+	)
+
+
+func _get_command_palette_log_reserve_target_height() -> float:
+	if not _should_reserve_command_palette_log_space():
+		return 0.0
+	return float(_get_command_autocomplete_target_height()) + _get_scaled_autocomplete_popup_gap()
+
+
+func _update_command_palette_log_reserved_space() -> void:
+	if _command_palette_log_spacer == null or not is_instance_valid(_command_palette_log_spacer):
+		return
+
+	var was_at_bottom := _is_scrolled_to_bottom()
+	var target_height := _get_command_palette_log_reserve_target_height()
+	if is_equal_approx(_command_palette_log_spacer.custom_minimum_size.y, target_height):
+		return
+
+	_command_palette_log_spacer.custom_minimum_size.y = target_height
+	_command_palette_log_spacer.visible = target_height > 0.0
+	if was_at_bottom:
+		call_deferred("_scroll_to_bottom_after_palette_reserve_changed")
+
+
+func _scroll_to_bottom_after_palette_reserve_changed() -> void:
+	if rich_label != null and rich_label.visible:
+		_scroll_to_bottom(false)
 	_update_scroll_to_bottom_button_layout()
 	_update_scroll_to_bottom_button_visibility()
 
@@ -2613,6 +2785,7 @@ func _on_collapsed_level_button_pressed(level: int) -> void:
 
 func _init_display() -> void:
 	_ensure_pinned_overlay()
+	_ensure_render_texture_fullscreen_overlay()
 	if rich_label:
 		rich_label.append_text(_get_welcome_message())
 		_update_scroll_to_bottom_button_visibility()
@@ -2659,6 +2832,7 @@ func _show_command_autocomplete_popup(animated: bool = true) -> void:
 		_command_autocomplete_slide_offset = 0.0
 		_command_autocomplete_alpha = 1.0
 		_apply_command_autocomplete_popup_visual_state()
+		_update_command_palette_log_reserved_space()
 		return
 
 	var start_offset := _command_autocomplete_slide_offset
@@ -2670,6 +2844,7 @@ func _show_command_autocomplete_popup(animated: bool = true) -> void:
 	_command_autocomplete_slide_offset = start_offset
 	_command_autocomplete_alpha = start_alpha
 	_apply_command_autocomplete_popup_visual_state()
+	_update_command_palette_log_reserved_space()
 	_command_autocomplete_animation_tween = create_tween()
 	_command_autocomplete_animation_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	_command_autocomplete_animation_tween.set_trans(Tween.TRANS_CUBIC)
@@ -2695,6 +2870,7 @@ func _hide_command_autocomplete_popup(animated: bool = true) -> void:
 		_command_autocomplete_slide_offset = 0.0
 		_command_autocomplete_alpha = 1.0
 		_apply_command_autocomplete_popup_visual_state()
+		_update_command_palette_log_reserved_space()
 		return
 
 	var start_offset := _command_autocomplete_slide_offset
@@ -2712,6 +2888,7 @@ func _hide_command_autocomplete_popup(animated: bool = true) -> void:
 			_command_autocomplete_slide_offset = 0.0
 			_command_autocomplete_alpha = 1.0
 			_apply_command_autocomplete_popup_visual_state()
+			_update_command_palette_log_reserved_space()
 	)
 
 
@@ -2735,6 +2912,122 @@ func _ensure_pinned_overlay() -> void:
 		container.add_theme_constant_override("separation", 0)
 		_pinned_overlay_root.add_child(container)
 		_pinned_overlay_corner_containers[corner] = container
+
+
+func _normalize_render_texture_view_mode(mode: String) -> String:
+	var normalized_mode := mode.strip_edges().to_lower()
+	if normalized_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+		return RENDER_TEXTURE_VIEW_MODE_FULLSCREEN
+	if normalized_mode in [RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY, "overlay", "fullscreen/overlay"]:
+		return RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY
+	return RENDER_TEXTURE_VIEW_MODE_NONE
+
+
+func _ensure_render_texture_fullscreen_overlay() -> void:
+	if _render_texture_fullscreen_root != null and is_instance_valid(_render_texture_fullscreen_root):
+		return
+
+	var overlay_root := Control.new()
+	overlay_root.name = "RenderTextureFullscreenOverlay"
+	overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay_root.visible = false
+	overlay_root.z_index = 205
+	add_child(overlay_root)
+	_render_texture_fullscreen_root = overlay_root
+
+	var backdrop := ColorRect.new()
+	backdrop.name = "Backdrop"
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.color = Color(0.0, 0.0, 0.0, 0.96)
+	overlay_root.add_child(backdrop)
+	_render_texture_fullscreen_backdrop = backdrop
+
+	var content := Control.new()
+	content.name = "Content"
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_root.add_child(content)
+	_render_texture_fullscreen_container = content
+
+
+func _clear_render_texture_fullscreen_widget() -> void:
+	if _render_texture_fullscreen_widget != null and is_instance_valid(_render_texture_fullscreen_widget):
+		_render_texture_fullscreen_widget.queue_free()
+	_render_texture_fullscreen_widget = null
+
+
+func _refresh_render_texture_fullscreen_overlay() -> void:
+	_ensure_render_texture_fullscreen_overlay()
+	if _render_texture_fullscreen_root == null:
+		return
+
+	if _render_texture_fullscreen_mode == RENDER_TEXTURE_VIEW_MODE_NONE or _render_texture_fullscreen_address.is_empty():
+		_clear_render_texture_fullscreen_widget()
+		_render_texture_fullscreen_root.visible = false
+		return
+	if not _is_render_texture_widget_path(_render_texture_fullscreen_address):
+		_clear_render_texture_fullscreen_widget()
+		_render_texture_fullscreen_address = ""
+		_render_texture_fullscreen_mode = RENDER_TEXTURE_VIEW_MODE_NONE
+		_render_texture_fullscreen_root.visible = false
+		return
+
+	if _render_texture_fullscreen_widget == null or not is_instance_valid(_render_texture_fullscreen_widget):
+		var widget_instance := _create_widget_instance(_render_texture_fullscreen_address, "fullscreen")
+		if widget_instance == null:
+			var fallback := Label.new()
+			fallback.text = "Render texture unavailable: %s" % _render_texture_fullscreen_address
+			fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			widget_instance = fallback
+		widget_instance.set_anchors_preset(Control.PRESET_FULL_RECT)
+		widget_instance.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if _render_texture_fullscreen_container != null:
+			_render_texture_fullscreen_container.add_child(widget_instance)
+		_render_texture_fullscreen_widget = widget_instance
+
+	if _render_texture_fullscreen_backdrop != null:
+		_render_texture_fullscreen_backdrop.color = Color(0.0, 0.0, 0.0, 0.48) if _render_texture_fullscreen_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY else Color(0.0, 0.0, 0.0, 0.96)
+	_render_texture_fullscreen_root.visible = true
+	_refresh_logot_widget_instance(_render_texture_fullscreen_widget, 0.0, true)
+
+
+func set_render_texture_widget_view_mode(address: String, mode: String) -> bool:
+	var normalized_mode := _normalize_render_texture_view_mode(mode)
+	if normalized_mode == RENDER_TEXTURE_VIEW_MODE_NONE:
+		clear_render_texture_widget_view_mode()
+		return true
+
+	var resolved_address := _resolve_alias_command_path(address.strip_edges())
+	if resolved_address.is_empty() or not _is_render_texture_widget_path(resolved_address):
+		return false
+
+	var requires_widget_rebuild := resolved_address != _render_texture_fullscreen_address
+	_render_texture_fullscreen_address = resolved_address
+	_render_texture_fullscreen_mode = normalized_mode
+	if requires_widget_rebuild:
+		_clear_render_texture_fullscreen_widget()
+	_refresh_render_texture_fullscreen_overlay()
+	return true
+
+
+func clear_render_texture_widget_view_mode() -> void:
+	_render_texture_fullscreen_address = ""
+	_render_texture_fullscreen_mode = RENDER_TEXTURE_VIEW_MODE_NONE
+	_refresh_render_texture_fullscreen_overlay()
+
+
+func is_render_texture_widget_view_mode_active() -> bool:
+	return _render_texture_fullscreen_mode != RENDER_TEXTURE_VIEW_MODE_NONE and not _render_texture_fullscreen_address.is_empty()
+
+
+func get_render_texture_widget_view_mode(address: String) -> String:
+	var resolved_address := _resolve_alias_command_path(address.strip_edges())
+	if resolved_address.is_empty() or resolved_address != _render_texture_fullscreen_address:
+		return RENDER_TEXTURE_VIEW_MODE_NONE
+	return _render_texture_fullscreen_mode
 
 
 func _get_pinned_overlay_container(corner: String) -> VBoxContainer:
@@ -2766,27 +3059,81 @@ func _get_pinned_overlay_rect_for_corner(corner: String, overlay_size: Vector2) 
 	return Rect2(position, overlay_size)
 
 
+func _can_swap_pinned_corner_to_target_side(target_corner: String, source_size: Vector2) -> bool:
+	if source_size.x <= 0.0 or source_size.y <= 0.0:
+		return false
+	var target_rect := _get_pinned_overlay_rect_for_corner(target_corner, source_size)
+	var viewport_width := get_viewport_rect().size.x
+	if viewport_width <= 0.0:
+		return false
+	var midpoint := viewport_width * 0.5
+	var is_right_corner := target_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or target_corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
+	if is_right_corner:
+		return target_rect.position.x >= midpoint
+	return target_rect.end.x <= midpoint
+
+
+func _resolve_pinned_corner_pair_swap_conflict(corner_a: String, corner_b: String, desired_redirects: Dictionary, current_redirects: Dictionary) -> void:
+	var wants_a := bool(desired_redirects.get(corner_a, false))
+	var wants_b := bool(desired_redirects.get(corner_b, false))
+	if not wants_a or not wants_b:
+		return
+	var current_a := bool(current_redirects.get(corner_a, false))
+	var current_b := bool(current_redirects.get(corner_b, false))
+	if current_a == current_b:
+		desired_redirects[corner_a] = false
+		desired_redirects[corner_b] = false
+	elif current_a:
+		desired_redirects[corner_b] = false
+	else:
+		desired_redirects[corner_a] = false
+
+
 func _update_pinned_corner_redirects() -> void:
 	var viewport := get_viewport()
 	if viewport == null:
 		_pinned_corner_redirects.clear()
 		return
 	var mouse_position := viewport.get_mouse_position()
+	var current_redirects := _pinned_corner_redirects.duplicate()
+	var desired_redirects: Dictionary = {}
 	for corner in PINNED_OVERLAY_CORNERS:
 		var source_size := _get_pinned_overlay_size_for_corner(corner)
 		if source_size.x <= 0.0 or source_size.y <= 0.0:
-			_pinned_corner_redirects.erase(corner)
+			desired_redirects[corner] = false
 			continue
 		var target_corner := str(PINNED_OVERLAY_OPPOSITE_CORNER.get(corner, corner))
 		var source_hotspot := _get_pinned_overlay_rect_for_corner(corner, source_size).grow(PINNED_OVERLAY_MOUSE_SWAP_PADDING)
 		var target_size := _get_pinned_overlay_size_for_corner(target_corner)
 		var target_hotspot := _get_pinned_overlay_rect_for_corner(target_corner, target_size).grow(PINNED_OVERLAY_MOUSE_RETURN_PADDING)
-		if bool(_pinned_corner_redirects.get(corner, false)):
+		var wants_redirect := false
+		if bool(current_redirects.get(corner, false)):
 			if source_hotspot.has_point(mouse_position) or target_hotspot.has_point(mouse_position):
-				continue
-			_pinned_corner_redirects.erase(corner)
+				wants_redirect = true
 		elif source_hotspot.has_point(mouse_position):
+			wants_redirect = true
+			if not _can_swap_pinned_corner_to_target_side(target_corner, source_size):
+				wants_redirect = false
+		desired_redirects[corner] = wants_redirect
+
+	_resolve_pinned_corner_pair_swap_conflict(
+		PINNED_OVERLAY_CORNER_TOP_LEFT,
+		PINNED_OVERLAY_CORNER_TOP_RIGHT,
+		desired_redirects,
+		current_redirects
+	)
+	_resolve_pinned_corner_pair_swap_conflict(
+		PINNED_OVERLAY_CORNER_BOTTOM_LEFT,
+		PINNED_OVERLAY_CORNER_BOTTOM_RIGHT,
+		desired_redirects,
+		current_redirects
+	)
+
+	for corner in PINNED_OVERLAY_CORNERS:
+		if bool(desired_redirects.get(corner, false)):
 			_pinned_corner_redirects[corner] = true
+		else:
+			_pinned_corner_redirects.erase(corner)
 
 
 func _get_effective_pinned_corner(corner: String) -> String:
@@ -2809,7 +3156,6 @@ func _layout_pinned_overlay_containers() -> void:
 		return
 	_pinned_overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pinned_overlay_root.position = Vector2.ZERO
-	_pinned_overlay_root.size = get_viewport_rect().size
 	for corner in PINNED_OVERLAY_CORNERS:
 		var container := _get_pinned_overlay_container(corner)
 		if container == null:
@@ -2852,6 +3198,9 @@ func _update_pinned_widget_header_markup(header: RichTextLabel, align_right: boo
 	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 	header.clear()
 	header.append_text(markup)
+	var content_height := float(header.get_content_height())
+	if content_height > 0.0:
+		header.custom_minimum_size.y = ceil(content_height)
 
 
 func _update_pinned_widget_headers_in_row(node: Node, align_right: bool, base_name_counts: Dictionary) -> void:
@@ -2973,14 +3322,16 @@ func _create_pinned_overlay_row() -> RichTextLabel:
 	row.bbcode_enabled = true
 	row.scroll_active = false
 	row.fit_content = true
-	row.autowrap_mode = TextServer.AUTOWRAP_OFF
+	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	row.custom_minimum_size.x = PINNED_OVERLAY_MAX_VARIABLE_WIDTH
 	if _main_container and _main_container.theme:
 		row.theme = _main_container.theme
 	if _base_pinned_font_size <= 0:
 		_base_pinned_font_size = _get_control_font_size(row, "normal_font_size", 16)
 	_apply_rich_text_label_font_size(row, _get_scaled_font_size(_base_pinned_font_size, RENDER_SCALE_TARGET_PINNED_VARIABLES))
+	_apply_pinned_variable_width_cap(row)
 	return row
 
 
@@ -3005,10 +3356,14 @@ func _create_pinned_overlay_widget_row(address: String) -> Control:
 	header.set_meta("logot_pin_widget_address", address)
 	header.bbcode_enabled = true
 	header.scroll_active = false
-	header.fit_content = true
+	# Keep header text from expanding pinned widget width.
+	header.fit_content = false
+	header.clip_contents = true
 	header.autowrap_mode = TextServer.AUTOWRAP_OFF
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	header.custom_minimum_size.y = 18.0
 	var align_header_right := get_pinned_display_variable_corner(address) == PINNED_OVERLAY_CORNER_TOP_RIGHT or get_pinned_display_variable_corner(address) == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
 	_update_pinned_widget_header_markup(header, align_header_right)
 	if _main_container and _main_container.theme:
@@ -3085,23 +3440,15 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 		"display_address": display_address,
 		"render": str(snapshot.get("signature", "")),
 		"align_right": align_right,
+		"inline_color": (snapshot.get("inline_color", Color.TRANSPARENT) as Color).to_html(true),
 	})
 	if force or _pinned_row_render_cache.get(address, "") != signature:
-		var value_markup := _escape_overlay_bbcode(str(snapshot.get("text", "")))
+		var value_text := str(snapshot.get("text", ""))
 		var value_color: Color = snapshot.get("inline_color", Color.TRANSPARENT)
-		if value_color.a > 0.0:
-			value_markup = "[color=#%s]%s[/color]" % [value_color.to_html(false), value_markup]
 		(row as RichTextLabel).clear()
-		if align_right:
-			(row as RichTextLabel).append_text("[bgcolor=#1a202acc]  %s %s  [/bgcolor]" % [
-				value_markup,
-				_escape_overlay_bbcode(display_address),
-			])
-		else:
-			(row as RichTextLabel).append_text("[bgcolor=#1a202acc]  %s: %s  [/bgcolor]" % [
-				_escape_overlay_bbcode(display_address),
-				value_markup,
-		])
+		_append_pinned_display_variable_row_text(row as RichTextLabel, display_address, value_text, value_color, align_right)
+		var plain_text := "%s %s" % [value_text, display_address] if align_right else "%s: %s" % [display_address, value_text]
+		_apply_pinned_variable_width_cap(row as RichTextLabel, plain_text)
 		_pinned_row_render_cache[address] = signature
 
 	(row as RichTextLabel).visible = _pinned_overlay_visible
@@ -3778,7 +4125,9 @@ func _open_file_in_editor(file_path: String, line: int) -> void:
 	if Engine.is_editor_hint():
 		var script := load(file_path)
 		if script:
-			EditorInterface.edit_script(script, line)
+			# EditorInterface is editor-only; look up by name so exported
+			# game builds don't fail to parse this script.
+			Engine.get_singleton("EditorInterface").edit_script(script, line)
 		else:
 			push_warning("Could not load script: %s" % file_path)
 	else:
@@ -3960,7 +4309,7 @@ func _load_filter_settings() -> void:
 
 
 func _save_custom_settings(_config: ConfigFile) -> void:
-	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER]:
+	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER, INPUT_METHOD_TOUCH]:
 		for target in [RENDER_SCALE_TARGET_LOG, RENDER_SCALE_TARGET_COMMAND_PALETTE, RENDER_SCALE_TARGET_PINNED_VARIABLES]:
 			_config.set_value("render_scale", "%s/%s" % [input_method, target], get_render_scale_percent(target, input_method))
 
@@ -3968,7 +4317,7 @@ func _save_custom_settings(_config: ConfigFile) -> void:
 func _load_custom_settings(_config: ConfigFile) -> void:
 	if not _config.has_section("render_scale"):
 		return
-	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER]:
+	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER, INPUT_METHOD_TOUCH]:
 		var method_settings: Dictionary = _render_scale_settings.get(input_method, {}).duplicate()
 		for target in [RENDER_SCALE_TARGET_LOG, RENDER_SCALE_TARGET_COMMAND_PALETTE, RENDER_SCALE_TARGET_PINNED_VARIABLES]:
 			var key := "%s/%s" % [input_method, target]
@@ -4089,6 +4438,13 @@ func _is_render_texture_widget_data(widget: Variant) -> bool:
 	return widget is Dictionary and str((widget as Dictionary).get("widget_type", "")).strip_edges().to_lower() == "render_texture"
 
 
+func _is_render_texture_widget_path(address: String) -> bool:
+	var resolved_address := _resolve_alias_command_path(address.strip_edges())
+	if resolved_address.is_empty():
+		return false
+	return _is_render_texture_widget_data(_get_widgets().get(resolved_address, null))
+
+
 func _create_widget_instance(address: String, mode: String, corner: String = PINNED_OVERLAY_CORNER_TOP_LEFT) -> Control:
 	var resolved_address := _resolve_alias_command_path(address)
 	var widget = _get_widgets().get(resolved_address, null)
@@ -4173,9 +4529,14 @@ func _collect_logot_widget_instances(node: Node, out_widgets: Array[Control], se
 func _poll_visible_logot_widgets(delta: float) -> void:
 	var widgets: Array[Control] = []
 	var seen_instances: Dictionary = {}
+	if _render_texture_fullscreen_mode != RENDER_TEXTURE_VIEW_MODE_NONE:
+		if _render_texture_fullscreen_address.is_empty() or not _is_render_texture_widget_path(_render_texture_fullscreen_address):
+			clear_render_texture_widget_view_mode()
 	for row in _pinned_overlay_rows.values():
 		if row is Node:
 			_collect_logot_widget_instances(row as Node, widgets, seen_instances)
+	if _render_texture_fullscreen_root is Node and is_instance_valid(_render_texture_fullscreen_root):
+		_collect_logot_widget_instances(_render_texture_fullscreen_root, widgets, seen_instances)
 	for column_node in _autocomplete_column_nodes:
 		if column_node is Node:
 			_collect_logot_widget_instances(column_node as Node, widgets, seen_instances)
@@ -5127,8 +5488,20 @@ func _get_command_autocomplete_description(command_name: String) -> String:
 
 	var command_data = _get_command_data(command_name)
 	if command_data == null:
-		if _is_display_variable_pin_action_subcommand_tier(command_name):
-			return "Unpin this item." if command_name.ends_with("/unpin") else "Pin this item."
+		var action_details := _get_pinnable_item_action_details(command_name)
+		if action_details.get("valid", false) == true:
+			var action_name := str(action_details.get("action", ""))
+			if action_name == "unpin":
+				return "Unpin this item."
+			if action_name == "pin":
+				return "Pin this item."
+			if action_name == "render_texture_view_mode":
+				var view_mode := str(action_details.get("view_mode", RENDER_TEXTURE_VIEW_MODE_NONE))
+				if view_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+					return "Show this render texture fullscreen."
+				if view_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY:
+					return "Show this render texture fullscreen with a semi-transparent overlay."
+				return "Close render texture fullscreen mode."
 		var widget = _get_widget_data(command_name)
 		if widget is LogotWidget:
 			return str((widget as LogotWidget).description)
@@ -5327,6 +5700,11 @@ func _get_pin_action_values(address: String) -> Array:
 	]
 	if is_pinned:
 		values.append({"label": "unpin", "value": false})
+	if _is_render_texture_widget_path(resolved_address):
+		values.append({"label": RENDER_TEXTURE_VIEW_MODE_FULLSCREEN, "value": RENDER_TEXTURE_VIEW_MODE_FULLSCREEN})
+		values.append({"label": RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY, "value": RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY})
+		if get_render_texture_widget_view_mode(resolved_address) != RENDER_TEXTURE_VIEW_MODE_NONE:
+			values.append({"label": "fullscreen_off", "value": RENDER_TEXTURE_VIEW_MODE_NONE})
 	return values
 
 
@@ -5351,6 +5729,45 @@ func _get_display_variable_pin_action_subcommand_addresses(address: String) -> A
 	return _get_pin_action_subcommand_addresses(address)
 
 
+func _get_render_texture_view_mode_for_action_segment(option_segment: String) -> String:
+	var normalized_segment := option_segment.strip_edges().to_lower()
+	if normalized_segment == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+		return RENDER_TEXTURE_VIEW_MODE_FULLSCREEN
+	if normalized_segment in [RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY, "overlay", "fullscreen/overlay"]:
+		return RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY
+	if normalized_segment in ["fullscreen_off", "fullscreen/off", "fullscreen_none", "fullscreen/none"]:
+		return RENDER_TEXTURE_VIEW_MODE_NONE
+	return ""
+
+
+func _get_pinnable_item_action_details(command_path: String) -> Dictionary:
+	var resolved_tier := _resolve_alias_command_path(command_path)
+	for address in _get_base_registered_addresses():
+		var address_str := str(address)
+		if address_str.is_empty() or not _is_pinnable_item_direct(address_str):
+			continue
+		if resolved_tier == "%s/unpin" % address_str:
+			if is_display_variable_pinned(address_str):
+				return {"valid": true, "address": address_str, "action": "unpin"}
+			return {}
+		if resolved_tier == "%s/pin" % address_str:
+			return {"valid": true, "address": address_str, "action": "pin"}
+		if resolved_tier.begins_with("%s/pin/" % address_str):
+			var corner := resolved_tier.substr(("%s/pin/" % address_str).length()).strip_edges().to_lower()
+			if PINNED_OVERLAY_CORNERS.has(corner):
+				return {"valid": true, "address": address_str, "action": "pin"}
+			continue
+		if _is_render_texture_widget_path(address_str) and resolved_tier.begins_with("%s/" % address_str):
+			var option_segment := resolved_tier.substr(("%s/" % address_str).length())
+			var view_mode := _get_render_texture_view_mode_for_action_segment(option_segment)
+			if view_mode.is_empty():
+				continue
+			if view_mode == RENDER_TEXTURE_VIEW_MODE_NONE and get_render_texture_widget_view_mode(address_str) == RENDER_TEXTURE_VIEW_MODE_NONE:
+				continue
+			return {"valid": true, "address": address_str, "action": "render_texture_view_mode", "view_mode": view_mode}
+	return {}
+
+
 func _is_command_option_subcommand_tier(tier: String) -> bool:
 	var resolved_tier := _resolve_alias_command_path(tier)
 	var last_separator := resolved_tier.rfind("/")
@@ -5369,19 +5786,7 @@ func _is_command_option_subcommand_tier(tier: String) -> bool:
 
 
 func _is_display_variable_pin_action_subcommand_tier(tier: String) -> bool:
-	var resolved_tier := _resolve_alias_command_path(tier)
-	for address in _get_base_registered_addresses():
-		var address_str := str(address)
-		if address_str.is_empty() or not _is_pinnable_item_direct(address_str):
-			continue
-		if resolved_tier == "%s/unpin" % address_str:
-			return is_display_variable_pinned(address_str)
-		if resolved_tier == "%s/pin" % address_str:
-			return true
-		if resolved_tier.begins_with("%s/pin/" % address_str):
-			var corner := resolved_tier.substr(("%s/pin/" % address_str).length()).strip_edges().to_lower()
-			return PINNED_OVERLAY_CORNERS.has(corner)
-	return false
+	return _get_pinnable_item_action_details(tier).get("valid", false) == true
 
 
 func _is_text_input_command_path(command_name: String) -> bool:
@@ -5565,6 +5970,23 @@ func _find_setget_preview_option_selected_index(command_name: String, preview_pr
 
 	if _is_pinnable_item(command_name):
 		var resolved_command_name := _resolve_alias_command_path(command_name)
+		if _is_render_texture_widget_path(resolved_command_name):
+			var active_view_mode := get_render_texture_widget_view_mode(resolved_command_name)
+			var expected_view_segment := ""
+			if active_view_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN:
+				expected_view_segment = RENDER_TEXTURE_VIEW_MODE_FULLSCREEN
+			elif active_view_mode == RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY:
+				expected_view_segment = RENDER_TEXTURE_VIEW_MODE_FULLSCREEN_OVERLAY
+			elif active_view_mode == RENDER_TEXTURE_VIEW_MODE_NONE:
+				expected_view_segment = "fullscreen_off"
+			if not expected_view_segment.is_empty():
+				for option_index in range(preview_matches.size()):
+					var option_tier := str(preview_matches[option_index].get("tier", ""))
+					if not option_tier.begins_with(preview_prefix):
+						continue
+					var option_segment := option_tier.substr(preview_prefix.length()).to_lower()
+					if option_segment == expected_view_segment:
+						return option_index
 		var expected_pin_segment := "unpin" if is_display_variable_pinned(resolved_command_name) else "pin"
 		for option_index in range(preview_matches.size()):
 			var option_tier := str(preview_matches[option_index].get("tier", ""))
@@ -6190,6 +6612,7 @@ func _position_command_autocomplete_popup() -> void:
 	_command_autocomplete_target_global_position = Vector2(popup_x, popup_y)
 	_command_autocomplete_target_size = Vector2(popup_width, popup_height)
 	_apply_command_autocomplete_popup_visual_state()
+	_update_command_palette_log_reserved_space()
 
 	_debug_command_popup_height("_position_command_autocomplete_popup")
 
@@ -7327,6 +7750,7 @@ func _update_history_popup(query: String = "") -> void:
 	# Show the popup
 	if _command_autocomplete_popup:
 		_command_autocomplete_popup.visible = false
+		_update_command_palette_log_reserved_space()
 	_history_autocomplete_popup.visible = true
 	_set_history_autocomplete_selection(0)
 

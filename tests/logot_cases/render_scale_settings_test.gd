@@ -42,6 +42,18 @@ func run(ctx) -> void:
 		"controller pinned variables defaults to 100",
 		is_equal_approx(fresh_display.get_render_scale_percent(LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES, LogotDisplay.INPUT_METHOD_CONTROLLER), 100.0)
 	)
+	ctx.check(
+		"touch log defaults to 125",
+		is_equal_approx(fresh_display.get_render_scale_percent(LogotDisplay.RENDER_SCALE_TARGET_LOG, LogotDisplay.INPUT_METHOD_TOUCH), 125.0)
+	)
+	ctx.check(
+		"touch command palette defaults to 135",
+		is_equal_approx(fresh_display.get_render_scale_percent(LogotDisplay.RENDER_SCALE_TARGET_COMMAND_PALETTE, LogotDisplay.INPUT_METHOD_TOUCH), 135.0)
+	)
+	ctx.check(
+		"touch pinned variables defaults to 110",
+		is_equal_approx(fresh_display.get_render_scale_percent(LogotDisplay.RENDER_SCALE_TARGET_PINNED_VARIABLES, LogotDisplay.INPUT_METHOD_TOUCH), 110.0)
+	)
 	fresh_display.free()
 
 	var previous_controller_log_scale: float = display.get_render_scale_percent(LogotDisplay.RENDER_SCALE_TARGET_LOG, LogotDisplay.INPUT_METHOD_CONTROLLER)
@@ -54,5 +66,7 @@ func run(ctx) -> void:
 
 	display.set_current_input_method(LogotDisplay.INPUT_METHOD_CONTROLLER)
 	ctx.check("current input method switches to controller", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_CONTROLLER)
+	display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
+	ctx.check("current input method switches to touch", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_TOUCH)
 	display.set_current_input_method(LogotDisplay.INPUT_METHOD_KEYBOARD)
 	ctx.check("current input method switches to keyboard", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_KEYBOARD)
