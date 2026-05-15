@@ -66,7 +66,9 @@ func run(ctx) -> void:
 
 	display.set_current_input_method(LogotDisplay.INPUT_METHOD_CONTROLLER)
 	ctx.check("current input method switches to controller", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_CONTROLLER)
+	display._pinned_corner_redirects[LogotDisplay.PINNED_OVERLAY_CORNER_TOP_LEFT] = true
 	display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
 	ctx.check("current input method switches to touch", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_TOUCH)
+	ctx.check("touch input disables pinned corner side swapping", display._pinned_corner_redirects.is_empty())
 	display.set_current_input_method(LogotDisplay.INPUT_METHOD_KEYBOARD)
 	ctx.check("current input method switches to keyboard", display.get_current_input_method() == LogotDisplay.INPUT_METHOD_KEYBOARD)
