@@ -13,6 +13,8 @@ const LogLevel = preload("res://addons/logot/log_level.gd")
 # =============================================================================
 
 signal custom_setting_changed(setting_name: String, value: bool)
+signal command_palette_submit_requested(command_text: String)
+signal command_palette_close_requested
 signal cleared()
 signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
@@ -225,11 +227,16 @@ class RenderTextureWidget:
 class AutocompleteCommandColumn:
 	extends Control
 
+	signal row_activated(row_index: int)
+	signal header_navigation_pressed
+
 	const CELL_GAP := 12.0
 	const CONTENT_PADDING_X := 12.0
 	const HEADER_TOP_PADDING := 8.0
 	const HEADER_BOTTOM_PADDING := 8.0
 	const HEADER_CONTENT_GAP := 4.0
+	const HEADER_NAV_BUTTON_SIZE := Vector2(72.0, 38.0)
+	const HEADER_NAV_BUTTON_GAP := 8.0
 	const WIDGET_TOP_GAP := 2.0
 	const WIDGET_BOTTOM_GAP := 3.0
 	const VALUE_PILL_PADDING_X := 10.0
@@ -253,6 +260,7 @@ class AutocompleteCommandColumn:
 	var _header_description := ""
 	var _header_height := 0.0
 	var _header_label: RichTextLabel
+	var _header_nav_button: Button
 	var _row_scrollbar: VScrollBar
 	var _embedded_widget: Control
 	var _embedded_widget_path := ""
@@ -295,7 +303,7 @@ class AutocompleteCommandColumn:
 
 	func _init() -> void:
 		clip_contents = true
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mouse_filter = Control.MOUSE_FILTER_STOP
 		focus_mode = Control.FOCUS_NONE
 		_header_label = RichTextLabel.new()
 		_header_label.bbcode_enabled = true
@@ -305,6 +313,14 @@ class AutocompleteCommandColumn:
 		_header_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_header_label.focus_mode = Control.FOCUS_NONE
 		add_child(_header_label)
+		_header_nav_button = Button.new()
+		_header_nav_button.visible = false
+		_header_nav_button.focus_mode = Control.FOCUS_NONE
+		_header_nav_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_header_nav_button.pressed.connect(func() -> void:
+			header_navigation_pressed.emit()
+		)
+		add_child(_header_nav_button)
 		_row_scrollbar = VScrollBar.new()
 		_row_scrollbar.visible = false
 		_row_scrollbar.custom_minimum_size = Vector2(10.0, 0.0)
@@ -315,6 +331,32 @@ class AutocompleteCommandColumn:
 		_row_scrollbar.value_changed.connect(_on_row_scrollbar_value_changed)
 		add_child(_row_scrollbar)
 		_configure_value_pill_styles()
+
+	func _gui_input(event: InputEvent) -> void:
+		var pointer_position := Vector2.ZERO
+		var released := false
+		if event is InputEventMouseButton:
+			var mouse_event := event as InputEventMouseButton
+			if mouse_event.button_index != MOUSE_BUTTON_LEFT:
+				return
+			released = not mouse_event.pressed
+			pointer_position = mouse_event.position
+		elif event is InputEventScreenTouch:
+			var touch_event := event as InputEventScreenTouch
+			released = not touch_event.pressed
+			pointer_position = touch_event.position
+		else:
+			return
+		if not released:
+			return
+		var row_index := _get_row_index_at_position(pointer_position)
+		if row_index < 0 or row_index >= _rows.size():
+			return
+		var row_data: Dictionary = _rows[row_index]
+		if bool(row_data.get("is_group_header", false)):
+			return
+		row_activated.emit(row_index)
+		accept_event()
 
 	func set_embedded_widget(widget: Control, widget_path: String = "") -> void:
 		if _embedded_widget != null and is_instance_valid(_embedded_widget) and _embedded_widget != widget:
@@ -359,6 +401,16 @@ class AutocompleteCommandColumn:
 		_selected_focus_stylebox = theme_source.get_theme_stylebox("selected_focus")
 		_configure_inactive_selection_styles()
 		_configure_value_pill_styles()
+		if _header_nav_button:
+			_header_nav_button.theme = theme
+		_update_header_layout()
+
+	func set_header_navigation(enabled: bool, label: String) -> void:
+		if _header_nav_button == null:
+			return
+		_header_nav_button.visible = enabled
+		_header_nav_button.text = label
+		_header_nav_button.tooltip_text = label
 		_update_header_layout()
 
 	func set_column_data(rows: Array[Dictionary], metrics: Dictionary, selected_index: int, is_preview: bool, row_height: int, selected_is_active: bool = true, header_title: String = "", header_description: String = "") -> void:
@@ -379,6 +431,9 @@ class AutocompleteCommandColumn:
 
 	func get_row_count() -> int:
 		return _rows.size()
+
+	func get_rows() -> Array:
+		return _rows
 
 	func get_visible_display_variable_addresses() -> Array[String]:
 		var addresses: Array[String] = []
@@ -553,9 +608,14 @@ class AutocompleteCommandColumn:
 		_header_label.theme = theme
 		_header_label.clear()
 		_header_label.append_text(bbcode)
-		_header_label.position = Vector2(CONTENT_PADDING_X, HEADER_TOP_PADDING)
+		var nav_width := 0.0
+		if _header_nav_button != null and _header_nav_button.visible:
+			_header_nav_button.position = Vector2(CONTENT_PADDING_X, HEADER_TOP_PADDING)
+			_header_nav_button.size = HEADER_NAV_BUTTON_SIZE
+			nav_width = HEADER_NAV_BUTTON_SIZE.x + HEADER_NAV_BUTTON_GAP
+		_header_label.position = Vector2(CONTENT_PADDING_X + nav_width, HEADER_TOP_PADDING)
 		_header_label.size = Vector2(
-			maxf(0.0, _get_column_content_width() - CONTENT_PADDING_X * 2.0),
+			maxf(0.0, _get_column_content_width() - CONTENT_PADDING_X * 2.0 - nav_width),
 			maxf(0.0, size.y - HEADER_TOP_PADDING)
 		)
 
@@ -564,6 +624,37 @@ class AutocompleteCommandColumn:
 		var content_height := maxf(float(_header_label.get_content_height()), fallback_content_height)
 		_header_height = HEADER_TOP_PADDING + content_height + HEADER_BOTTOM_PADDING + HEADER_CONTENT_GAP
 		_update_embedded_widget_layout()
+
+	func _get_row_index_at_position(position: Vector2) -> int:
+		if _rows.is_empty():
+			return -1
+		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
+		var total_visible_rows := _get_visible_row_capacity_for_scroll(start_index)
+		var sticky_group_header_row := _get_sticky_group_header_row_data_for_scroll(start_index)
+		var sticky_group_header_visible := not sticky_group_header_row.is_empty()
+		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
+		var end_index := mini(_rows.size(), start_index + content_visible_rows)
+		var rows_top := _get_rows_top_for_scroll(start_index)
+		var rows_area_height := maxf(0.0, size.y - rows_top)
+
+		if sticky_group_header_visible:
+			if position.y >= rows_top and position.y < rows_top + float(_row_height):
+				return -1
+			rows_top += float(_row_height)
+			rows_area_height = maxf(0.0, rows_area_height - float(_row_height))
+
+		if _embedded_widget == null and not sticky_group_header_visible and _rows.size() <= total_visible_rows:
+			var drawn_rows := maxi(0, end_index - start_index)
+			var drawn_height := float(drawn_rows * _row_height)
+			rows_top += maxf(0.0, rows_area_height - drawn_height)
+
+		if position.y < rows_top:
+			return -1
+		var visible_offset := int(floor((position.y - rows_top) / maxf(1.0, float(_row_height))))
+		var row_index := start_index + visible_offset
+		if row_index < start_index or row_index >= end_index:
+			return -1
+		return row_index
 
 	func _update_embedded_widget_layout() -> void:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
@@ -1370,6 +1461,7 @@ var _pinned_row_render_snapshots: Dictionary = {}
 var _pinned_row_poll_signatures: Dictionary = {}
 var _pinned_display_variable_corners: Dictionary = {}
 var _pinned_overlay_visible := true
+var _pinned_overlay_suppressed := false
 var _pinned_corner_redirects: Dictionary = {}
 var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
 var _render_texture_fullscreen_root: Control
@@ -1378,6 +1470,8 @@ var _render_texture_fullscreen_container: Control
 var _render_texture_fullscreen_widget: Control
 var _render_texture_fullscreen_address := ""
 var _render_texture_fullscreen_mode := RENDER_TEXTURE_VIEW_MODE_NONE
+var _display_safe_area_override_enabled := false
+var _display_safe_area_override := Rect2()
 var _palette_widget_instances: Dictionary = {}
 var _command_catalog_dirty := true
 var _base_registered_addresses_cache: Array[String] = []
@@ -1600,6 +1694,7 @@ func refresh_safe_area_layout() -> void:
 		_position_history_autocomplete_popup()
 	else:
 		_update_command_palette_log_reserved_space()
+	_layout_render_texture_fullscreen_overlay()
 	_update_scroll_to_bottom_button_layout()
 	_update_scroll_to_bottom_button_visibility()
 	_refresh_pinned_display_variables()
@@ -1608,8 +1703,49 @@ func refresh_safe_area_layout() -> void:
 func _get_safe_area_layout_rect() -> Rect2:
 	var rect := get_global_rect()
 	if rect.size.x > 0.0 and rect.size.y > 0.0:
-		return rect
-	return get_viewport_rect()
+		return rect.intersection(_get_display_safe_area_layout_rect())
+	return _get_display_safe_area_layout_rect()
+
+
+func _set_display_safe_area_override_for_tests(rect: Rect2) -> void:
+	_display_safe_area_override_enabled = true
+	_display_safe_area_override = rect
+	refresh_safe_area_layout()
+
+
+func _clear_display_safe_area_override_for_tests() -> void:
+	_display_safe_area_override_enabled = false
+	_display_safe_area_override = Rect2()
+	refresh_safe_area_layout()
+
+
+func _should_apply_display_safe_area() -> bool:
+	return _display_safe_area_override_enabled or OS.get_name() == "Android" or OS.has_feature("android") or OS.has_feature("ios")
+
+
+func _get_display_safe_area_layout_rect() -> Rect2:
+	var viewport_rect := get_viewport_rect()
+	if not _should_apply_display_safe_area():
+		return viewport_rect
+	if _display_safe_area_override_enabled:
+		return viewport_rect.intersection(_display_safe_area_override)
+	if DisplayServer.get_name() == "headless":
+		return viewport_rect
+
+	var safe_area := Rect2(DisplayServer.get_display_safe_area())
+	if safe_area.size.x <= 0.0 or safe_area.size.y <= 0.0:
+		return viewport_rect
+
+	var window_size := Vector2(DisplayServer.window_get_size())
+	if window_size.x <= 0.0 or window_size.y <= 0.0:
+		return viewport_rect.intersection(safe_area)
+
+	var viewport_scale := Vector2(viewport_rect.size.x / window_size.x, viewport_rect.size.y / window_size.y)
+	var scaled_safe_area := Rect2(
+		viewport_rect.position + safe_area.position * viewport_scale,
+		safe_area.size * viewport_scale
+	)
+	return viewport_rect.intersection(scaled_safe_area)
 
 
 func add_custom_setting(name: String, label: String, default: bool) -> void:
@@ -1985,6 +2121,13 @@ func set_pinned_display_variables_visible(visible: bool) -> void:
 	_refresh_pinned_display_variables()
 
 
+func set_pinned_display_variables_suppressed(suppressed: bool) -> void:
+	if _pinned_overlay_suppressed == suppressed:
+		return
+	_pinned_overlay_suppressed = suppressed
+	_refresh_pinned_display_variables()
+
+
 func toggle_pinned_display_variables_visible() -> bool:
 	set_pinned_display_variables_visible(not _pinned_overlay_visible)
 	return _pinned_overlay_visible
@@ -1992,6 +2135,10 @@ func toggle_pinned_display_variables_visible() -> bool:
 
 func is_pinned_display_variables_visible() -> bool:
 	return _pinned_overlay_visible
+
+
+func _are_pinned_display_variables_effectively_visible() -> bool:
+	return _pinned_overlay_visible and not _pinned_overlay_suppressed
 
 
 func clear_pinned_display_variables() -> void:
@@ -2822,6 +2969,11 @@ func _process(delta: float) -> void:
 	_poll_visible_display_variable_consumers(delta)
 
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		refresh_safe_area_layout()
+
+
 func _stop_command_autocomplete_animation() -> void:
 	if _command_autocomplete_animation_tween != null and is_instance_valid(_command_autocomplete_animation_tween):
 		_command_autocomplete_animation_tween.kill()
@@ -2951,6 +3103,7 @@ func _normalize_render_texture_view_mode(mode: String) -> String:
 
 func _ensure_render_texture_fullscreen_overlay() -> void:
 	if _render_texture_fullscreen_root != null and is_instance_valid(_render_texture_fullscreen_root):
+		_layout_render_texture_fullscreen_overlay()
 		return
 
 	var overlay_root := Control.new()
@@ -2976,6 +3129,41 @@ func _ensure_render_texture_fullscreen_overlay() -> void:
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay_root.add_child(content)
 	_render_texture_fullscreen_container = content
+	_layout_render_texture_fullscreen_overlay()
+
+
+func _layout_render_texture_fullscreen_overlay() -> void:
+	if _render_texture_fullscreen_root == null or not is_instance_valid(_render_texture_fullscreen_root):
+		return
+	_render_texture_fullscreen_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_render_texture_fullscreen_root.offset_left = 0.0
+	_render_texture_fullscreen_root.offset_top = 0.0
+	_render_texture_fullscreen_root.offset_right = 0.0
+	_render_texture_fullscreen_root.offset_bottom = 0.0
+	if _render_texture_fullscreen_backdrop != null and is_instance_valid(_render_texture_fullscreen_backdrop):
+		_render_texture_fullscreen_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_render_texture_fullscreen_backdrop.offset_left = 0.0
+		_render_texture_fullscreen_backdrop.offset_top = 0.0
+		_render_texture_fullscreen_backdrop.offset_right = 0.0
+		_render_texture_fullscreen_backdrop.offset_bottom = 0.0
+	if _render_texture_fullscreen_container == null or not is_instance_valid(_render_texture_fullscreen_container):
+		return
+
+	var root_rect := _render_texture_fullscreen_root.get_global_rect()
+	if root_rect.size.x <= 0.0 or root_rect.size.y <= 0.0:
+		root_rect = get_global_rect()
+	if root_rect.size.x <= 0.0 or root_rect.size.y <= 0.0:
+		root_rect = get_viewport_rect()
+
+	var content_rect := root_rect.intersection(_get_display_safe_area_layout_rect())
+	if content_rect.size.x <= 0.0 or content_rect.size.y <= 0.0:
+		content_rect = root_rect
+
+	_render_texture_fullscreen_container.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_render_texture_fullscreen_container.offset_left = content_rect.position.x - root_rect.position.x
+	_render_texture_fullscreen_container.offset_top = content_rect.position.y - root_rect.position.y
+	_render_texture_fullscreen_container.offset_right = content_rect.end.x - root_rect.end.x
+	_render_texture_fullscreen_container.offset_bottom = content_rect.end.y - root_rect.end.y
 
 
 func _clear_render_texture_fullscreen_widget() -> void:
@@ -2988,6 +3176,7 @@ func _refresh_render_texture_fullscreen_overlay() -> void:
 	_ensure_render_texture_fullscreen_overlay()
 	if _render_texture_fullscreen_root == null:
 		return
+	_layout_render_texture_fullscreen_overlay()
 
 	if _render_texture_fullscreen_mode == RENDER_TEXTURE_VIEW_MODE_NONE or _render_texture_fullscreen_address.is_empty():
 		_clear_render_texture_fullscreen_widget()
@@ -3293,7 +3482,7 @@ func _refresh_pinned_display_variables() -> void:
 	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 
 	_sync_pinned_overlay_rows(visible_addresses)
-	if visible_addresses.is_empty() or not _pinned_overlay_visible:
+	if visible_addresses.is_empty() or not _are_pinned_display_variables_effectively_visible():
 		if _pinned_overlay_root:
 			_pinned_overlay_root.visible = false
 		return
@@ -3433,7 +3622,7 @@ func _refresh_pinned_display_variable_row(address: String, base_name_counts: Dic
 	else:
 		_pinned_row_poll_signatures.erase(address)
 
-	(row as RichTextLabel).visible = _pinned_overlay_visible
+	(row as RichTextLabel).visible = _are_pinned_display_variables_effectively_visible()
 	if update_redirects and _pinned_overlay_root and _pinned_overlay_root.visible:
 		_update_pinned_corner_redirects()
 		_layout_pinned_overlay_containers()
@@ -3480,7 +3669,7 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 		_apply_pinned_variable_width_cap(row as RichTextLabel, plain_text)
 		_pinned_row_render_cache[address] = signature
 
-	(row as RichTextLabel).visible = _pinned_overlay_visible
+	(row as RichTextLabel).visible = _are_pinned_display_variables_effectively_visible()
 
 
 func _get_visible_pinned_item_base_name_counts() -> Dictionary:
@@ -3510,7 +3699,7 @@ func _poll_visible_display_variable_consumers(delta: float) -> void:
 
 
 func _poll_visible_pinned_display_variable_rows() -> void:
-	if not _pinned_overlay_visible or _pinned_overlay_root == null or not _pinned_overlay_root.visible:
+	if not _are_pinned_display_variables_effectively_visible() or _pinned_overlay_root == null or not _pinned_overlay_root.visible:
 		return
 
 	_update_pinned_corner_redirects()
@@ -5458,6 +5647,7 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 				})
 
 		var row := _build_command_autocomplete_row_data(prefix, match_data)
+		row["match_index"] = match_index
 		if not active_group.is_empty():
 			row["group_box"] = true
 			if open_group_last_row == -1:
@@ -6589,7 +6779,69 @@ func _create_command_autocomplete_column() -> AutocompleteCommandColumn:
 	var list := AutocompleteCommandColumn.new()
 	if _history_autocomplete_popup:
 		list.configure_theme(_history_autocomplete_popup)
+	list.row_activated.connect(_on_command_autocomplete_column_row_activated.bind(list))
+	list.header_navigation_pressed.connect(_on_command_autocomplete_header_navigation_pressed)
 	return list
+
+
+func _get_autocomplete_column_index_for_node(list: AutocompleteCommandColumn) -> int:
+	for column_index in range(_autocomplete_column_nodes.size()):
+		if _autocomplete_column_nodes[column_index] == list:
+			return column_index
+	return -1
+
+
+func _on_command_autocomplete_column_row_activated(row_index: int, list: AutocompleteCommandColumn) -> void:
+	if list == null or not _is_command_popup_visible():
+		return
+	var column_index := _get_autocomplete_column_index_for_node(list)
+	if column_index < 0 or column_index >= _autocomplete_column_states.size():
+		return
+	if _is_touch_command_palette_layout() and column_index != _autocomplete_active_column_index:
+		return
+
+	var column_state: Dictionary = _autocomplete_column_states[column_index]
+	var matches: Array = column_state.get("matches", [])
+	var rows: Array = list.get_rows()
+	if row_index < 0 or row_index >= rows.size():
+		return
+	var row_data: Dictionary = rows[row_index]
+	if bool(row_data.get("is_group_header", false)):
+		return
+	var match_index := int(row_data.get("match_index", -1))
+	if match_index < 0 or match_index >= matches.size():
+		return
+
+	_autocomplete_active_column_index = column_index
+	column_state["selected_index"] = match_index
+	_autocomplete_column_states[column_index] = column_state
+	var match_data: Dictionary = matches[match_index]
+	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(match_data.get("tier", ""))
+	_sync_visible_command_autocomplete_columns(0, false)
+	_activate_command_autocomplete_match(column_state, match_data)
+
+
+func _activate_command_autocomplete_match(column_state: Dictionary, match_data: Dictionary) -> void:
+	if match_data.is_empty():
+		return
+	if bool(match_data.get("is_option", false)):
+		var preview_command := str(column_state.get("preview_command", "")).strip_edges()
+		if not preview_command.is_empty():
+			command_palette_submit_requested.emit("/%s %s" % [preview_command, str(match_data.get("option_value", ""))])
+		return
+
+	if bool(match_data.get("has_children", false)):
+		autocomplete_move_right(true)
+		return
+
+	if bool(match_data.get("has_command", false)):
+		var submission_text := get_active_command_submission_text()
+		if not submission_text.strip_edges().is_empty():
+			command_palette_submit_requested.emit(submission_text)
+
+
+func _on_command_autocomplete_header_navigation_pressed() -> void:
+	touch_command_palette_back_or_close()
 
 
 func _clear_command_autocomplete_columns() -> void:
@@ -6902,6 +7154,9 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		column_name,
 		column_description
 	)
+	var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
+	var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
+	list.set_header_navigation(show_touch_navigation, navigation_label)
 
 	return column_state
 
@@ -7149,6 +7404,9 @@ func _refresh_command_autocomplete_popup_values() -> void:
 			column_name,
 			column_description
 		)
+		var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
+		var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
+		list.set_header_navigation(show_touch_navigation, navigation_label)
 		_autocomplete_column_states[column_index] = column_state
 
 	if needs_layout_refresh:
@@ -7732,6 +7990,16 @@ func autocomplete_move_left() -> void:
 	else:
 		_set_line_edit_command_path("/".join(committed_segments), true)
 	update_autocomplete_popup()
+
+
+func touch_command_palette_back_or_close() -> bool:
+	if not _is_touch_command_palette_layout() or not _is_command_popup_visible():
+		return false
+	if _autocomplete_active_column_index <= 0:
+		command_palette_close_requested.emit()
+		return true
+	autocomplete_move_left()
+	return true
 
 
 ## Confirm the autocomplete selection and close the popup

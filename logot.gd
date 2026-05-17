@@ -1747,6 +1747,8 @@ func register_external_display(display: LogotDisplay) -> void:
 	_external_displays.append(weakref(display))
 	_sync_pinned_display_state_to(display)
 	_sync_render_texture_widget_view_mode_to(display)
+	if display.has_method("set_pinned_display_variables_suppressed"):
+		display.set_pinned_display_variables_suppressed(_is_console_control_visible())
 	_apply_pending_pinned_display_variables_to(display)
 	_apply_pending_render_texture_widget_view_mode_to(display)
 	display.invalidate_command_catalog()
@@ -2358,6 +2360,8 @@ func _setup_game_ui() -> void:
 	_display.cleared.connect(_on_display_cleared)
 	_display.channel_deleted.connect(_on_channel_deleted)
 	_display.custom_setting_changed.connect(_on_display_custom_setting_changed)
+	_display.command_palette_submit_requested.connect(_on_command_palette_submit_requested)
+	_display.command_palette_close_requested.connect(_on_command_palette_close_requested)
 
 	# Initialize the display
 	_display.initialize_display()
@@ -2366,6 +2370,7 @@ func _setup_game_ui() -> void:
 	_ensure_ingame_popup_overlay()
 	_apply_ingame_overlay_edge_overrides()
 	_ensure_touch_toggle_button(canvas_layer)
+	_sync_pinned_overlay_suppression()
 
 	# Get references to UI nodes from display
 	_logot_ui.visible = false
@@ -3401,6 +3406,21 @@ func _get_console_setting_value(setting_name: String, fallback: bool) -> bool:
 func _on_display_custom_setting_changed(setting_name: String, value: bool) -> void:
 	if setting_name == "touch_mode":
 		_set_touch_mode_enabled(value, false)
+
+
+func _on_command_palette_submit_requested(command_text: String) -> void:
+	_submit_line_edit_input(command_text, false, false)
+
+
+func _on_command_palette_close_requested() -> void:
+	_close_command_entry_view()
+
+
+func _sync_pinned_overlay_suppression() -> void:
+	var suppressed := _is_console_control_visible()
+	for display in _get_live_displays():
+		if display.has_method("set_pinned_display_variables_suppressed"):
+			display.set_pinned_display_variables_suppressed(suppressed)
 
 
 func _should_enable_touch_mode_by_default() -> bool:
@@ -4615,7 +4635,8 @@ func _input(event : InputEvent) -> void:
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and console_visible:
 			if event.pressed:
 				_set_current_input_method_keyboard()
-				_handle_escape_input()
+				if not _handle_touch_command_palette_back_or_close():
+					_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
 		if console_visible and event.pressed and rich_label != null and is_instance_valid(rich_label):
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
@@ -4760,6 +4781,8 @@ func _is_console_control_visible() -> bool:
 func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
 	if event and event.pressed and not event.echo and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
 		if _is_console_control_visible() and line_edit and line_edit.has_focus():
+			if _handle_touch_command_palette_back_or_close():
+				return true
 			_handle_escape_input()
 			return true
 
@@ -4772,6 +4795,15 @@ func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
 			Callable(self, "_close_command_entry_view")
 		))
 	return false
+
+
+func _handle_touch_command_palette_back_or_close() -> bool:
+	return (
+		_touch_mode_enabled
+		and _display != null
+		and _display.has_method("touch_command_palette_back_or_close")
+		and bool(_display.touch_command_palette_back_or_close())
+	)
 
 
 func _is_line_edit_submit_event(event: InputEventKey) -> bool:
@@ -4858,6 +4890,7 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 		if line_edit != null and is_instance_valid(line_edit):
 			line_edit.grab_focus()
 		console_opened.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 		return
 
@@ -4874,6 +4907,7 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 	if pause_enabled and !was_paused_already:
 		get_tree().paused = false
 	console_closed.emit()
+	_sync_pinned_overlay_suppression()
 	_update_touch_toggle_button()
 
 
@@ -5150,6 +5184,7 @@ func _open_command_entry_view() -> void:
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
 		console_opened.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
 	_display.show_command_entry_mode("/")
@@ -5171,6 +5206,7 @@ func _close_command_entry_view() -> void:
 		if pause_enabled and !was_paused_already:
 			get_tree().paused = false
 		console_closed.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
 	_restore_full_console_after_command_entry = false
