@@ -250,6 +250,7 @@ var _touch_toggle_drag_action := ""
 var _touch_toggle_drag_touch_index := -1
 var _touch_toggle_drag_start_position := Vector2.ZERO
 var _touch_toggle_drag_pointer_offset := Vector2.ZERO
+var _touch_toggle_drag_start_edge := TOUCH_TOGGLE_EDGE_RIGHT
 var _current_git_branch := ""
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
@@ -1748,7 +1749,7 @@ func register_external_display(display: LogotDisplay) -> void:
 	_sync_pinned_display_state_to(display)
 	_sync_render_texture_widget_view_mode_to(display)
 	if display.has_method("set_pinned_display_variables_suppressed"):
-		display.set_pinned_display_variables_suppressed(_is_console_control_visible())
+		display.set_pinned_display_variables_suppressed(_should_suppress_pinned_overlay())
 	_apply_pending_pinned_display_variables_to(display)
 	_apply_pending_render_texture_widget_view_mode_to(display)
 	display.invalidate_command_catalog()
@@ -2363,6 +2364,7 @@ func _setup_game_ui() -> void:
 	_display.channel_deleted.connect(_on_channel_deleted)
 	_display.custom_setting_changed.connect(_on_display_custom_setting_changed)
 	_display.command_palette_submit_requested.connect(_on_command_palette_submit_requested)
+	_display.command_palette_execute_keep_open_requested.connect(_on_command_palette_execute_keep_open_requested)
 	_display.command_palette_close_requested.connect(_on_command_palette_close_requested)
 
 	# Initialize the display
@@ -3414,15 +3416,35 @@ func _on_command_palette_submit_requested(command_text: String) -> void:
 	_submit_line_edit_input(command_text, false, false)
 
 
+func _on_command_palette_execute_keep_open_requested(command_text: String) -> void:
+	var submitted_text := command_text.strip_edges()
+	if submitted_text.is_empty() or not submitted_text.begins_with("/"):
+		return
+	_execute_command(submitted_text)
+	if _display != null:
+		var palette_text := "/" if line_edit == null else line_edit.text.strip_edges()
+		if not palette_text.begins_with("/"):
+			palette_text = "/"
+		_display.show_command_entry_mode(palette_text, false)
+
+
 func _on_command_palette_close_requested() -> void:
 	_close_command_entry_view()
 
 
 func _sync_pinned_overlay_suppression() -> void:
-	var suppressed := _is_console_control_visible()
+	var suppressed := _should_suppress_pinned_overlay()
 	for display in _get_live_displays():
 		if display.has_method("set_pinned_display_variables_suppressed"):
 			display.set_pinned_display_variables_suppressed(suppressed)
+
+
+func _should_suppress_pinned_overlay() -> bool:
+	if not _is_console_control_visible():
+		return false
+	if _display != null and _display.is_command_entry_mode() and _display.get_current_input_method() != LogotDisplay.INPUT_METHOD_TOUCH:
+		return false
+	return true
 
 
 func _should_enable_touch_mode_by_default() -> bool:
@@ -3445,6 +3467,7 @@ func _set_touch_mode_enabled(value: bool, sync_display_setting: bool = true) -> 
 		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH if _touch_mode_enabled else LogotDisplay.INPUT_METHOD_KEYBOARD)
 		if _display.has_method("set_touch_sidebar_fullscreen_enabled"):
 			_display.set_touch_sidebar_fullscreen_enabled(_touch_mode_enabled)
+	_sync_pinned_overlay_suppression()
 	_update_touch_toggle_button()
 
 
@@ -3585,7 +3608,7 @@ func _update_touch_toggle_button() -> void:
 	if _touch_toggle_dock == null or not is_instance_valid(_touch_toggle_dock):
 		return
 	_update_touch_toggle_button_layout()
-	_touch_toggle_dock.visible = _touch_mode_enabled
+	_touch_toggle_dock.visible = _touch_mode_enabled and not _is_console_control_visible()
 	if _touch_command_palette_button != null and is_instance_valid(_touch_command_palette_button):
 		_touch_command_palette_button.tooltip_text = "Open command palette"
 	if _touch_full_log_button != null and is_instance_valid(_touch_full_log_button):
@@ -3651,6 +3674,7 @@ func _begin_touch_toggle_drag(pointer_position: Vector2, action: String, touch_i
 	_touch_toggle_drag_touch_index = touch_index
 	_touch_toggle_drag_start_position = pointer_position
 	_touch_toggle_drag_pointer_offset = pointer_position - _touch_toggle_dock.global_position
+	_touch_toggle_drag_start_edge = _touch_toggle_edge
 
 
 func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
@@ -3661,8 +3685,7 @@ func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
 	if not _touch_toggle_drag_moved:
 		return
 
-	var viewport_size := _get_touch_toggle_viewport_size()
-	_touch_toggle_edge = TOUCH_TOGGLE_EDGE_LEFT if pointer_position.x < viewport_size.x * 0.5 else TOUCH_TOGGLE_EDGE_RIGHT
+	_touch_toggle_edge = _touch_toggle_drag_start_edge
 	var dock_height := TOUCH_EDGE_BUTTON_SIZE.y * 2.0 + TOUCH_EDGE_BUTTON_GAP
 	_touch_toggle_center_y = pointer_position.y - _touch_toggle_drag_pointer_offset.y + dock_height * 0.5
 	_update_touch_toggle_button_layout()
@@ -3671,10 +3694,14 @@ func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
 func _end_touch_toggle_drag(pointer_position: Vector2) -> void:
 	if _touch_toggle_drag_moved:
 		_update_touch_toggle_drag(pointer_position)
+		var viewport_size := _get_touch_toggle_viewport_size()
+		if viewport_size.x > 0.0:
+			_touch_toggle_edge = TOUCH_TOGGLE_EDGE_LEFT if pointer_position.x < viewport_size.x * 0.5 else TOUCH_TOGGLE_EDGE_RIGHT
 	_touch_toggle_drag_active = false
 	_touch_toggle_drag_moved = false
 	_touch_toggle_drag_action = ""
 	_touch_toggle_drag_touch_index = -1
+	_update_touch_toggle_button_layout()
 
 
 func _activate_touch_edge_button(action: String) -> void:
@@ -3690,7 +3717,7 @@ func _on_touch_command_palette_button_pressed() -> void:
 		return
 	if _display:
 		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
-	_open_command_entry_view()
+	_open_command_entry_view(false)
 	_update_touch_toggle_button()
 
 
@@ -3704,11 +3731,23 @@ func _on_touch_full_log_button_pressed() -> void:
 		_restore_full_console_after_command_entry = false
 		if control != null and is_instance_valid(control):
 			control.visible = true
-			if line_edit != null and is_instance_valid(line_edit):
+			if not _touch_mode_enabled and line_edit != null and is_instance_valid(line_edit):
 				line_edit.grab_focus()
 		_update_touch_toggle_button()
 		return
-	toggle_console(false)
+	if _is_console_control_visible():
+		toggle_console(false)
+		return
+	if control == null or not is_instance_valid(control) or not enabled:
+		return
+	control.visible = true
+	_clear_ingame_popups()
+	_restore_full_console_after_command_entry = false
+	was_paused_already = get_tree().paused
+	get_tree().paused = was_paused_already || pause_enabled
+	console_opened.emit()
+	_sync_pinned_overlay_suppression()
+	_update_touch_toggle_button()
 
 
 func _set_console_setting_value(setting_name: String, value: bool) -> void:
@@ -5090,6 +5129,7 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 		return false
 
 	var is_command_input := submitted_text.begins_with("/")
+	var should_refocus_input := _display == null or _display.get_current_input_method() != LogotDisplay.INPUT_METHOD_TOUCH
 
 	if not keep_input:
 		if line_edit != null:
@@ -5098,7 +5138,7 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 			_display.reset_autocomplete()
 		if line_edit != null:
 			line_edit.clear()
-			if !Engine.is_editor_hint():
+			if should_refocus_input and !Engine.is_editor_hint():
 				line_edit.grab_focus()
 
 		if _display:
@@ -5108,7 +5148,7 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 		if _display and _display.is_command_entry_mode():
 			_close_command_entry_view()
 	else:
-		if line_edit != null:
+		if should_refocus_input and line_edit != null:
 			line_edit.grab_focus()
 
 	if is_command_input:
@@ -5187,7 +5227,7 @@ func on_line_edit_text_changed(new_text: String) -> void:
 		_display.on_text_changed_autocomplete(new_text)
 
 
-func _open_command_entry_view() -> void:
+func _open_command_entry_view(focus_input: bool = true) -> void:
 	if not enabled or not control or not _display:
 		return
 	if _display.is_command_entry_mode():
@@ -5202,7 +5242,8 @@ func _open_command_entry_view() -> void:
 		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
-	_display.show_command_entry_mode("/")
+	_display.show_command_entry_mode("/", focus_input)
+	_sync_pinned_overlay_suppression()
 
 
 func _close_command_entry_view() -> void:

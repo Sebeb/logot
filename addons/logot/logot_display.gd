@@ -14,6 +14,7 @@ const LogLevel = preload("res://addons/logot/log_level.gd")
 
 signal custom_setting_changed(setting_name: String, value: bool)
 signal command_palette_submit_requested(command_text: String)
+signal command_palette_execute_keep_open_requested(command_text: String)
 signal command_palette_close_requested
 signal cleared()
 signal level_visibility_changed(level: int, mode: int)
@@ -228,6 +229,7 @@ class AutocompleteCommandColumn:
 	extends Control
 
 	signal row_activated(row_index: int)
+	signal row_long_pressed(row_index: int)
 	signal header_navigation_pressed
 
 	const CELL_GAP := 12.0
@@ -248,6 +250,10 @@ class AutocompleteCommandColumn:
 	const GROUP_BOX_INSET_X := 6.0
 	const GROUP_BOX_INSET_Y := 2.0
 	const GROUP_HEADER_FONT_SIZE_REDUCTION := 3
+	const TOUCH_SCROLL_DRAG_THRESHOLD := 8.0
+	const TOUCH_LONG_PRESS_SECONDS := 0.48
+	const TOUCH_TAP_HIGHLIGHT_SECONDS := 0.11
+	const TOUCH_FLASH_INTERVAL_SECONDS := 0.08
 
 	var _rows: Array[Dictionary] = []
 	var _metrics: Dictionary = {"name_width": 0, "value_width": 0, "action_width": 0, "width": 0}
@@ -266,6 +272,21 @@ class AutocompleteCommandColumn:
 	var _embedded_widget_path := ""
 	var _embedded_widget_height := 0.0
 	var _updating_scrollbar := false
+	var _touch_mode := false
+	var _press_active := false
+	var _press_pointer_id := -1
+	var _press_start_position := Vector2.ZERO
+	var _press_last_position := Vector2.ZERO
+	var _press_row_index := -1
+	var _press_moved := false
+	var _press_long_press_sent := false
+	var _press_token := 0
+	var _drag_scroll_remainder := 0.0
+	var _transient_highlight_row := -1
+	var _transient_highlight_token := 0
+	var _flash_row := -1
+	var _flash_visible := false
+	var _flash_token := 0
 
 	var _font: Font
 	var _font_size := 16
@@ -333,30 +354,183 @@ class AutocompleteCommandColumn:
 		_configure_value_pill_styles()
 
 	func _gui_input(event: InputEvent) -> void:
-		var pointer_position := Vector2.ZERO
-		var released := false
 		if event is InputEventMouseButton:
 			var mouse_event := event as InputEventMouseButton
+			if _handle_mouse_wheel(mouse_event):
+				accept_event()
+				return
 			if mouse_event.button_index != MOUSE_BUTTON_LEFT:
 				return
-			released = not mouse_event.pressed
-			pointer_position = mouse_event.position
-		elif event is InputEventScreenTouch:
+			if mouse_event.pressed:
+				_begin_pointer_press(mouse_event.position, -1)
+			else:
+				_end_pointer_press(mouse_event.position, -1)
+			accept_event()
+			return
+		if event is InputEventMouseMotion:
+			if _press_active and _press_pointer_id == -1:
+				_update_pointer_press((event as InputEventMouseMotion).position)
+				accept_event()
+			return
+		if event is InputEventScreenTouch:
 			var touch_event := event as InputEventScreenTouch
-			released = not touch_event.pressed
-			pointer_position = touch_event.position
+			if touch_event.pressed:
+				_begin_pointer_press(touch_event.position, touch_event.index)
+			else:
+				_end_pointer_press(touch_event.position, touch_event.index)
+			accept_event()
+			return
+		if event is InputEventScreenDrag:
+			var drag_event := event as InputEventScreenDrag
+			if _press_active and _press_pointer_id == drag_event.index:
+				_update_pointer_press(drag_event.position)
+				accept_event()
+
+	func _handle_mouse_wheel(mouse_event: InputEventMouseButton) -> bool:
+		if mouse_event.pressed:
+			return false
+		match mouse_event.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				_scroll_rows(-3)
+				return true
+			MOUSE_BUTTON_WHEEL_DOWN:
+				_scroll_rows(3)
+				return true
+		return false
+
+	func _begin_pointer_press(position: Vector2, pointer_id: int) -> void:
+		_press_active = true
+		_press_pointer_id = pointer_id
+		_press_start_position = position
+		_press_last_position = position
+		_press_moved = false
+		_press_long_press_sent = false
+		_drag_scroll_remainder = 0.0
+		_press_row_index = _get_row_index_at_position(position)
+		if _press_row_index >= 0 and _press_row_index < _rows.size() and not bool((_rows[_press_row_index] as Dictionary).get("is_group_header", false)):
+			_set_transient_highlight(_press_row_index)
+			_schedule_long_press(_press_row_index)
 		else:
+			_press_row_index = -1
+
+	func _update_pointer_press(position: Vector2) -> void:
+		if not _press_active:
 			return
-		if not released:
+		var movement := position - _press_start_position
+		if movement.length() >= TOUCH_SCROLL_DRAG_THRESHOLD:
+			_press_moved = true
+			_clear_transient_highlight()
+		if _press_moved:
+			_scroll_by_pixel_delta(_press_last_position.y - position.y)
+		_press_last_position = position
+
+	func _end_pointer_press(position: Vector2, pointer_id: int) -> void:
+		if not _press_active or _press_pointer_id != pointer_id:
 			return
-		var row_index := _get_row_index_at_position(pointer_position)
-		if row_index < 0 or row_index >= _rows.size():
+		var row_index := _get_row_index_at_position(position)
+		var should_activate := (
+			not _press_moved
+			and not _press_long_press_sent
+			and row_index == _press_row_index
+			and row_index >= 0
+			and row_index < _rows.size()
+		)
+		_press_active = false
+		_press_pointer_id = -1
+		_press_token += 1
+		if should_activate:
+			var row_data: Dictionary = _rows[row_index]
+			if not bool(row_data.get("is_group_header", false)):
+				row_activated.emit(row_index)
+		_schedule_transient_highlight_clear()
+
+	func _schedule_long_press(row_index: int) -> void:
+		if not _touch_mode:
 			return
-		var row_data: Dictionary = _rows[row_index]
-		if bool(row_data.get("is_group_header", false)):
+		_press_token += 1
+		var token := _press_token
+		var timer := get_tree().create_timer(TOUCH_LONG_PRESS_SECONDS)
+		timer.timeout.connect(func() -> void:
+			if token != _press_token or not _press_active or _press_moved or _press_long_press_sent:
+				return
+			if row_index != _press_row_index:
+				return
+			_press_long_press_sent = true
+			row_long_pressed.emit(row_index)
+			_start_double_flash(row_index)
+		)
+
+	func _set_transient_highlight(row_index: int) -> void:
+		_transient_highlight_row = row_index
+		_transient_highlight_token += 1
+		queue_redraw()
+
+	func _clear_transient_highlight() -> void:
+		if _transient_highlight_row == -1:
 			return
-		row_activated.emit(row_index)
-		accept_event()
+		_transient_highlight_row = -1
+		_transient_highlight_token += 1
+		queue_redraw()
+
+	func _schedule_transient_highlight_clear() -> void:
+		if _transient_highlight_row == -1:
+			return
+		_transient_highlight_token += 1
+		var token := _transient_highlight_token
+		var timer := get_tree().create_timer(TOUCH_TAP_HIGHLIGHT_SECONDS)
+		timer.timeout.connect(func() -> void:
+			if token != _transient_highlight_token:
+				return
+			_transient_highlight_row = -1
+			queue_redraw()
+		)
+
+	func _start_double_flash(row_index: int) -> void:
+		_flash_token += 1
+		var token := _flash_token
+		_flash_row = row_index
+		_flash_visible = true
+		queue_redraw()
+		for step in range(4):
+			var timer := get_tree().create_timer(TOUCH_FLASH_INTERVAL_SECONDS * float(step + 1))
+			timer.timeout.connect(func() -> void:
+				if token != _flash_token:
+					return
+				_flash_visible = not _flash_visible
+				if step == 3:
+					_flash_row = -1
+					_flash_visible = false
+				queue_redraw()
+			)
+
+	func _scroll_rows(delta_rows: int) -> void:
+		if delta_rows == 0:
+			return
+		var max_scroll := _get_max_scroll_row()
+		var next_scroll := clampi(_scroll_row + delta_rows, 0, max_scroll)
+		if next_scroll == _scroll_row:
+			return
+		_scroll_row = next_scroll
+		_update_row_scrollbar()
+		queue_redraw()
+
+	func _scroll_by_pixel_delta(delta_y: float) -> void:
+		_drag_scroll_remainder += delta_y
+		var step := maxf(1.0, float(_row_height))
+		while _drag_scroll_remainder >= step:
+			_scroll_rows(1)
+			_drag_scroll_remainder -= step
+		while _drag_scroll_remainder <= -step:
+			_scroll_rows(-1)
+			_drag_scroll_remainder += step
+
+	func set_touch_mode(enabled: bool) -> void:
+		_touch_mode = enabled
+		if not _touch_mode:
+			_clear_transient_highlight()
+			_flash_row = -1
+			_flash_visible = false
+		queue_redraw()
 
 	func set_embedded_widget(widget: Control, widget_path: String = "") -> void:
 		if _embedded_widget != null and is_instance_valid(_embedded_widget) and _embedded_widget != widget:
@@ -441,8 +615,7 @@ class AutocompleteCommandColumn:
 			return addresses
 
 		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
-		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
-		var end_index := mini(_rows.size(), start_index + content_visible_rows)
+		var end_index := _get_visible_content_end_index_for_scroll(start_index)
 		for row_index in range(start_index, end_index):
 			var address := str((_rows[row_index] as Dictionary).get("display_variable_address", "")).strip_edges()
 			if address.is_empty() or addresses.has(address):
@@ -475,7 +648,8 @@ class AutocompleteCommandColumn:
 		return _get_visible_row_capacity_for_scroll(_scroll_row)
 
 	func _get_visible_row_capacity_for_scroll(scroll_row: int) -> int:
-		return maxi(1, int(floor(maxf(0.0, size.y - _get_rows_top_for_scroll(scroll_row)) / maxf(1.0, float(_row_height)))))
+		var base_row_height := maxf(1.0, float(_row_height))
+		return maxi(1, int(floor(maxf(0.0, size.y - _get_rows_top_for_scroll(scroll_row)) / base_row_height)))
 
 	func _find_best_scroll_row_for_selection(selected_row: int, max_scroll: int) -> int:
 		if selected_row < 0 or _rows.is_empty():
@@ -488,12 +662,12 @@ class AutocompleteCommandColumn:
 		for candidate in range(max_scroll + 1):
 			if not _is_row_visible_for_scroll(candidate, selected_row):
 				continue
-			var visible_rows := _get_visible_content_row_count_for_scroll(candidate)
-			if visible_rows <= 0:
+			var visible_height := _get_visible_content_height_for_scroll(candidate)
+			if visible_height <= 0.0:
 				continue
 
-			var center_row := float(visible_rows - 1) * 0.5
-			var selected_offset := float(selected_row - candidate)
+			var center_row := visible_height * 0.5
+			var selected_offset := _get_row_offset_from_scroll(candidate, selected_row)
 			var center_distance := absf(selected_offset - center_row)
 			var scroll_delta := absi(candidate - current_scroll)
 			if center_distance < best_center_distance:
@@ -522,53 +696,90 @@ class AutocompleteCommandColumn:
 		if _rows.is_empty():
 			return 0
 		var clamped_scroll_row := clampi(scroll_row, 0, maxi(0, _rows.size() - 1))
-		return maxi(0, mini(_rows.size() - clamped_scroll_row, _get_effective_content_visible_row_capacity(clamped_scroll_row)))
+		return _get_visible_content_end_index_for_scroll(clamped_scroll_row) - clamped_scroll_row
 
 	func _is_row_visible_for_scroll(scroll_row: int, row_index: int) -> bool:
 		if row_index < 0 or row_index >= _rows.size():
 			return false
 		var clamped_scroll_row := clampi(scroll_row, 0, maxi(0, _rows.size() - 1))
-		var visible_rows := _get_visible_content_row_count_for_scroll(clamped_scroll_row)
-		return row_index >= clamped_scroll_row and row_index < clamped_scroll_row + visible_rows
+		var end_index := _get_visible_content_end_index_for_scroll(clamped_scroll_row)
+		return row_index >= clamped_scroll_row and row_index < end_index
 
 	func _get_max_scroll_row() -> int:
 		if _rows.is_empty():
 			return 0
 		for candidate in range(_rows.size()):
-			if candidate + _get_visible_content_row_count_for_scroll(candidate) >= _rows.size():
+			if _get_visible_content_end_index_for_scroll(candidate) >= _rows.size():
 				return candidate
 		return maxi(0, _rows.size() - 1)
+
+	func _get_row_height(row_index: int) -> float:
+		if row_index < 0 or row_index >= _rows.size():
+			return float(_row_height)
+		var row_data: Dictionary = _rows[row_index]
+		var multiplier := 2.0 if bool(row_data.get("two_line", false)) else float(row_data.get("row_height_multiplier", 1.0))
+		return maxf(float(_row_height), float(_row_height) * maxf(1.0, multiplier))
+
+	func _get_visible_content_height_for_scroll(scroll_row: int) -> float:
+		var rows_top := _get_rows_top_for_scroll(scroll_row)
+		var height := maxf(0.0, size.y - rows_top)
+		if _has_sticky_group_header_for_scroll(scroll_row):
+			height = maxf(0.0, height - float(_row_height))
+		return height
+
+	func _get_visible_content_end_index_for_scroll(scroll_row: int) -> int:
+		if _rows.is_empty():
+			return 0
+		var clamped_scroll_row := clampi(scroll_row, 0, maxi(0, _rows.size() - 1))
+		var visible_height := _get_visible_content_height_for_scroll(clamped_scroll_row)
+		var consumed := 0.0
+		var end_index := clamped_scroll_row
+		while end_index < _rows.size():
+			var row_height := _get_row_height(end_index)
+			if end_index > clamped_scroll_row and consumed + row_height > visible_height:
+				break
+			consumed += row_height
+			end_index += 1
+		return maxi(clamped_scroll_row + 1, end_index)
+
+	func _get_row_offset_from_scroll(scroll_row: int, row_index: int) -> float:
+		var offset := 0.0
+		for index in range(clampi(scroll_row, 0, maxi(0, _rows.size() - 1)), clampi(row_index, 0, _rows.size())):
+			offset += _get_row_height(index)
+		return offset
 
 	func _draw() -> void:
 		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
 		var total_visible_rows := _get_visible_row_capacity_for_scroll(start_index)
 		var sticky_group_header_row := _get_sticky_group_header_row_data_for_scroll(start_index)
 		var sticky_group_header_visible := not sticky_group_header_row.is_empty()
-		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
-		var end_index := mini(_rows.size(), start_index + content_visible_rows)
-		var baseline_offset := _get_baseline_offset()
+		var end_index := _get_visible_content_end_index_for_scroll(start_index)
 		var rows_top := _get_rows_top_for_scroll(start_index)
 		var rows_area_height := maxf(0.0, size.y - rows_top)
 		var content_width := _get_column_content_width()
 		if sticky_group_header_visible:
-			var sticky_row_rect := Rect2(0.0, rows_top, content_width, _row_height)
+			var sticky_height := float(_row_height)
+			var sticky_row_rect := Rect2(0.0, rows_top, content_width, sticky_height)
 			_draw_row_background(sticky_row_rect, sticky_group_header_row, 0)
-			_draw_row_content(sticky_row_rect, sticky_group_header_row, 0, baseline_offset)
-			rows_top += float(_row_height)
-			rows_area_height = maxf(0.0, rows_area_height - float(_row_height))
+			_draw_row_content(sticky_row_rect, sticky_group_header_row, 0, _get_baseline_offset(sticky_height))
+			rows_top += sticky_height
+			rows_area_height = maxf(0.0, rows_area_height - sticky_height)
 
 		if _embedded_widget == null and not sticky_group_header_visible and _rows.size() <= total_visible_rows:
-			var drawn_rows := maxi(0, end_index - start_index)
-			var drawn_height := float(drawn_rows * _row_height)
+			var drawn_height := 0.0
+			for row_index in range(start_index, end_index):
+				drawn_height += _get_row_height(row_index)
 			rows_top += maxf(0.0, rows_area_height - drawn_height)
 
+		var row_top := rows_top
 		for row_index in range(start_index, end_index):
-			var row_top := rows_top + float((row_index - start_index) * _row_height)
-			var row_rect := Rect2(0.0, row_top, content_width, _row_height)
+			var row_height := _get_row_height(row_index)
+			var row_rect := Rect2(0.0, row_top, content_width, row_height)
 			var row_data: Dictionary = _rows[row_index]
 			var selection_state := _get_row_selection_state(row_index)
 			_draw_row_background(row_rect, row_data, selection_state)
-			_draw_row_content(row_rect, row_data, selection_state, baseline_offset)
+			_draw_row_content(row_rect, row_data, selection_state, _get_baseline_offset(row_height))
+			row_top += row_height
 
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_RESIZED:
@@ -632,29 +843,32 @@ class AutocompleteCommandColumn:
 		var total_visible_rows := _get_visible_row_capacity_for_scroll(start_index)
 		var sticky_group_header_row := _get_sticky_group_header_row_data_for_scroll(start_index)
 		var sticky_group_header_visible := not sticky_group_header_row.is_empty()
-		var content_visible_rows := _get_visible_content_row_count_for_scroll(start_index)
-		var end_index := mini(_rows.size(), start_index + content_visible_rows)
+		var end_index := _get_visible_content_end_index_for_scroll(start_index)
 		var rows_top := _get_rows_top_for_scroll(start_index)
 		var rows_area_height := maxf(0.0, size.y - rows_top)
 
 		if sticky_group_header_visible:
-			if position.y >= rows_top and position.y < rows_top + float(_row_height):
+			var sticky_height := float(_row_height)
+			if position.y >= rows_top and position.y < rows_top + sticky_height:
 				return -1
-			rows_top += float(_row_height)
-			rows_area_height = maxf(0.0, rows_area_height - float(_row_height))
+			rows_top += sticky_height
+			rows_area_height = maxf(0.0, rows_area_height - sticky_height)
 
 		if _embedded_widget == null and not sticky_group_header_visible and _rows.size() <= total_visible_rows:
-			var drawn_rows := maxi(0, end_index - start_index)
-			var drawn_height := float(drawn_rows * _row_height)
+			var drawn_height := 0.0
+			for row_index in range(start_index, end_index):
+				drawn_height += _get_row_height(row_index)
 			rows_top += maxf(0.0, rows_area_height - drawn_height)
 
 		if position.y < rows_top:
 			return -1
-		var visible_offset := int(floor((position.y - rows_top) / maxf(1.0, float(_row_height))))
-		var row_index := start_index + visible_offset
-		if row_index < start_index or row_index >= end_index:
-			return -1
-		return row_index
+		var row_top := rows_top
+		for row_index in range(start_index, end_index):
+			var row_height := _get_row_height(row_index)
+			if position.y >= row_top and position.y < row_top + row_height:
+				return row_index
+			row_top += row_height
+		return -1
 
 	func _update_embedded_widget_layout() -> void:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
@@ -779,6 +993,12 @@ class AutocompleteCommandColumn:
 		return float(maxi(1, font_size))
 
 	func _get_row_selection_state(row_index: int) -> int:
+		if _touch_mode:
+			if row_index == _flash_row and _flash_visible:
+				return 2
+			if row_index == _transient_highlight_row:
+				return 2
+			return 0
 		if row_index != _selected_index:
 			return 0
 		if _is_preview:
@@ -806,6 +1026,8 @@ class AutocompleteCommandColumn:
 		return {}
 
 	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
+		if bool(row_data.get("is_group_header", false)):
+			draw_rect(row_rect, _group_box_fill_color, true)
 		if bool(row_data.get("group_box", false)):
 			_draw_group_box(row_rect, row_data)
 		if selection_state != 0:
@@ -836,6 +1058,55 @@ class AutocompleteCommandColumn:
 			action_rect = Rect2(info_cursor_x - action_width, row_rect.position.y, action_width, row_rect.size.y)
 			info_cursor_x = action_rect.position.x - CELL_GAP
 
+		var value_items_variant: Variant = row_data.get("value_items", [])
+		var value_items: Array = value_items_variant if value_items_variant is Array else []
+		if value_items.is_empty():
+			var value_text := str(row_data.get("value_text", ""))
+			if not value_text.is_empty():
+				value_items = [{
+					"text": value_text,
+					"color": row_data.get("value_text_color", null),
+				}]
+
+		var raw_label_text := str(row_data.get("label", ""))
+		var truncate_label_from_start := bool(row_data.get("truncate_label_from_start", false))
+		var label_highlight_ranges_variant = row_data.get("label_highlight_ranges", [])
+		if bool(row_data.get("two_line", false)):
+			var half_height := row_rect.size.y * 0.5
+			var line_baseline_offset := _get_baseline_offset(half_height)
+			var label_max_width_two_line := maxf(0.0, info_cursor_x - content_left)
+			var label_text_two_line := _fit_text_to_width(raw_label_text, label_max_width_two_line, truncate_label_from_start)
+			if not label_text_two_line.is_empty():
+				if label_highlight_ranges_variant is Array and not (label_highlight_ranges_variant as Array).is_empty():
+					_draw_highlighted_label(
+						content_left,
+						row_rect.position.y + line_baseline_offset,
+						raw_label_text,
+						label_text_two_line,
+						label_highlight_ranges_variant as Array,
+						text_color,
+						truncate_label_from_start
+					)
+				else:
+					draw_string(_font, Vector2(content_left, row_rect.position.y + line_baseline_offset), label_text_two_line, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+			if not value_items.is_empty():
+				var two_line_value_rect := Rect2(
+					content_left,
+					row_rect.position.y + half_height + (half_height - VALUE_PILL_HEIGHT) * 0.5,
+					maxf(0.0, info_cursor_x - content_left),
+					VALUE_PILL_HEIGHT
+				)
+				_draw_value_pills(two_line_value_rect, value_items, row_rect.position.y + half_height + line_baseline_offset, selection_state, text_color)
+			if action_rect.size.x > 0.0:
+				_draw_action_icons(
+					action_rect,
+					bool(row_data.get("has_children", false)),
+					bool(row_data.get("can_submit", false)),
+					selection_state,
+					text_color
+				)
+			return
+
 		var value_rect := Rect2()
 		if value_width > 0.0:
 			value_rect = Rect2(
@@ -846,12 +1117,9 @@ class AutocompleteCommandColumn:
 			)
 			info_cursor_x = value_rect.position.x - CELL_GAP
 
-		var raw_label_text := str(row_data.get("label", ""))
 		var label_max_width := maxf(0.0, info_cursor_x - content_left)
-		var truncate_label_from_start := bool(row_data.get("truncate_label_from_start", false))
 		var label_text := _fit_text_to_width(raw_label_text, label_max_width, truncate_label_from_start)
 		if not label_text.is_empty():
-			var label_highlight_ranges_variant = row_data.get("label_highlight_ranges", [])
 			if label_highlight_ranges_variant is Array and not (label_highlight_ranges_variant as Array).is_empty():
 				_draw_highlighted_label(
 					content_left,
@@ -865,15 +1133,6 @@ class AutocompleteCommandColumn:
 			else:
 				draw_string(_font, Vector2(content_left, text_baseline), label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
 
-		var value_items_variant: Variant = row_data.get("value_items", [])
-		var value_items: Array = value_items_variant if value_items_variant is Array else []
-		if value_items.is_empty():
-			var value_text := str(row_data.get("value_text", ""))
-			if not value_text.is_empty():
-				value_items = [{
-					"text": value_text,
-					"color": row_data.get("value_text_color", null),
-				}]
 		if not value_items.is_empty() and value_rect.size.x > 0.0:
 			_draw_value_pills(value_rect, value_items, text_baseline, selection_state, text_color)
 
@@ -904,7 +1163,6 @@ class AutocompleteCommandColumn:
 		if box_rect.size.x <= 0.0 or box_rect.size.y <= 0.0:
 			return
 
-		draw_rect(box_rect, _group_box_fill_color, true)
 		var left := box_rect.position.x
 		var right := box_rect.position.x + box_rect.size.x
 		var top := box_rect.position.y
@@ -994,7 +1252,10 @@ class AutocompleteCommandColumn:
 			if not (item_variant is Dictionary):
 				continue
 			var item := item_variant as Dictionary
-			var pill_width := _measure_value_pill_width(str(item.get("text", "")))
+			var remaining_width := maxf(0.0, cursor_x - value_rect.position.x)
+			if remaining_width <= 0.0:
+				break
+			var pill_width := minf(_measure_value_pill_width(str(item.get("text", ""))), remaining_width)
 			cursor_x -= pill_width
 			pill_rects.push_front(Rect2(
 				cursor_x,
@@ -1093,11 +1354,12 @@ class AutocompleteCommandColumn:
 			runs.append({"text": "...", "highlighted": false})
 		return runs
 
-	func _get_baseline_offset() -> float:
+	func _get_baseline_offset(row_height: float = -1.0) -> float:
+		var effective_row_height := row_height if row_height > 0.0 else float(_row_height)
 		if _font == null:
-			return float(_row_height) * 0.7
+			return effective_row_height * 0.7
 		var font_height := _font.get_height(_font_size)
-		return floor((float(_row_height) - font_height) * 0.5) + _font.get_ascent(_font_size)
+		return floor((effective_row_height - font_height) * 0.5) + _font.get_ascent(_font_size)
 
 	func _measure_text(text: String) -> float:
 		if _font == null:
@@ -1438,6 +1700,7 @@ var _command_autocomplete_animation_tween: Tween
 var _command_autocomplete_target_global_position := Vector2.ZERO
 var _command_autocomplete_target_size := Vector2.ZERO
 var _command_autocomplete_slide_offset := 0.0
+var _command_autocomplete_touch_slide_offset_x := 0.0
 var _command_autocomplete_alpha := 1.0
 var _autocomplete_selected_index := -1
 var _autocomplete_column_states: Array[Dictionary] = []
@@ -1448,6 +1711,7 @@ var _autocomplete_pre_filter_highlighted_tiers: Dictionary = {}
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
 var _pending_autocomplete_column_sync_scroll_to_end := false
+var _pending_touch_column_slide_direction := 0
 var _autocomplete_global_search_mode := false
 var _suggestions := []
 var _current_suggest := 0
@@ -1942,7 +2206,7 @@ func is_command_entry_mode() -> bool:
 	return _command_entry_mode
 
 
-func show_command_entry_mode(prefill_text: String = "/") -> void:
+func show_command_entry_mode(prefill_text: String = "/", focus_input: bool = true) -> void:
 	_command_entry_mode = true
 	_update_command_entry_mode_visibility()
 	if not line_edit:
@@ -1950,7 +2214,10 @@ func show_command_entry_mode(prefill_text: String = "/") -> void:
 
 	line_edit.text = prefill_text
 	line_edit.caret_column = line_edit.text.length()
-	line_edit.grab_focus()
+	if focus_input:
+		line_edit.grab_focus()
+	else:
+		line_edit.release_focus()
 	on_text_changed_autocomplete(line_edit.text)
 	# Refresh once more next frame so popup geometry is correct on first open.
 	call_deferred("_refresh_command_entry_autocomplete_deferred")
@@ -3114,7 +3381,7 @@ func _stop_command_autocomplete_animation() -> void:
 func _apply_command_autocomplete_popup_visual_state() -> void:
 	if not _command_autocomplete_popup:
 		return
-	_command_autocomplete_popup.global_position = _command_autocomplete_target_global_position + Vector2(0.0, _command_autocomplete_slide_offset)
+	_command_autocomplete_popup.global_position = _command_autocomplete_target_global_position + Vector2(_command_autocomplete_touch_slide_offset_x, _command_autocomplete_slide_offset)
 	_command_autocomplete_popup.size = _command_autocomplete_target_size
 	_command_autocomplete_popup.modulate = Color(1, 1, 1, clampf(_command_autocomplete_alpha, 0.0, 1.0))
 
@@ -3124,9 +3391,34 @@ func _set_command_autocomplete_slide_offset(value: float) -> void:
 	_apply_command_autocomplete_popup_visual_state()
 
 
+func _set_command_autocomplete_touch_slide_offset_x(value: float) -> void:
+	_command_autocomplete_touch_slide_offset_x = value
+	_apply_command_autocomplete_popup_visual_state()
+
+
 func _set_command_autocomplete_alpha(value: float) -> void:
 	_command_autocomplete_alpha = value
 	_apply_command_autocomplete_popup_visual_state()
+
+
+func _animate_touch_command_column(direction: int) -> void:
+	if not _is_touch_command_palette_layout() or direction == 0 or not _command_autocomplete_popup:
+		return
+	if _command_autocomplete_animation_tween != null and is_instance_valid(_command_autocomplete_animation_tween):
+		_command_autocomplete_animation_tween.kill()
+	var distance := maxf(AUTOCOMPLETE_COMMAND_SLIDE_DISTANCE, _command_autocomplete_target_size.x)
+	_command_autocomplete_touch_slide_offset_x = distance * float(direction)
+	_apply_command_autocomplete_popup_visual_state()
+	_command_autocomplete_animation_tween = create_tween()
+	_command_autocomplete_animation_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	_command_autocomplete_animation_tween.set_trans(Tween.TRANS_CUBIC)
+	_command_autocomplete_animation_tween.set_ease(Tween.EASE_OUT)
+	_command_autocomplete_animation_tween.tween_method(Callable(self, "_set_command_autocomplete_touch_slide_offset_x"), _command_autocomplete_touch_slide_offset_x, 0.0, AUTOCOMPLETE_COMMAND_SLIDE_DURATION)
+	_command_autocomplete_animation_tween.finished.connect(func() -> void:
+		_command_autocomplete_animation_tween = null
+		_command_autocomplete_touch_slide_offset_x = 0.0
+		_apply_command_autocomplete_popup_visual_state()
+	)
 
 
 func _show_command_autocomplete_popup(animated: bool = true) -> void:
@@ -3139,6 +3431,7 @@ func _show_command_autocomplete_popup(animated: bool = true) -> void:
 	if not animated:
 		_command_autocomplete_popup.visible = true
 		_command_autocomplete_slide_offset = 0.0
+		_command_autocomplete_touch_slide_offset_x = 0.0
 		_command_autocomplete_alpha = 1.0
 		_apply_command_autocomplete_popup_visual_state()
 		_update_command_palette_log_reserved_space()
@@ -3163,6 +3456,7 @@ func _show_command_autocomplete_popup(animated: bool = true) -> void:
 	_command_autocomplete_animation_tween.finished.connect(func() -> void:
 		_command_autocomplete_animation_tween = null
 		_command_autocomplete_slide_offset = 0.0
+		_command_autocomplete_touch_slide_offset_x = 0.0
 		_command_autocomplete_alpha = 1.0
 		_apply_command_autocomplete_popup_visual_state()
 	)
@@ -3177,6 +3471,7 @@ func _hide_command_autocomplete_popup(animated: bool = true) -> void:
 	if not animated:
 		_command_autocomplete_popup.visible = false
 		_command_autocomplete_slide_offset = 0.0
+		_command_autocomplete_touch_slide_offset_x = 0.0
 		_command_autocomplete_alpha = 1.0
 		_apply_command_autocomplete_popup_visual_state()
 		_update_command_palette_log_reserved_space()
@@ -3195,6 +3490,7 @@ func _hide_command_autocomplete_popup(animated: bool = true) -> void:
 		if _command_autocomplete_popup:
 			_command_autocomplete_popup.visible = false
 			_command_autocomplete_slide_offset = 0.0
+			_command_autocomplete_touch_slide_offset_x = 0.0
 			_command_autocomplete_alpha = 1.0
 			_apply_command_autocomplete_popup_visual_state()
 			_update_command_palette_log_reserved_space()
@@ -5887,6 +6183,29 @@ func _get_command_data(command_name: String) -> Variant:
 	return _get_command_data_direct(_resolve_alias_command_path(command_name))
 
 
+func _command_path_takes_parameter(command_name: String) -> bool:
+	var command_data = _get_command_data(command_name)
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).arguments.size() > 0
+	if command_data is Dictionary:
+		var arguments = (command_data as Dictionary).get("arguments", [])
+		if arguments is Array or arguments is PackedStringArray:
+			return arguments.size() > 0
+	return false
+
+
+func _enter_touch_parameter_command(command_name: String) -> void:
+	if not line_edit:
+		return
+	var normalized_path := _get_display_alias_command_path(command_name.strip_edges().trim_suffix("/"))
+	if normalized_path.is_empty():
+		return
+	line_edit.text = "/" + normalized_path + " "
+	line_edit.caret_column = line_edit.text.length()
+	line_edit.grab_focus()
+	hide_autocomplete()
+
+
 func _is_setget_command_name(command_name: String) -> bool:
 	var command_data = _get_command_data(command_name)
 	if command_data is LogotCommand:
@@ -6894,6 +7213,23 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 		var max_width := _get_command_autocomplete_max_column_width()
 		total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
 
+	for row_index in range(rows.size()):
+		var row_data: Dictionary = rows[row_index]
+		if bool(row_data.get("is_group_header", false)):
+			continue
+		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
+		var row_value_width := int(row_data.get("measured_value_width", 0))
+		var row_action_width := int(row_data.get("measured_action_width", 0))
+		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + row_name_width
+		if row_value_width > 0:
+			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
+		if row_action_width > 0:
+			single_line_width += AUTOCOMPLETE_CELL_GAP + row_action_width
+		var needs_two_line := row_value_width > 0 and single_line_width > total_width
+		row_data["two_line"] = needs_two_line
+		row_data["row_height_multiplier"] = 2.0 if needs_two_line else 1.0
+		rows[row_index] = row_data
+
 	return {
 		"name_width": name_width,
 		"value_width": value_width,
@@ -6907,6 +7243,7 @@ func _create_command_autocomplete_column() -> AutocompleteCommandColumn:
 	if _history_autocomplete_popup:
 		list.configure_theme(_history_autocomplete_popup)
 	list.row_activated.connect(_on_command_autocomplete_column_row_activated.bind(list))
+	list.row_long_pressed.connect(_on_command_autocomplete_column_row_long_pressed.bind(list))
 	list.header_navigation_pressed.connect(_on_command_autocomplete_header_navigation_pressed)
 	return list
 
@@ -6919,42 +7256,81 @@ func _get_autocomplete_column_index_for_node(list: AutocompleteCommandColumn) ->
 
 
 func _on_command_autocomplete_column_row_activated(row_index: int, list: AutocompleteCommandColumn) -> void:
-	if list == null or not _is_command_popup_visible():
+	var row_context := _get_command_autocomplete_row_context(row_index, list)
+	if row_context.is_empty():
 		return
+	var column_index := int(row_context.get("column_index", -1))
+	var column_state: Dictionary = row_context.get("column_state", {})
+	var match_index := int(row_context.get("match_index", -1))
+	var match_data: Dictionary = row_context.get("match_data", {})
+
+	_autocomplete_active_column_index = column_index
+	column_state["selected_index"] = match_index
+	_autocomplete_column_states[column_index] = column_state
+	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(match_data.get("tier", ""))
+	_sync_visible_command_autocomplete_columns(0, false)
+	_activate_command_autocomplete_match(column_state, match_data)
+
+
+func _on_command_autocomplete_column_row_long_pressed(row_index: int, list: AutocompleteCommandColumn) -> void:
+	var row_context := _get_command_autocomplete_row_context(row_index, list)
+	if row_context.is_empty():
+		return
+	var column_state: Dictionary = row_context.get("column_state", {})
+	var match_data: Dictionary = row_context.get("match_data", {})
+	var submission_text := _get_submission_text_for_autocomplete_match(column_state, match_data)
+	if submission_text.strip_edges().is_empty():
+		return
+	command_palette_execute_keep_open_requested.emit(submission_text)
+
+
+func _get_command_autocomplete_row_context(row_index: int, list: AutocompleteCommandColumn) -> Dictionary:
+	if list == null or not _is_command_popup_visible():
+		return {}
 	var column_index := _get_autocomplete_column_index_for_node(list)
 	if column_index < 0 or column_index >= _autocomplete_column_states.size():
-		return
+		return {}
 	if _is_touch_command_palette_layout() and column_index != _autocomplete_active_column_index:
-		return
+		return {}
 
 	var column_state: Dictionary = _autocomplete_column_states[column_index]
 	var matches: Array = column_state.get("matches", [])
 	var rows: Array = list.get_rows()
 	if row_index < 0 or row_index >= rows.size():
-		return
+		return {}
 	var row_data: Dictionary = rows[row_index]
 	if bool(row_data.get("is_group_header", false)):
-		return
+		return {}
 	var match_index := int(row_data.get("match_index", -1))
 	if match_index < 0 or match_index >= matches.size():
-		return
+		return {}
+	return {
+		"column_index": column_index,
+		"column_state": column_state,
+		"match_index": match_index,
+		"match_data": matches[match_index],
+	}
 
-	_autocomplete_active_column_index = column_index
-	column_state["selected_index"] = match_index
-	_autocomplete_column_states[column_index] = column_state
-	var match_data: Dictionary = matches[match_index]
-	_autocomplete_highlighted_tiers[str(column_state.get("prefix", ""))] = str(match_data.get("tier", ""))
-	_sync_visible_command_autocomplete_columns(0, false)
-	_activate_command_autocomplete_match(column_state, match_data)
+
+func _get_submission_text_for_autocomplete_match(column_state: Dictionary, match_data: Dictionary) -> String:
+	if bool(match_data.get("is_option", false)):
+		var preview_command := str(column_state.get("preview_command", "")).strip_edges()
+		if preview_command.is_empty():
+			return ""
+		return "/%s %s" % [preview_command, str(match_data.get("option_value", ""))]
+	var tier := str(match_data.get("tier", "")).strip_edges()
+	if tier.is_empty() or not bool(match_data.get("has_command", false)):
+		return ""
+	return "/%s" % tier
 
 
 func _activate_command_autocomplete_match(column_state: Dictionary, match_data: Dictionary) -> void:
 	if match_data.is_empty():
 		return
 	if bool(match_data.get("is_option", false)):
-		var preview_command := str(column_state.get("preview_command", "")).strip_edges()
-		if not preview_command.is_empty():
-			command_palette_submit_requested.emit("/%s %s" % [preview_command, str(match_data.get("option_value", ""))])
+		var option_submission_text := _get_submission_text_for_autocomplete_match(column_state, match_data)
+		if not option_submission_text.is_empty():
+			command_palette_submit_requested.emit(option_submission_text)
 		return
 
 	if bool(match_data.get("has_children", false)):
@@ -6962,6 +7338,11 @@ func _activate_command_autocomplete_match(column_state: Dictionary, match_data: 
 		return
 
 	if bool(match_data.get("has_command", false)):
+		if _is_touch_command_palette_layout():
+			var tier := str(match_data.get("tier", "")).strip_edges()
+			if not tier.is_empty() and _command_path_takes_parameter(tier):
+				_enter_touch_parameter_command(tier)
+				return
 		var submission_text := get_active_command_submission_text()
 		if not submission_text.strip_edges().is_empty():
 			command_palette_submit_requested.emit(submission_text)
@@ -7271,6 +7652,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	_configure_autocomplete_column_widget(list, widget_path)
 
 	var is_active_column := column_index == _autocomplete_active_column_index
+	list.set_touch_mode(_is_touch_command_palette_layout())
 	list.set_column_data(
 		rows,
 		layout,
@@ -7421,6 +7803,10 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0, scroll_to_
 	_update_touch_command_autocomplete_column_visibility()
 	_position_command_autocomplete_popup()
 	_show_command_autocomplete_popup()
+	var touch_slide_direction := _pending_touch_column_slide_direction
+	_pending_touch_column_slide_direction = 0
+	if _is_touch_command_palette_layout() and touch_slide_direction != 0:
+		_animate_touch_command_column(touch_slide_direction)
 	if _is_touch_command_palette_layout():
 		if _command_autocomplete_scroll:
 			_command_autocomplete_scroll.scroll_horizontal = 0
@@ -7473,6 +7859,10 @@ func _render_command_autocomplete_popup() -> void:
 	_update_touch_command_autocomplete_column_visibility()
 	_position_command_autocomplete_popup()
 	_show_command_autocomplete_popup()
+	var touch_slide_direction := _pending_touch_column_slide_direction
+	_pending_touch_column_slide_direction = 0
+	if _is_touch_command_palette_layout() and touch_slide_direction != 0:
+		_animate_touch_command_column(touch_slide_direction)
 	if _is_touch_command_palette_layout():
 		if _command_autocomplete_scroll:
 			_command_autocomplete_scroll.scroll_horizontal = 0
@@ -7521,6 +7911,7 @@ func _refresh_command_autocomplete_popup_values() -> void:
 			needs_layout_refresh = true
 
 		var is_active_column := column_index == _autocomplete_active_column_index
+		list.set_touch_mode(_is_touch_command_palette_layout())
 		list.set_column_data(
 			rows,
 			layout,
@@ -8096,6 +8487,8 @@ func autocomplete_move_right(require_actionable_destination: bool = false) -> vo
 	if require_actionable_destination and not _can_move_right_into_command_column(tier, match_data):
 		return
 
+	if _is_touch_command_palette_layout():
+		_pending_touch_column_slide_direction = 1
 	_set_line_edit_command_path(tier, true)
 	update_autocomplete_popup()
 
@@ -8116,6 +8509,8 @@ func autocomplete_move_left() -> void:
 		_set_line_edit_command_path("", false)
 	else:
 		_set_line_edit_command_path("/".join(committed_segments), true)
+	if _is_touch_command_palette_layout():
+		_pending_touch_column_slide_direction = -1
 	update_autocomplete_popup()
 
 
