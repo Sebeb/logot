@@ -1583,14 +1583,33 @@ func is_command_palette_active() -> bool:
 func get_command_palette_reserved_height() -> float:
 	if not is_command_palette_active() or _command_autocomplete_popup == null:
 		return 0.0
-	var viewport_height := get_viewport_rect().size.y
-	return maxf(0.0, viewport_height - _command_autocomplete_popup.global_position.y + _get_scaled_autocomplete_popup_gap())
+	var layout_rect := _get_safe_area_layout_rect()
+	return maxf(0.0, layout_rect.end.y - _command_autocomplete_popup.global_position.y + _get_scaled_autocomplete_popup_gap())
 
 
 func get_command_palette_log_reserved_height() -> float:
 	if _command_palette_log_spacer == null:
 		return 0.0
 	return _command_palette_log_spacer.custom_minimum_size.y
+
+
+func refresh_safe_area_layout() -> void:
+	if _is_command_popup_visible():
+		_position_command_autocomplete_popup()
+	elif _is_history_popup_visible():
+		_position_history_autocomplete_popup()
+	else:
+		_update_command_palette_log_reserved_space()
+	_update_scroll_to_bottom_button_layout()
+	_update_scroll_to_bottom_button_visibility()
+	_refresh_pinned_display_variables()
+
+
+func _get_safe_area_layout_rect() -> Rect2:
+	var rect := get_global_rect()
+	if rect.size.x > 0.0 and rect.size.y > 0.0:
+		return rect
+	return get_viewport_rect()
 
 
 func add_custom_setting(name: String, label: String, default: bool) -> void:
@@ -1705,6 +1724,7 @@ func set_current_input_method(input_method: String) -> void:
 		return
 	_current_input_method = normalized_method
 	_apply_render_scales()
+	_update_pinned_corner_redirects()
 
 
 func get_render_scale_percent(target: String, input_method: String = "") -> float:
@@ -2239,11 +2259,17 @@ func _apply_pinned_variables_render_scale() -> void:
 
 
 func _get_scaled_autocomplete_item_height() -> int:
-	return maxi(1, int(round(float(AUTOCOMPLETE_ITEM_HEIGHT) * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))))
+	var touch_target_multiplier := 2.0 if _is_touch_command_palette_layout() else 1.0
+	var scaled_height := float(AUTOCOMPLETE_ITEM_HEIGHT) * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE) * touch_target_multiplier
+	return maxi(1, int(round(scaled_height)))
 
 
 func _get_scaled_autocomplete_popup_gap() -> float:
 	return AUTOCOMPLETE_POPUP_GAP * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
+
+
+func _is_touch_command_palette_layout() -> bool:
+	return _current_input_method == INPUT_METHOD_TOUCH
 
 
 ## Called after logs are cleared
@@ -3090,6 +3116,9 @@ func _resolve_pinned_corner_pair_swap_conflict(corner_a: String, corner_b: Strin
 
 
 func _update_pinned_corner_redirects() -> void:
+	if _current_input_method == INPUT_METHOD_TOUCH:
+		_pinned_corner_redirects.clear()
+		return
 	var viewport := get_viewport()
 	if viewport == null:
 		_pinned_corner_redirects.clear()
@@ -6599,6 +6628,15 @@ func _position_command_autocomplete_popup() -> void:
 	if not _command_autocomplete_popup or not line_edit:
 		return
 
+	if _is_touch_command_palette_layout():
+		var touch_layout_rect := _get_safe_area_layout_rect()
+		_command_autocomplete_target_global_position = touch_layout_rect.position
+		_command_autocomplete_target_size = touch_layout_rect.size
+		_apply_command_autocomplete_popup_visual_state()
+		_update_command_palette_log_reserved_space()
+		_debug_command_popup_height("_position_command_autocomplete_popup.touch")
+		return
+
 	var line_edit_rect := line_edit.get_global_rect()
 	var popup_height := _get_command_autocomplete_target_height()
 	var popup_y := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap() - popup_height)
@@ -6716,6 +6754,8 @@ func _get_command_autocomplete_popup_height() -> int:
 
 
 func _get_command_autocomplete_target_height() -> int:
+	if _is_touch_command_palette_layout():
+		return maxi(1, int(floor(_get_safe_area_layout_rect().size.y)))
 	if not line_edit:
 		return _get_command_autocomplete_popup_height()
 
@@ -6723,6 +6763,62 @@ func _get_command_autocomplete_target_height() -> int:
 	var desired_height := float(_get_command_autocomplete_popup_height())
 	var available_height := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap())
 	return maxi(1, int(floor(minf(desired_height, available_height))))
+
+
+func _get_command_autocomplete_target_width() -> int:
+	if _is_touch_command_palette_layout():
+		return maxi(1, int(floor(_get_safe_area_layout_rect().size.x)))
+	if _command_autocomplete_popup:
+		return maxi(1, int(floor(_command_autocomplete_popup.size.x)))
+	if line_edit:
+		return maxi(1, int(floor(line_edit.get_global_rect().size.x)))
+	return AUTOCOMPLETE_COLUMN_MAX_FALLBACK_WIDTH
+
+
+func _get_touch_command_autocomplete_column_size() -> Vector2:
+	var target_size := _get_safe_area_layout_rect().size
+	if _command_autocomplete_popup:
+		var panel_style := _command_autocomplete_popup.get_theme_stylebox("panel")
+		if panel_style != null:
+			var margin_size := Vector2(
+				panel_style.get_margin(SIDE_LEFT) + panel_style.get_margin(SIDE_RIGHT),
+				panel_style.get_margin(SIDE_TOP) + panel_style.get_margin(SIDE_BOTTOM)
+			)
+			var minimum_size := panel_style.get_minimum_size()
+			target_size.x -= maxf(margin_size.x, minimum_size.x)
+			target_size.y -= maxf(margin_size.y, minimum_size.y)
+	return Vector2(maxf(1.0, floor(target_size.x)), maxf(1.0, floor(target_size.y)))
+
+
+func _is_command_autocomplete_column_displayed(column_index: int, column_state: Dictionary) -> bool:
+	if not _is_touch_command_palette_layout():
+		return true
+	if column_index < 0:
+		return false
+	if bool(column_state.get("preview", false)):
+		return false
+	return column_index == _autocomplete_active_column_index
+
+
+func _update_touch_command_autocomplete_column_visibility() -> void:
+	if _command_autocomplete_scroll:
+		_command_autocomplete_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED if _is_touch_command_palette_layout() else ScrollContainer.SCROLL_MODE_AUTO
+		if _is_touch_command_palette_layout():
+			var touch_scroll_size := _get_touch_command_autocomplete_column_size()
+			_command_autocomplete_scroll.custom_minimum_size = touch_scroll_size
+			_command_autocomplete_scroll.size = touch_scroll_size
+	for column_index in range(mini(_autocomplete_column_nodes.size(), _autocomplete_column_states.size())):
+		var node := _autocomplete_column_nodes[column_index] as Control
+		if node == null:
+			continue
+		var column_state: Dictionary = _autocomplete_column_states[column_index]
+		node.visible = _is_command_autocomplete_column_displayed(column_index, column_state)
+		if node.visible and _is_touch_command_palette_layout():
+			var touch_column_size := _get_touch_command_autocomplete_column_size()
+			node.custom_minimum_size = touch_column_size
+			node.size = touch_column_size
+	if _command_autocomplete_scroll and _is_touch_command_palette_layout():
+		_command_autocomplete_scroll.scroll_horizontal = 0
 
 
 func _refresh_command_preview_option_state(column_state: Dictionary) -> Dictionary:
@@ -6785,8 +6881,12 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	column_state["value_width"] = int(layout.get("value_width", 0))
 	column_state["action_width"] = int(layout.get("action_width", 0))
 	column_state["width"] = int(layout.get("width", 0))
+	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
+		column_state["width"] = int(_get_touch_command_autocomplete_column_size().x)
 
 	var column_height := _get_command_autocomplete_target_height()
+	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
+		column_height = int(_get_touch_command_autocomplete_column_size().y)
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
 	_configure_autocomplete_column_widget(list, widget_path)
@@ -6936,9 +7036,13 @@ func _sync_visible_command_autocomplete_columns(start_index: int = 0, scroll_to_
 			]
 		)
 
+	_update_touch_command_autocomplete_column_visibility()
 	_position_command_autocomplete_popup()
 	_show_command_autocomplete_popup()
-	if scroll_to_end:
+	if _is_touch_command_palette_layout():
+		if _command_autocomplete_scroll:
+			_command_autocomplete_scroll.scroll_horizontal = 0
+	elif scroll_to_end:
 		_scroll_command_autocomplete_columns_to_end()
 	else:
 		_ensure_active_command_column_visible()
@@ -6984,9 +7088,14 @@ func _render_command_autocomplete_popup() -> void:
 		_command_autocomplete_columns_container.add_child(node)
 		_autocomplete_column_nodes.append(node)
 
+	_update_touch_command_autocomplete_column_visibility()
 	_position_command_autocomplete_popup()
 	_show_command_autocomplete_popup()
-	_scroll_command_autocomplete_columns_to_end()
+	if _is_touch_command_palette_layout():
+		if _command_autocomplete_scroll:
+			_command_autocomplete_scroll.scroll_horizontal = 0
+	else:
+		_scroll_command_autocomplete_columns_to_end()
 	_refresh_autocomplete_visible_address_tracking()
 
 
@@ -7043,8 +7152,15 @@ func _refresh_command_autocomplete_popup_values() -> void:
 		_autocomplete_column_states[column_index] = column_state
 
 	if needs_layout_refresh:
+		_update_touch_command_autocomplete_column_visibility()
 		_position_command_autocomplete_popup()
-		_ensure_active_command_column_visible()
+		if _is_touch_command_palette_layout():
+			if _command_autocomplete_scroll:
+				_command_autocomplete_scroll.scroll_horizontal = 0
+		else:
+			_ensure_active_command_column_visible()
+	else:
+		_update_touch_command_autocomplete_column_visibility()
 	_refresh_autocomplete_visible_address_tracking()
 
 
@@ -7058,6 +7174,8 @@ func _refresh_autocomplete_visible_address_tracking() -> void:
 	for column_index in range(mini(_autocomplete_column_nodes.size(), _autocomplete_column_states.size())):
 		var list := _autocomplete_column_nodes[column_index]
 		if not (list is AutocompleteCommandColumn):
+			continue
+		if _is_touch_command_palette_layout() and not list.visible:
 			continue
 		for raw_address in (list as AutocompleteCommandColumn).get_visible_display_variable_addresses():
 			var address := _resolve_alias_command_path(str(raw_address).strip_edges())
@@ -7130,9 +7248,16 @@ func _refresh_command_autocomplete_columns_for_addresses(addresses: Array[String
 			needs_layout_refresh = true
 
 	if needs_layout_refresh:
+		_update_touch_command_autocomplete_column_visibility()
 		_position_command_autocomplete_popup()
+	else:
+		_update_touch_command_autocomplete_column_visibility()
 	_refresh_autocomplete_visible_address_tracking()
-	_ensure_active_command_column_visible()
+	if _is_touch_command_palette_layout():
+		if _command_autocomplete_scroll:
+			_command_autocomplete_scroll.scroll_horizontal = 0
+	else:
+		_ensure_active_command_column_visible()
 
 
 func refresh_setget_option_highlight(command_name: String) -> void:
