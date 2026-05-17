@@ -52,11 +52,14 @@ signal channel_visibility_changed(channel: String, mode: int)
 signal instance_visibility_changed(instance_id: int, mode: int)
 signal setting_changed(setting_name: String, value: bool)
 signal channel_deleted(channel: String)
+signal close_requested
 
 # =============================================================================
 # UI COMPONENTS (assigned from scene)
 # =============================================================================
 @onready var _tree: Tree = $SidebarTree
+var _close_header: HBoxContainer
+var _close_button: Button
 
 # Context menu
 var _context_menu: PopupMenu
@@ -101,10 +104,86 @@ var _available_settings: Array[Dictionary] = []
 
 
 func _ready() -> void:
+	_setup_touch_close_header()
 	_setup_context_menu()
 	_setup_tree()
 	_init_default_levels()
 	_rebuild_ui()
+
+
+func _setup_touch_close_header() -> void:
+	if _tree == null:
+		return
+	if _close_button != null and is_instance_valid(_close_button):
+		return
+
+	remove_child(_tree)
+
+	var layout := VBoxContainer.new()
+	layout.name = "SidebarLayout"
+	layout.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	layout.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_theme_constant_override("separation", 6)
+	add_child(layout)
+
+	_close_header = HBoxContainer.new()
+	_close_header.name = "TouchCloseHeader"
+	_close_header.visible = false
+	_close_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_close_header.add_theme_constant_override("separation", 6)
+	layout.add_child(_close_header)
+
+	_close_button = Button.new()
+	_close_button.name = "CloseButton"
+	_close_button.text = "x"
+	_close_button.tooltip_text = "Close filters"
+	_close_button.focus_mode = Control.FOCUS_NONE
+	_close_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_close_button.custom_minimum_size = Vector2(56.0, 56.0)
+	_style_close_button(_close_button)
+	_close_button.pressed.connect(func() -> void:
+		close_requested.emit()
+	)
+	_close_header.add_child(_close_button)
+
+	var spacer := Control.new()
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_close_header.add_child(spacer)
+
+	_tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	layout.add_child(_tree)
+
+
+func _style_close_button(button: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.12, 0.13, 0.16, 1.0)
+	normal.border_color = Color(0.48, 0.52, 0.62, 1.0)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(4)
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.18, 0.22, 0.28, 1.0)
+	hover.border_color = Color(0.64, 0.7, 0.82, 1.0)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.16, 0.2, 0.26, 1.0)
+	pressed.border_color = Color(0.72, 0.78, 0.9, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_color_override("font_color", Color(1, 1, 1, 1))
+	button.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	button.add_theme_color_override("font_pressed_color", Color(1, 1, 1, 1))
+	button.add_theme_font_size_override("font_size", 22)
+
+
+func set_touch_close_visible(value: bool) -> void:
+	if _close_header != null and is_instance_valid(_close_header):
+		_close_header.visible = value
 
 
 func _setup_context_menu() -> void:

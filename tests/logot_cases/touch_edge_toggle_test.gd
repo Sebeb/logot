@@ -51,3 +51,35 @@ func run(ctx) -> void:
 
 	ctx.check("drag snaps dock to left edge", console._touch_toggle_edge == console.TOUCH_TOGGLE_EDGE_LEFT)
 	ctx.check("left edge dock is flush", is_equal_approx(dock.global_position.x, 0.0), "dock=%s" % dock.get_global_rect())
+
+	if console.control != null:
+		console.control.visible = true
+	if display._sidebar_toggle_btn != null:
+		display._sidebar_toggle_btn.button_pressed = true
+	await ctx.wait_frames(2)
+
+	var sidebar = display._sidebar
+	ctx.check("touch sidebar exists", sidebar != null and is_instance_valid(sidebar))
+	if sidebar == null or not is_instance_valid(sidebar):
+		return
+
+	var sidebar_rect: Rect2 = (sidebar as Control).get_global_rect()
+	ctx.check(
+		"touch sidebar covers full viewport width",
+		sidebar_rect.position.x <= 0.0 and sidebar_rect.end.x >= viewport_size.x,
+		"sidebar=%s viewport=%s" % [sidebar_rect, viewport_size]
+	)
+	ctx.check("touch sidebar hides log container", not display._logot_container.visible)
+	ctx.check("touch sidebar close button is visible", sidebar._close_button != null and sidebar._close_button.is_visible_in_tree())
+
+	console._handle_escape_input()
+	await ctx.wait_frames(1)
+	ctx.check("escape closes touch sidebar", not sidebar.visible and display._logot_container.visible)
+
+	if display._sidebar_toggle_btn != null:
+		display._sidebar_toggle_btn.button_pressed = true
+	await ctx.wait_frames(1)
+	if sidebar._close_button != null:
+		sidebar._close_button.pressed.emit()
+	await ctx.wait_frames(1)
+	ctx.check("touch sidebar close button closes sidebar", not sidebar.visible and display._logot_container.visible)

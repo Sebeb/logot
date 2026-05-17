@@ -2305,6 +2305,8 @@ func _ensure_test_panel() -> void:
 			var clear_button = _test_panel_input_row.get_node_or_null("ClearButton")
 			if clear_button != null:
 				_test_panel_input_row.move_child(_test_button, clear_button.get_index())
+			if _display and _display.has_method("refresh_input_action_button_layout"):
+				_display.refresh_input_action_button_layout()
 
 	_test_panel.set_manager(_ensure_test_manager())
 
@@ -3441,6 +3443,8 @@ func _set_touch_mode_enabled(value: bool, sync_display_setting: bool = true) -> 
 		_display.apply_setting("touch_mode", value)
 	if _display:
 		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH if _touch_mode_enabled else LogotDisplay.INPUT_METHOD_KEYBOARD)
+		if _display.has_method("set_touch_sidebar_fullscreen_enabled"):
+			_display.set_touch_sidebar_fullscreen_enabled(_touch_mode_enabled)
 	_update_touch_toggle_button()
 
 
@@ -4806,6 +4810,15 @@ func _handle_touch_command_palette_back_or_close() -> bool:
 	)
 
 
+func _handle_touch_sidebar_back_or_close() -> bool:
+	return (
+		_touch_mode_enabled
+		and _display != null
+		and _display.has_method("close_touch_sidebar")
+		and bool(_display.close_touch_sidebar())
+	)
+
+
 func _is_line_edit_submit_event(event: InputEventKey) -> bool:
 	var submit_checker := Callable(LogotCommandInput, "is_submit_event")
 	if submit_checker.is_valid():
@@ -4912,6 +4925,8 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 
 
 func _handle_escape_input() -> void:
+	if _handle_touch_sidebar_back_or_close():
+		return
 	if _test_panel != null and is_instance_valid(_test_panel) and _test_panel.visible:
 		_test_panel.hide()
 		return

@@ -1308,6 +1308,12 @@ const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
 const AUTOCOMPLETE_ROOT_COMMANDS_LOCKED_HINT := "down wraps to top (Esc resets history access)"
 const AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX := "__global_search__"
 const AUTOCOMPLETE_GLOBAL_SEARCH_COMMAND := "search"
+const INPUT_ACTION_BUTTON_HEIGHT := 56.0
+const INPUT_ICON_BUTTON_WIDTH := 56.0
+const COLLAPSED_FILTER_BUTTON_HEIGHT := 56.0
+const COLLAPSED_FILTER_BUTTON_MIN_WIDTH := 60.0
+const COLLAPSED_FILTER_ICON_SIZE := 22.0
+const COLLAPSED_FILTER_COUNT_FONT_SIZE := 16
 const SCROLL_TO_BOTTOM_BUTTON_DIAMETER := 34.0
 const SCROLL_TO_BOTTOM_BUTTON_MARGIN := 8.0
 const SCROLL_TO_BOTTOM_SCROLLBAR_GAP := 4.0
@@ -1396,6 +1402,10 @@ var _wrap_text := false
 var _truncate_multiline := true
 var _sidebar_visible := false
 var _collapsed_level_buttons: Dictionary = {}  # {level: Dictionary}
+var _touch_sidebar_fullscreen_enabled := false
+var _base_sidebar_custom_minimum_size := Vector2.ZERO
+var _base_main_split_offset := 0
+var _base_main_dragger_visibility := -1
 
 var _last_displayed_entry = null
 var _last_displayed_count: int = 0
@@ -1688,6 +1698,7 @@ func get_command_palette_log_reserved_height() -> float:
 
 
 func refresh_safe_area_layout() -> void:
+	_update_sidebar_visibility_and_layout()
 	if _is_command_popup_visible():
 		_position_command_autocomplete_popup()
 	elif _is_history_popup_visible():
@@ -1860,7 +1871,20 @@ func set_current_input_method(input_method: String) -> void:
 		return
 	_current_input_method = normalized_method
 	_apply_render_scales()
+	_update_sidebar_visibility_and_layout()
 	_update_pinned_corner_redirects()
+
+
+func set_touch_sidebar_fullscreen_enabled(value: bool) -> void:
+	_touch_sidebar_fullscreen_enabled = value
+	_update_sidebar_visibility_and_layout()
+
+
+func close_touch_sidebar() -> bool:
+	if not _is_touch_sidebar_fullscreen_layout():
+		return false
+	_set_sidebar_visible(false)
+	return true
 
 
 func get_render_scale_percent(target: String, input_method: String = "") -> float:
@@ -1967,13 +1991,57 @@ func _update_command_entry_mode_visibility() -> void:
 	if _sidebar_toggle_btn:
 		_sidebar_toggle_btn.visible = not _command_entry_mode
 
-	if _sidebar:
-		_sidebar.visible = _sidebar_visible and not _command_entry_mode
+	_update_sidebar_visibility_and_layout()
 
 	_update_collapsed_level_buttons_visibility()
 	_update_command_palette_log_reserved_space()
 
 	_refresh_pinned_display_variables()
+
+
+func _set_sidebar_visible(value: bool, save: bool = true) -> void:
+	_sidebar_visible = value
+	if _sidebar_toggle_btn and _sidebar_toggle_btn.button_pressed != value:
+		_sidebar_toggle_btn.button_pressed = value
+	_update_sidebar_visibility_and_layout()
+	_update_collapsed_level_buttons_visibility()
+	if save:
+		_save_filter_settings()
+
+
+func _is_touch_sidebar_fullscreen_layout() -> bool:
+	return _touch_sidebar_fullscreen_enabled and _current_input_method == INPUT_METHOD_TOUCH and _sidebar_visible and not _command_entry_mode
+
+
+func _update_sidebar_visibility_and_layout() -> void:
+	if _sidebar:
+		var sidebar_should_show := _sidebar_visible and not _command_entry_mode
+		_sidebar.visible = sidebar_should_show
+		if _sidebar.has_method("set_touch_close_visible"):
+			_sidebar.set_touch_close_visible(_is_touch_sidebar_fullscreen_layout())
+
+	var use_fullscreen_sidebar := _is_touch_sidebar_fullscreen_layout()
+	if _logot_container:
+		_logot_container.visible = not use_fullscreen_sidebar
+	if _sidebar:
+		if _base_sidebar_custom_minimum_size == Vector2.ZERO:
+			_base_sidebar_custom_minimum_size = _sidebar.custom_minimum_size
+		_sidebar.custom_minimum_size = Vector2(get_viewport_rect().size.x, 0.0) if use_fullscreen_sidebar else _base_sidebar_custom_minimum_size
+	if _main_container is SplitContainer:
+		var split := _main_container as SplitContainer
+		if _base_main_dragger_visibility < 0:
+			_base_main_dragger_visibility = split.dragger_visibility
+		if _base_main_split_offset == 0:
+			_base_main_split_offset = split.split_offset
+		split.dragger_visibility = SplitContainer.DRAGGER_HIDDEN_COLLAPSED if use_fullscreen_sidebar else _base_main_dragger_visibility
+		if use_fullscreen_sidebar:
+			split.split_offset = 0
+		else:
+			split.split_offset = _base_main_split_offset
+
+
+func _on_sidebar_close_requested() -> void:
+	_set_sidebar_visible(false)
 
 
 # =============================================================================
@@ -2382,6 +2450,7 @@ func _apply_command_palette_render_scale() -> void:
 			line_edit.custom_minimum_size.y = ceil(_base_line_edit_min_height * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))
 	if _history_autocomplete_popup:
 		_history_autocomplete_popup.add_theme_font_size_override("font_size", font_size)
+	_refresh_input_action_button_layout()
 	for node in _autocomplete_column_nodes:
 		if node is AutocompleteCommandColumn and _history_autocomplete_popup:
 			(node as AutocompleteCommandColumn).configure_theme(_history_autocomplete_popup)
@@ -2493,8 +2562,65 @@ func _connect_ui_signals() -> void:
 
 	if _sidebar:
 		_sidebar.visible = _sidebar_visible and not _command_entry_mode
+		if _sidebar.has_signal("close_requested") and not _sidebar.close_requested.is_connected(_on_sidebar_close_requested):
+			_sidebar.close_requested.connect(_on_sidebar_close_requested)
 
+	_refresh_input_action_button_layout()
+	_update_sidebar_visibility_and_layout()
 	_setup_collapsed_level_buttons()
+
+
+func refresh_input_action_button_layout() -> void:
+	_refresh_input_action_button_layout()
+
+
+func _refresh_input_action_button_layout() -> void:
+	if not _input_row or not line_edit:
+		return
+	var is_after_input := false
+	for child in _input_row.get_children():
+		if child == line_edit:
+			is_after_input = true
+			continue
+		if not is_after_input:
+			continue
+		if child is Button:
+			_style_input_action_button(child as Button)
+
+
+func _style_input_action_button(button: Button) -> void:
+	var min_width := INPUT_ICON_BUTTON_WIDTH if button.text.strip_edges().is_empty() else maxf(button.custom_minimum_size.x, INPUT_ICON_BUTTON_WIDTH)
+	button.custom_minimum_size = Vector2(min_width, INPUT_ACTION_BUTTON_HEIGHT)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.12, 0.13, 0.16, 1.0)
+	normal.border_color = Color(0.48, 0.52, 0.62, 1.0)
+	normal.set_border_width_all(1)
+	normal.set_corner_radius_all(4)
+	normal.content_margin_left = 8
+	normal.content_margin_right = 8
+	normal.content_margin_top = 4
+	normal.content_margin_bottom = 4
+
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.18, 0.22, 0.28, 1.0)
+	hover.border_color = Color(0.64, 0.7, 0.82, 1.0)
+
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(0.16, 0.24, 0.34, 1.0)
+	pressed.border_color = Color(0.72, 0.82, 0.96, 1.0)
+
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("hover_pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_font_size_override("font_size", 16)
 
 
 func _ensure_scroll_to_bottom_button() -> void:
@@ -2688,8 +2814,11 @@ func _setup_sidebar() -> void:
 	_sidebar.channel_visibility_changed.connect(_on_channel_visibility_changed)
 	_sidebar.channel_deleted.connect(_on_channel_deleted)
 	_sidebar.setting_changed.connect(_on_setting_changed)
+	if _sidebar.has_signal("close_requested") and not _sidebar.close_requested.is_connected(_on_sidebar_close_requested):
+		_sidebar.close_requested.connect(_on_sidebar_close_requested)
 
 	_sync_sidebar_state()
+	_update_sidebar_visibility_and_layout()
 
 
 func _setup_collapsed_level_buttons() -> void:
@@ -2702,12 +2831,12 @@ func _setup_collapsed_level_buttons() -> void:
 	_collapsed_level_buttons_row = HBoxContainer.new()
 	_collapsed_level_buttons_row.name = "ButtonsRow"
 	_collapsed_level_buttons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_collapsed_level_buttons_row.add_theme_constant_override("separation", 2)
+	_collapsed_level_buttons_row.add_theme_constant_override("separation", 4)
 	_collapsed_level_buttons_container.add_child(_collapsed_level_buttons_row)
 
 	for level in LOG_LEVELS:
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(30, 28)
+		button.custom_minimum_size = Vector2(COLLAPSED_FILTER_BUTTON_MIN_WIDTH, COLLAPSED_FILTER_BUTTON_HEIGHT)
 		button.focus_mode = Control.FOCUS_NONE
 		button.text = ""
 		button.clip_contents = true
@@ -2716,12 +2845,12 @@ func _setup_collapsed_level_buttons() -> void:
 		var content := HBoxContainer.new()
 		content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		content.alignment = BoxContainer.ALIGNMENT_CENTER
-		content.add_theme_constant_override("separation", 4)
+		content.add_theme_constant_override("separation", 8)
 		content.set_anchors_preset(Control.PRESET_FULL_RECT)
-		content.offset_left = 5
-		content.offset_top = 3
-		content.offset_right = -5
-		content.offset_bottom = -3
+		content.offset_left = 10
+		content.offset_top = 6
+		content.offset_right = -10
+		content.offset_bottom = -6
 		button.add_child(content)
 
 		var state_icon := _create_collapsed_icon(_get_visibility_icon(_get_level_visibility(level)))
@@ -2759,6 +2888,7 @@ func _setup_collapsed_level_buttons() -> void:
 
 	_refresh_collapsed_level_buttons()
 	_update_collapsed_level_buttons_visibility()
+	_refresh_input_action_button_layout()
 
 
 func _style_collapsed_level_button(button: Button, level: int) -> void:
@@ -2766,7 +2896,7 @@ func _style_collapsed_level_button(button: Button, level: int) -> void:
 
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.12)
-	normal.border_color = Color(level_color.r, level_color.g, level_color.b, 0.45)
+	normal.border_color = Color(level_color.r, level_color.g, level_color.b, 0.72)
 	normal.border_width_left = 1
 	normal.border_width_top = 1
 	normal.border_width_right = 1
@@ -2775,18 +2905,18 @@ func _style_collapsed_level_button(button: Button, level: int) -> void:
 	normal.corner_radius_top_right = 4
 	normal.corner_radius_bottom_right = 4
 	normal.corner_radius_bottom_left = 4
-	normal.content_margin_left = 4
-	normal.content_margin_right = 4
-	normal.content_margin_top = 2
-	normal.content_margin_bottom = 2
+	normal.content_margin_left = 8
+	normal.content_margin_right = 8
+	normal.content_margin_top = 4
+	normal.content_margin_bottom = 4
 
 	var hover := normal.duplicate() as StyleBoxFlat
-	hover.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.2)
-	hover.border_color = Color(level_color.r, level_color.g, level_color.b, 0.65)
+	hover.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.28)
+	hover.border_color = Color(level_color.r, level_color.g, level_color.b, 0.9)
 
 	var pressed := normal.duplicate() as StyleBoxFlat
-	pressed.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.3)
-	pressed.border_color = Color(level_color.r, level_color.g, level_color.b, 0.8)
+	pressed.bg_color = Color(level_color.r, level_color.g, level_color.b, 0.38)
+	pressed.border_color = Color(level_color.r, level_color.g, level_color.b, 1.0)
 
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
@@ -2798,7 +2928,7 @@ func _create_collapsed_icon(texture: Texture2D) -> TextureRect:
 	var icon := TextureRect.new()
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.texture = texture
-	icon.custom_minimum_size = Vector2(11, 11)
+	icon.custom_minimum_size = Vector2(COLLAPSED_FILTER_ICON_SIZE, COLLAPSED_FILTER_ICON_SIZE)
 	icon.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	return icon
@@ -2807,8 +2937,8 @@ func _create_collapsed_icon(texture: Texture2D) -> TextureRect:
 func _create_collapsed_count_widget(icon_texture: Texture2D) -> Dictionary:
 	var container := HBoxContainer.new()
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	container.add_theme_constant_override("separation", 2)
-	container.custom_minimum_size = Vector2(18, 0)
+	container.add_theme_constant_override("separation", 4)
+	container.custom_minimum_size = Vector2(36, 0)
 
 	var icon := _create_collapsed_icon(icon_texture)
 	container.add_child(icon)
@@ -2816,7 +2946,7 @@ func _create_collapsed_count_widget(icon_texture: Texture2D) -> Dictionary:
 	var label := Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.text = "0"
-	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_font_size_override("font_size", COLLAPSED_FILTER_COUNT_FONT_SIZE)
 	label.add_theme_color_override("font_color", Color(0.92, 0.92, 0.92, 0.95))
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	container.add_child(label)
@@ -2828,6 +2958,7 @@ func _update_collapsed_level_buttons_visibility() -> void:
 	if not _collapsed_level_buttons_container:
 		return
 	_collapsed_level_buttons_container.visible = not _command_entry_mode and not _sidebar_visible
+	_refresh_input_action_button_layout()
 
 
 func _refresh_collapsed_level_buttons() -> void:
@@ -2871,7 +3002,7 @@ func _refresh_collapsed_level_buttons() -> void:
 		_set_collapsed_count_group_style(off_label, off_icon, Color(0.74, 0.74, 0.74, 0.5))
 		if counts:
 			counts.visible = shown_count > 0 or hidden_count > 0 or off_count > 0
-		button.custom_minimum_size = Vector2(_measure_collapsed_level_button_width(button, content), 28)
+		button.custom_minimum_size = Vector2(_measure_collapsed_level_button_width(button, content), COLLAPSED_FILTER_BUTTON_HEIGHT)
 
 		button.tooltip_text = _build_level_button_tooltip(level, mode, shown_count, hidden_count, off_count)
 
@@ -2892,11 +3023,11 @@ func _set_collapsed_count_group_style(label: Label, icon: TextureRect, color: Co
 
 func _measure_collapsed_level_button_width(button: Button, content: HBoxContainer) -> float:
 	if not button or not content:
-		return 30.0
+		return COLLAPSED_FILTER_BUTTON_MIN_WIDTH
 
 	var content_width := content.get_combined_minimum_size().x
 	var horizontal_padding := content.offset_left - content.offset_right
-	return maxf(30.0, content_width + horizontal_padding)
+	return maxf(COLLAPSED_FILTER_BUTTON_MIN_WIDTH, content_width + horizontal_padding)
 
 
 func _build_level_button_tooltip(level: int, mode: int, shown_count: int, hidden_count: int, off_count: int) -> String:
@@ -4312,11 +4443,7 @@ func _on_setting_changed(setting_name: String, value: bool) -> void:
 
 
 func _on_sidebar_toggle(toggled_on: bool) -> void:
-	_sidebar_visible = toggled_on
-	if _sidebar:
-		_sidebar.visible = _sidebar_visible and not _command_entry_mode
-	_update_collapsed_level_buttons_visibility()
-	_save_filter_settings()
+	_set_sidebar_visible(toggled_on)
 
 
 # =============================================================================

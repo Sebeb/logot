@@ -351,6 +351,8 @@ func _ensure_test_ui() -> void:
 		var clear_button = (input_row as HBoxContainer).get_node_or_null("ClearButton")
 		if clear_button != null:
 			(input_row as HBoxContainer).move_child(_test_button, clear_button.get_index())
+		if _display and _display.has_method("refresh_input_action_button_layout"):
+			_display.refresh_input_action_button_layout()
 
 	if _logot != null and _logot.has_method("get_test_manager"):
 		_test_panel.set_manager(_logot.get_test_manager())
