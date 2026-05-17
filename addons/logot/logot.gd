@@ -4635,7 +4635,8 @@ func _input(event : InputEvent) -> void:
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and console_visible:
 			if event.pressed:
 				_set_current_input_method_keyboard()
-				_handle_escape_input()
+				if not _handle_touch_command_palette_back_or_close():
+					_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
 		if console_visible and event.pressed and rich_label != null and is_instance_valid(rich_label):
 			if event.get_physical_keycode_with_modifiers() == KEY_PAGEUP:
