@@ -151,8 +151,16 @@ const PIN_CORNERS := [
 ]
 const RENDER_SCALE_COMMAND_GROUP_NAME := "Console render scale"
 const RENDER_SCALE_COMMAND_GROUP_PRIORITY := 210
-const TOUCH_TOGGLE_BUTTON_SIZE := Vector2(64.0, 36.0)
+const TOUCH_EDGE_BUTTON_SIZE := Vector2(40.0, 48.0)
+const TOUCH_EDGE_BUTTON_GAP := 4.0
 const TOUCH_TOGGLE_BUTTON_MARGIN := 10.0
+const TOUCH_TOGGLE_DEFAULT_CENTER_Y_RATIO := 0.72
+const TOUCH_TOGGLE_DRAG_THRESHOLD := 8.0
+const TOUCH_TOGGLE_EDGE_LEFT := "left"
+const TOUCH_TOGGLE_EDGE_RIGHT := "right"
+const TOUCH_TOGGLE_ACTION_COMMAND := "command"
+const TOUCH_TOGGLE_ACTION_LOG := "log"
+const VIRTUAL_KEYBOARD_SAFE_AREA_EPSILON := 0.5
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
@@ -231,7 +239,17 @@ var _test_manager = null
 var _test_panel = null
 var _test_button: Button = null
 var _test_panel_input_row: HBoxContainer = null
-var _touch_toggle_button: Button = null
+var _touch_toggle_dock: Control = null
+var _touch_command_palette_button: Button = null
+var _touch_full_log_button: Button = null
+var _touch_toggle_edge := TOUCH_TOGGLE_EDGE_RIGHT
+var _touch_toggle_center_y := -1.0
+var _touch_toggle_drag_active := false
+var _touch_toggle_drag_moved := false
+var _touch_toggle_drag_action := ""
+var _touch_toggle_drag_touch_index := -1
+var _touch_toggle_drag_start_position := Vector2.ZERO
+var _touch_toggle_drag_pointer_offset := Vector2.ZERO
 var _current_git_branch := ""
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
@@ -275,6 +293,8 @@ var _off_channel_counts: Dictionary = {}  # {channel: int}
 var _logot_ui: Control  # Root of the instantiated logot UI scene
 var _display: LogotDisplay  # Handles filtering, display, sidebar, autocomplete
 var _restore_full_console_after_command_entry := false
+var _virtual_keyboard_safe_area_height := 0.0
+var _virtual_keyboard_baseline_viewport_height := 0.0
 
 # Settings toggles (synced with display)
 var _collapse_duplicates := false
@@ -1727,6 +1747,8 @@ func register_external_display(display: LogotDisplay) -> void:
 	_external_displays.append(weakref(display))
 	_sync_pinned_display_state_to(display)
 	_sync_render_texture_widget_view_mode_to(display)
+	if display.has_method("set_pinned_display_variables_suppressed"):
+		display.set_pinned_display_variables_suppressed(_is_console_control_visible())
 	_apply_pending_pinned_display_variables_to(display)
 	_apply_pending_render_texture_widget_view_mode_to(display)
 	display.invalidate_command_catalog()
@@ -2044,7 +2066,72 @@ func _process(_delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	_update_performance_monitor(_delta)
+	_update_virtual_keyboard_safe_area()
 	_update_ingame_popup_layout()
+	_update_touch_toggle_button_layout()
+
+
+func _should_track_virtual_keyboard_safe_area() -> bool:
+	return OS.get_name() == "Android" or OS.has_feature("android")
+
+
+func _get_virtual_keyboard_safe_area_height() -> float:
+	if not _should_track_virtual_keyboard_safe_area():
+		return 0.0
+	if DisplayServer.get_name() == "headless":
+		return 0.0
+
+	var viewport := get_viewport()
+	var viewport_height := 0.0
+	if viewport != null:
+		viewport_height = float(viewport.get_visible_rect().size.y)
+
+	var keyboard_height := float(DisplayServer.virtual_keyboard_get_height())
+	if keyboard_height <= 0.0:
+		_virtual_keyboard_baseline_viewport_height = viewport_height
+		return 0.0
+
+	if viewport == null:
+		return keyboard_height
+
+	if _virtual_keyboard_baseline_viewport_height <= 0.0 or viewport_height > _virtual_keyboard_baseline_viewport_height:
+		_virtual_keyboard_baseline_viewport_height = viewport_height
+
+	var window_height := float(DisplayServer.window_get_size().y)
+	if viewport_height > 0.0 and window_height > 0.0 and not is_equal_approx(viewport_height, window_height):
+		keyboard_height *= viewport_height / window_height
+
+	var already_reserved_by_viewport := maxf(0.0, _virtual_keyboard_baseline_viewport_height - viewport_height)
+	keyboard_height = maxf(0.0, keyboard_height - already_reserved_by_viewport)
+
+	return clampf(keyboard_height, 0.0, maxf(0.0, viewport_height - 1.0))
+
+
+func _update_virtual_keyboard_safe_area() -> void:
+	_apply_virtual_keyboard_safe_area_height(_get_virtual_keyboard_safe_area_height())
+
+
+func _apply_virtual_keyboard_safe_area_height(height: float) -> void:
+	var target_height := maxf(0.0, height)
+	var viewport := get_viewport()
+	if viewport != null:
+		var viewport_height := float(viewport.get_visible_rect().size.y)
+		if viewport_height > 0.0:
+			target_height = minf(target_height, maxf(0.0, viewport_height - 1.0))
+	if absf(_virtual_keyboard_safe_area_height - target_height) <= VIRTUAL_KEYBOARD_SAFE_AREA_EPSILON:
+		return
+
+	_virtual_keyboard_safe_area_height = target_height
+	if _display != null and is_instance_valid(_display):
+		_display.offset_bottom = -target_height
+		if _display.has_method("refresh_safe_area_layout"):
+			_display.refresh_safe_area_layout()
+			_display.call_deferred("refresh_safe_area_layout")
+	_update_touch_toggle_button_layout()
+
+
+func get_virtual_keyboard_safe_area_height() -> float:
+	return _virtual_keyboard_safe_area_height
 
 
 # =============================================================================
@@ -2273,6 +2360,8 @@ func _setup_game_ui() -> void:
 	_display.cleared.connect(_on_display_cleared)
 	_display.channel_deleted.connect(_on_channel_deleted)
 	_display.custom_setting_changed.connect(_on_display_custom_setting_changed)
+	_display.command_palette_submit_requested.connect(_on_command_palette_submit_requested)
+	_display.command_palette_close_requested.connect(_on_command_palette_close_requested)
 
 	# Initialize the display
 	_display.initialize_display()
@@ -2281,6 +2370,7 @@ func _setup_game_ui() -> void:
 	_ensure_ingame_popup_overlay()
 	_apply_ingame_overlay_edge_overrides()
 	_ensure_touch_toggle_button(canvas_layer)
+	_sync_pinned_overlay_suppression()
 
 	# Get references to UI nodes from display
 	_logot_ui.visible = false
@@ -3318,6 +3408,21 @@ func _on_display_custom_setting_changed(setting_name: String, value: bool) -> vo
 		_set_touch_mode_enabled(value, false)
 
 
+func _on_command_palette_submit_requested(command_text: String) -> void:
+	_submit_line_edit_input(command_text, false, false)
+
+
+func _on_command_palette_close_requested() -> void:
+	_close_command_entry_view()
+
+
+func _sync_pinned_overlay_suppression() -> void:
+	var suppressed := _is_console_control_visible()
+	for display in _get_live_displays():
+		if display.has_method("set_pinned_display_variables_suppressed"):
+			display.set_pinned_display_variables_suppressed(suppressed)
+
+
 func _should_enable_touch_mode_by_default() -> bool:
 	return OS.has_feature("mobile") or OS.has_feature("android") or OS.has_feature("ios")
 
@@ -3340,31 +3445,102 @@ func _set_touch_mode_enabled(value: bool, sync_display_setting: bool = true) -> 
 
 
 func _ensure_touch_toggle_button(parent: Node) -> void:
-	if _touch_toggle_button != null and is_instance_valid(_touch_toggle_button):
+	if _touch_toggle_dock != null and is_instance_valid(_touch_toggle_dock):
 		_update_touch_toggle_button()
 		return
 	if parent == null:
 		return
 
-	var button := Button.new()
-	button.name = "TouchConsoleToggleButton"
-	button.focus_mode = Control.FOCUS_NONE
-	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.z_index = 200
-	button.custom_minimum_size = TOUCH_TOGGLE_BUTTON_SIZE
-	button.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	button.offset_left = -TOUCH_TOGGLE_BUTTON_SIZE.x - TOUCH_TOGGLE_BUTTON_MARGIN
-	button.offset_top = -TOUCH_TOGGLE_BUTTON_SIZE.y - TOUCH_TOGGLE_BUTTON_MARGIN
-	button.offset_right = -TOUCH_TOGGLE_BUTTON_MARGIN
-	button.offset_bottom = -TOUCH_TOGGLE_BUTTON_MARGIN
-	_style_touch_toggle_button(button)
-	button.pressed.connect(_on_touch_toggle_button_pressed)
-	parent.add_child(button)
-	_touch_toggle_button = button
+	var dock := Control.new()
+	dock.name = "TouchConsoleEdgeDock"
+	dock.focus_mode = Control.FOCUS_NONE
+	dock.mouse_filter = Control.MOUSE_FILTER_PASS
+	dock.z_index = 200
+	dock.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	parent.add_child(dock)
+	_touch_toggle_dock = dock
+
+	var command_button := _create_touch_edge_button(
+		"TouchCommandPaletteButton",
+		"/",
+		"Open command palette",
+		TOUCH_TOGGLE_ACTION_COMMAND
+	)
+	dock.add_child(command_button)
+	_touch_command_palette_button = command_button
+
+	var log_button := _create_touch_edge_button(
+		"TouchFullLogButton",
+		"≡",
+		"Open full log",
+		TOUCH_TOGGLE_ACTION_LOG
+	)
+	dock.add_child(log_button)
+	_touch_full_log_button = log_button
+
 	_update_touch_toggle_button()
 
 
-func _style_touch_toggle_button(button: Button) -> void:
+func _create_touch_edge_button(button_name: String, icon_text: String, tooltip: String, action: String) -> Button:
+	var button := Button.new()
+	button.name = button_name
+	button.text = icon_text
+	button.tooltip_text = tooltip
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.custom_minimum_size = TOUCH_EDGE_BUTTON_SIZE
+	button.size = TOUCH_EDGE_BUTTON_SIZE
+	button.clip_text = true
+	button.gui_input.connect(_on_touch_edge_button_gui_input.bind(action))
+	_style_touch_edge_button(button)
+	return button
+
+
+func _update_touch_toggle_button_layout() -> void:
+	if _touch_toggle_dock == null or not is_instance_valid(_touch_toggle_dock):
+		return
+	var viewport_size := _get_touch_toggle_viewport_size()
+	if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
+		return
+
+	var dock_size := Vector2(
+		TOUCH_EDGE_BUTTON_SIZE.x,
+		TOUCH_EDGE_BUTTON_SIZE.y * 2.0 + TOUCH_EDGE_BUTTON_GAP
+	)
+	var min_y := TOUCH_TOGGLE_BUTTON_MARGIN
+	var max_y := maxf(
+		min_y,
+		viewport_size.y - _virtual_keyboard_safe_area_height - TOUCH_TOGGLE_BUTTON_MARGIN - dock_size.y
+	)
+	if _touch_toggle_center_y < 0.0:
+		_touch_toggle_center_y = viewport_size.y * TOUCH_TOGGLE_DEFAULT_CENTER_Y_RATIO
+
+	var dock_y := clampf(_touch_toggle_center_y - dock_size.y * 0.5, min_y, max_y)
+	_touch_toggle_center_y = dock_y + dock_size.y * 0.5
+	var dock_x := 0.0 if _touch_toggle_edge == TOUCH_TOGGLE_EDGE_LEFT else viewport_size.x - dock_size.x
+
+	_touch_toggle_dock.position = Vector2(dock_x, dock_y)
+	_touch_toggle_dock.size = dock_size
+	_touch_toggle_dock.custom_minimum_size = dock_size
+
+	if _touch_command_palette_button != null and is_instance_valid(_touch_command_palette_button):
+		_touch_command_palette_button.position = Vector2.ZERO
+		_touch_command_palette_button.size = TOUCH_EDGE_BUTTON_SIZE
+		_style_touch_edge_button(_touch_command_palette_button)
+	if _touch_full_log_button != null and is_instance_valid(_touch_full_log_button):
+		_touch_full_log_button.position = Vector2(0.0, TOUCH_EDGE_BUTTON_SIZE.y + TOUCH_EDGE_BUTTON_GAP)
+		_touch_full_log_button.size = TOUCH_EDGE_BUTTON_SIZE
+		_style_touch_edge_button(_touch_full_log_button)
+
+
+func _get_touch_toggle_viewport_size() -> Vector2:
+	var viewport := get_viewport()
+	if viewport != null:
+		return viewport.get_visible_rect().size
+	return Vector2(DisplayServer.window_get_size())
+
+
+func _style_touch_edge_button(button: Button) -> void:
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.08, 0.1, 0.13, 0.9)
 	normal.border_color = Color(0.5, 0.55, 0.65, 0.95)
@@ -3372,10 +3548,16 @@ func _style_touch_toggle_button(button: Button) -> void:
 	normal.border_width_top = 1
 	normal.border_width_right = 1
 	normal.border_width_bottom = 1
-	normal.corner_radius_top_left = 6
-	normal.corner_radius_top_right = 6
-	normal.corner_radius_bottom_right = 6
-	normal.corner_radius_bottom_left = 6
+	if _touch_toggle_edge == TOUCH_TOGGLE_EDGE_LEFT:
+		normal.corner_radius_top_left = 0
+		normal.corner_radius_bottom_left = 0
+		normal.corner_radius_top_right = int(TOUCH_EDGE_BUTTON_SIZE.y * 0.5)
+		normal.corner_radius_bottom_right = int(TOUCH_EDGE_BUTTON_SIZE.y * 0.5)
+	else:
+		normal.corner_radius_top_left = int(TOUCH_EDGE_BUTTON_SIZE.y * 0.5)
+		normal.corner_radius_bottom_left = int(TOUCH_EDGE_BUTTON_SIZE.y * 0.5)
+		normal.corner_radius_top_right = 0
+		normal.corner_radius_bottom_right = 0
 
 	var hover := normal.duplicate() as StyleBoxFlat
 	hover.bg_color = Color(0.12, 0.16, 0.22, 0.96)
@@ -3392,22 +3574,136 @@ func _style_touch_toggle_button(button: Button) -> void:
 	button.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
 	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
 	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
-	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_font_size_override("font_size", 22)
 
 
 func _update_touch_toggle_button() -> void:
-	if _touch_toggle_button == null or not is_instance_valid(_touch_toggle_button):
+	if _touch_toggle_dock == null or not is_instance_valid(_touch_toggle_dock):
 		return
-	_touch_toggle_button.visible = _touch_mode_enabled
-	_touch_toggle_button.text = "Hide" if _is_console_control_visible() else "Log"
-	_touch_toggle_button.tooltip_text = "Hide log" if _is_console_control_visible() else "Show log"
+	_update_touch_toggle_button_layout()
+	_touch_toggle_dock.visible = _touch_mode_enabled
+	if _touch_command_palette_button != null and is_instance_valid(_touch_command_palette_button):
+		_touch_command_palette_button.tooltip_text = "Open command palette"
+	if _touch_full_log_button != null and is_instance_valid(_touch_full_log_button):
+		var command_entry_open := _display != null and _display.is_command_entry_mode()
+		_touch_full_log_button.tooltip_text = "Open full log" if command_entry_open or not _is_console_control_visible() else "Hide full log"
 
 
-func _on_touch_toggle_button_pressed() -> void:
+func _on_touch_edge_button_gui_input(event: InputEvent, action: String) -> void:
+	if not _touch_mode_enabled:
+		return
+
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.button_index != MOUSE_BUTTON_LEFT:
+			return
+		var pointer_position := _get_touch_toggle_event_position(event)
+		if mouse_event.pressed:
+			_begin_touch_toggle_drag(pointer_position, action, -1)
+		elif _touch_toggle_drag_active and _touch_toggle_drag_action == action:
+			var should_activate := not _touch_toggle_drag_moved
+			_end_touch_toggle_drag(pointer_position)
+			if should_activate:
+				_activate_touch_edge_button(action)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		if _touch_toggle_drag_active and _touch_toggle_drag_action == action and _touch_toggle_drag_touch_index == -1:
+			_update_touch_toggle_drag(_get_touch_toggle_event_position(event))
+			get_viewport().set_input_as_handled()
+	elif event is InputEventScreenTouch:
+		var touch_event := event as InputEventScreenTouch
+		var pointer_position := _get_touch_toggle_event_position(event)
+		if touch_event.pressed:
+			_begin_touch_toggle_drag(pointer_position, action, touch_event.index)
+		elif _touch_toggle_drag_active and _touch_toggle_drag_action == action and _touch_toggle_drag_touch_index == touch_event.index:
+			var should_activate := not _touch_toggle_drag_moved
+			_end_touch_toggle_drag(pointer_position)
+			if should_activate:
+				_activate_touch_edge_button(action)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventScreenDrag:
+		var drag_event := event as InputEventScreenDrag
+		if _touch_toggle_drag_active and _touch_toggle_drag_action == action and _touch_toggle_drag_touch_index == drag_event.index:
+			_update_touch_toggle_drag(_get_touch_toggle_event_position(event))
+			get_viewport().set_input_as_handled()
+
+
+func _get_touch_toggle_event_position(event: InputEvent) -> Vector2:
+	if event is InputEventMouse:
+		return (event as InputEventMouse).global_position
+	if event is InputEventScreenTouch:
+		return (event as InputEventScreenTouch).position
+	if event is InputEventScreenDrag:
+		return (event as InputEventScreenDrag).position
+	return get_viewport().get_mouse_position()
+
+
+func _begin_touch_toggle_drag(pointer_position: Vector2, action: String, touch_index: int) -> void:
+	if _touch_toggle_dock == null or not is_instance_valid(_touch_toggle_dock):
+		return
+	_touch_toggle_drag_active = true
+	_touch_toggle_drag_moved = false
+	_touch_toggle_drag_action = action
+	_touch_toggle_drag_touch_index = touch_index
+	_touch_toggle_drag_start_position = pointer_position
+	_touch_toggle_drag_pointer_offset = pointer_position - _touch_toggle_dock.global_position
+
+
+func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
+	if not _touch_toggle_drag_active:
+		return
+	if pointer_position.distance_to(_touch_toggle_drag_start_position) >= TOUCH_TOGGLE_DRAG_THRESHOLD:
+		_touch_toggle_drag_moved = true
+	if not _touch_toggle_drag_moved:
+		return
+
+	var viewport_size := _get_touch_toggle_viewport_size()
+	_touch_toggle_edge = TOUCH_TOGGLE_EDGE_LEFT if pointer_position.x < viewport_size.x * 0.5 else TOUCH_TOGGLE_EDGE_RIGHT
+	var dock_height := TOUCH_EDGE_BUTTON_SIZE.y * 2.0 + TOUCH_EDGE_BUTTON_GAP
+	_touch_toggle_center_y = pointer_position.y - _touch_toggle_drag_pointer_offset.y + dock_height * 0.5
+	_update_touch_toggle_button_layout()
+
+
+func _end_touch_toggle_drag(pointer_position: Vector2) -> void:
+	if _touch_toggle_drag_moved:
+		_update_touch_toggle_drag(pointer_position)
+	_touch_toggle_drag_active = false
+	_touch_toggle_drag_moved = false
+	_touch_toggle_drag_action = ""
+	_touch_toggle_drag_touch_index = -1
+
+
+func _activate_touch_edge_button(action: String) -> void:
+	match action:
+		TOUCH_TOGGLE_ACTION_COMMAND:
+			_on_touch_command_palette_button_pressed()
+		TOUCH_TOGGLE_ACTION_LOG:
+			_on_touch_full_log_button_pressed()
+
+
+func _on_touch_command_palette_button_pressed() -> void:
 	if not _touch_mode_enabled:
 		return
 	if _display:
 		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
+	_open_command_entry_view()
+	_update_touch_toggle_button()
+
+
+func _on_touch_full_log_button_pressed() -> void:
+	if not _touch_mode_enabled:
+		return
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
+	if _display and _display.is_command_entry_mode():
+		_display.hide_command_entry_mode()
+		_restore_full_console_after_command_entry = false
+		if control != null and is_instance_valid(control):
+			control.visible = true
+			if line_edit != null and is_instance_valid(line_edit):
+				line_edit.grab_focus()
+		_update_touch_toggle_button()
+		return
 	toggle_console(false)
 
 
@@ -4484,6 +4780,8 @@ func _is_console_control_visible() -> bool:
 func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
 	if event and event.pressed and not event.echo and (event.keycode == KEY_ESCAPE or event.keycode == KEY_BACK):
 		if _is_console_control_visible() and line_edit and line_edit.has_focus():
+			if _handle_touch_command_palette_back_or_close():
+				return true
 			_handle_escape_input()
 			return true
 
@@ -4496,6 +4794,15 @@ func _handle_line_edit_autocomplete_input(event: InputEventKey) -> bool:
 			Callable(self, "_close_command_entry_view")
 		))
 	return false
+
+
+func _handle_touch_command_palette_back_or_close() -> bool:
+	return (
+		_touch_mode_enabled
+		and _display != null
+		and _display.has_method("touch_command_palette_back_or_close")
+		and bool(_display.touch_command_palette_back_or_close())
+	)
 
 
 func _is_line_edit_submit_event(event: InputEventKey) -> bool:
@@ -4582,6 +4889,7 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 		if line_edit != null and is_instance_valid(line_edit):
 			line_edit.grab_focus()
 		console_opened.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 		return
 
@@ -4598,6 +4906,7 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 	if pause_enabled and !was_paused_already:
 		get_tree().paused = false
 	console_closed.emit()
+	_sync_pinned_overlay_suppression()
 	_update_touch_toggle_button()
 
 
@@ -4874,6 +5183,7 @@ func _open_command_entry_view() -> void:
 		was_paused_already = get_tree().paused
 		get_tree().paused = was_paused_already || pause_enabled
 		console_opened.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
 	_display.show_command_entry_mode("/")
@@ -4895,6 +5205,7 @@ func _close_command_entry_view() -> void:
 		if pause_enabled and !was_paused_already:
 			get_tree().paused = false
 		console_closed.emit()
+		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
 	_restore_full_console_after_command_entry = false

@@ -26,11 +26,26 @@ func run(ctx) -> void:
 		return texture
 	)
 
+	var viewport_size: Vector2 = display.get_viewport_rect().size
+	var simulated_safe_area := Rect2(
+		Vector2(7.0, 13.0),
+		Vector2(maxf(1.0, viewport_size.x - 17.0), maxf(1.0, viewport_size.y - 31.0))
+	)
+	display._set_display_safe_area_override_for_tests(simulated_safe_area)
+
 	var fullscreen_result: Dictionary = console._execute_command("/%s/fullscreen" % widget_address)
 	ctx.check("fullscreen command executes", bool(fullscreen_result.get("ok", false)), str(fullscreen_result))
 	ctx.check(
 		"fullscreen mode is active",
 		console.get_render_texture_widget_view_mode(widget_address) == LogotDisplay.RENDER_TEXTURE_VIEW_MODE_FULLSCREEN
+	)
+	await ctx.wait_frames(2)
+	var fullscreen_content_rect: Rect2 = display._render_texture_fullscreen_container.get_global_rect()
+	ctx.check(
+		"fullscreen content respects display safe area",
+		fullscreen_content_rect.position.distance_to(simulated_safe_area.position) <= 1.0
+			and fullscreen_content_rect.end.distance_to(simulated_safe_area.end) <= 1.0,
+		"content=%s safe=%s" % [fullscreen_content_rect, simulated_safe_area]
 	)
 	display.show_command_entry_mode("/%s/fullscreen" % widget_address)
 	var fullscreen_palette_text_before_escape: String = console.line_edit.text if console.line_edit != null else ""
@@ -72,3 +87,4 @@ func run(ctx) -> void:
 	)
 
 	console.remove_widget(widget_address)
+	display._clear_display_safe_area_override_for_tests()
