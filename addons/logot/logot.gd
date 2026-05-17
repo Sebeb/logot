@@ -151,8 +151,8 @@ const PIN_CORNERS := [
 ]
 const RENDER_SCALE_COMMAND_GROUP_NAME := "Console render scale"
 const RENDER_SCALE_COMMAND_GROUP_PRIORITY := 210
-const TOUCH_EDGE_BUTTON_SIZE := Vector2(40.0, 48.0)
-const TOUCH_EDGE_BUTTON_GAP := 4.0
+const TOUCH_EDGE_BUTTON_SIZE := Vector2(88.0, 104.0)
+const TOUCH_EDGE_BUTTON_GAP := 8.0
 const TOUCH_TOGGLE_BUTTON_MARGIN := 10.0
 const TOUCH_TOGGLE_DEFAULT_CENTER_Y_RATIO := 0.72
 const TOUCH_TOGGLE_DRAG_THRESHOLD := 8.0
@@ -3574,7 +3574,7 @@ func _style_touch_edge_button(button: Button) -> void:
 	button.add_theme_color_override("font_color", Color(0.95, 0.97, 1.0, 1.0))
 	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
 	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
-	button.add_theme_font_size_override("font_size", 22)
+	button.add_theme_font_size_override("font_size", 42)
 
 
 func _update_touch_toggle_button() -> void:

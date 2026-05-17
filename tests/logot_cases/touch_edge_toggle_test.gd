@@ -26,6 +26,7 @@ func run(ctx) -> void:
 	ctx.check("touch edge dock is visible", dock.visible)
 	ctx.check("command palette button exists", console._touch_command_palette_button != null and is_instance_valid(console._touch_command_palette_button))
 	ctx.check("full log button exists", console._touch_full_log_button != null and is_instance_valid(console._touch_full_log_button))
+	ctx.check("touch edge buttons are thumb sized", console.TOUCH_EDGE_BUTTON_SIZE.x >= 88.0 and console.TOUCH_EDGE_BUTTON_SIZE.y >= 104.0, "size=%s" % console.TOUCH_EDGE_BUTTON_SIZE)
 
 	var viewport_size: Vector2 = console.get_viewport().get_visible_rect().size
 	ctx.check("touch edge dock starts on right edge", is_equal_approx(dock.global_position.x + dock.size.x, viewport_size.x), "dock=%s viewport=%s" % [dock.get_global_rect(), viewport_size])
