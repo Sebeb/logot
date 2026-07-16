@@ -596,11 +596,14 @@ class AutocompleteCommandColumn:
 		_selected_is_active = selected_is_active
 		_header_title = header_title
 		_header_description = header_description
+		var scrollbar_was_visible := _row_scrollbar != null and _row_scrollbar.visible
 		_update_header_layout()
 		_ensure_selection_visible()
 		_update_row_scrollbar()
-		_update_header_layout()
-		_update_row_scrollbar()
+		if _row_scrollbar != null and _row_scrollbar.visible != scrollbar_was_visible:
+			_update_header_layout()
+			_ensure_selection_visible()
+			_update_row_scrollbar()
 		queue_redraw()
 
 	func get_row_count() -> int:
@@ -783,13 +786,16 @@ class AutocompleteCommandColumn:
 
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_RESIZED:
+			var scrollbar_was_visible := _row_scrollbar != null and _row_scrollbar.visible
 			_update_header_layout()
 			_update_embedded_widget_layout()
 			_ensure_selection_visible()
 			_update_row_scrollbar()
-			_update_header_layout()
-			_update_embedded_widget_layout()
-			_update_row_scrollbar()
+			if _row_scrollbar != null and _row_scrollbar.visible != scrollbar_was_visible:
+				_update_header_layout()
+				_update_embedded_widget_layout()
+				_ensure_selection_visible()
+				_update_row_scrollbar()
 			queue_redraw()
 
 	func _update_header_layout() -> void:
