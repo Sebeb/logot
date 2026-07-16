@@ -8162,7 +8162,7 @@ func update_autocomplete_popup() -> void:
 
 	if _history_autocomplete_popup:
 		_history_autocomplete_popup.visible = false
-	_render_command_autocomplete_popup()
+	_sync_visible_command_autocomplete_columns(0, false)
 	_debug_autocomplete("update_autocomplete_popup.end")
 
 
