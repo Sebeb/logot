@@ -6446,29 +6446,47 @@ func _get_render_texture_view_mode_for_action_segment(option_segment: String) ->
 
 func _get_pinnable_item_action_details(command_path: String) -> Dictionary:
 	var resolved_tier := _resolve_alias_command_path(command_path)
-	for address in _get_base_registered_addresses():
-		var address_str := str(address)
-		if address_str.is_empty() or not _is_pinnable_item_direct(address_str):
+	if resolved_tier.ends_with("/unpin"):
+		var unpin_address := resolved_tier.trim_suffix("/unpin")
+		if _is_pinnable_item_direct(unpin_address) and is_display_variable_pinned(unpin_address):
+			return {"valid": true, "address": unpin_address, "action": "unpin"}
+		return {}
+
+	if resolved_tier.ends_with("/pin"):
+		var pin_address := resolved_tier.trim_suffix("/pin")
+		if _is_pinnable_item_direct(pin_address):
+			return {"valid": true, "address": pin_address, "action": "pin"}
+
+	for corner in PINNED_OVERLAY_CORNERS:
+		var corner_suffix := "/pin/%s" % corner
+		if not resolved_tier.ends_with(corner_suffix):
 			continue
-		if resolved_tier == "%s/unpin" % address_str:
-			if is_display_variable_pinned(address_str):
-				return {"valid": true, "address": address_str, "action": "unpin"}
+		var corner_address := resolved_tier.trim_suffix(corner_suffix)
+		if _is_pinnable_item_direct(corner_address):
+			return {"valid": true, "address": corner_address, "action": "pin"}
+		return {}
+
+	for view_suffix in [
+		"/fullscreen/overlay",
+		"/fullscreen/none",
+		"/fullscreen/off",
+		"/fullscreen_overlay",
+		"/fullscreen_none",
+		"/fullscreen_off",
+		"/fullscreen",
+		"/overlay",
+	]:
+		if not resolved_tier.ends_with(view_suffix):
+			continue
+		var render_address := resolved_tier.trim_suffix(view_suffix)
+		if not _is_render_texture_widget_path(render_address):
+			continue
+		var option_segment: String = str(view_suffix).trim_prefix("/")
+		var view_mode := _get_render_texture_view_mode_for_action_segment(option_segment)
+		if view_mode == RENDER_TEXTURE_VIEW_MODE_NONE and get_render_texture_widget_view_mode(render_address) == RENDER_TEXTURE_VIEW_MODE_NONE:
 			return {}
-		if resolved_tier == "%s/pin" % address_str:
-			return {"valid": true, "address": address_str, "action": "pin"}
-		if resolved_tier.begins_with("%s/pin/" % address_str):
-			var corner := resolved_tier.substr(("%s/pin/" % address_str).length()).strip_edges().to_lower()
-			if PINNED_OVERLAY_CORNERS.has(corner):
-				return {"valid": true, "address": address_str, "action": "pin"}
-			continue
-		if _is_render_texture_widget_path(address_str) and resolved_tier.begins_with("%s/" % address_str):
-			var option_segment := resolved_tier.substr(("%s/" % address_str).length())
-			var view_mode := _get_render_texture_view_mode_for_action_segment(option_segment)
-			if view_mode.is_empty():
-				continue
-			if view_mode == RENDER_TEXTURE_VIEW_MODE_NONE and get_render_texture_widget_view_mode(address_str) == RENDER_TEXTURE_VIEW_MODE_NONE:
-				continue
-			return {"valid": true, "address": address_str, "action": "render_texture_view_mode", "view_mode": view_mode}
+		if not view_mode.is_empty():
+			return {"valid": true, "address": render_address, "action": "render_texture_view_mode", "view_mode": view_mode}
 	return {}
 
 
