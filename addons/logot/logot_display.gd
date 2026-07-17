@@ -1780,6 +1780,7 @@ var _default_menu_hierarchy_cache: Dictionary = {}
 var _all_known_autocomplete_tiers_cache: Array[String] = []
 var _all_known_autocomplete_tiers_cache_valid := false
 var _autocomplete_tiers_with_children: Dictionary = {}
+var _signal_backed_display_snapshot_cache: Dictionary = {}
 var _autocomplete_visible_address_columns: Dictionary = {}
 var _visible_getter_autocomplete_signatures: Dictionary = {}
 var _ingame_overlay_top_edge_override := 0.0
@@ -1856,6 +1857,7 @@ func invalidate_command_catalog(refresh_popup: bool = true) -> void:
 	_all_known_autocomplete_tiers_cache.clear()
 	_all_known_autocomplete_tiers_cache_valid = false
 	_autocomplete_tiers_with_children.clear()
+	_signal_backed_display_snapshot_cache.clear()
 	_refresh_pinned_display_variables()
 	if refresh_popup and _is_command_popup_visible():
 		update_autocomplete_popup()
@@ -1865,6 +1867,7 @@ func invalidate_display_variable(address: String) -> void:
 	var normalized_address := _resolve_alias_command_path(address.strip_edges())
 	if normalized_address.is_empty():
 		return
+	_signal_backed_display_snapshot_cache.erase(normalized_address)
 	if _pinned_display_variables.has(normalized_address):
 		_update_pinned_corner_redirects()
 		_refresh_pinned_display_variable_row(normalized_address)
@@ -4219,6 +4222,16 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 	var display_variable = entry.get("display_variable", null)
 	if resolved_address.is_empty() or display_variable == null:
 		return {"exists": false, "signature": "", "update_mode": "getter"}
+	var signal_backed := false
+	if display_variable is LogotDisplayVariable:
+		var signal_display_variable := display_variable as LogotDisplayVariable
+		signal_backed = (
+			signal_display_variable.change_signal_source != null
+			and is_instance_valid(signal_display_variable.change_signal_source)
+			and signal_display_variable.change_signal_name != &""
+		)
+	if signal_backed and _signal_backed_display_snapshot_cache.has(resolved_address):
+		return (_signal_backed_display_snapshot_cache[resolved_address] as Dictionary).duplicate(true)
 
 	var current_value: Variant = null
 	var items: Array[Dictionary] = []
@@ -4276,7 +4289,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 			autocomplete_color = first_item_color as Color
 
 	var text := " ".join(text_parts)
-	return {
+	var snapshot := {
 		"exists": true,
 		"resolved_address": resolved_address,
 		"text": text,
@@ -4284,7 +4297,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 		"items": items,
 		"inline_color": inline_color,
 		"autocomplete_color": autocomplete_color,
-		"update_mode": "signal" if _is_signal_backed_display_variable(resolved_address) else "getter",
+		"update_mode": "signal" if signal_backed else "getter",
 		"signature": var_to_str({
 			"text": text,
 			"display_label": display_label,
@@ -4293,6 +4306,9 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 			"autocomplete_color": autocomplete_color.to_html(false),
 		}),
 	}
+	if signal_backed:
+		_signal_backed_display_snapshot_cache[resolved_address] = snapshot.duplicate(true)
+	return snapshot
 
 
 func _get_address_tail(address: String) -> String:
