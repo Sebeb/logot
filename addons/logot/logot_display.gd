@@ -1741,6 +1741,7 @@ var _suggestions := []
 var _current_suggest := 0
 var _suggesting := false
 var _command_entry_mode := false
+var _suppress_autocomplete_text_changes := false
 
 # Command history
 var _command_history: Array[String] = []
@@ -2236,23 +2237,26 @@ func show_command_entry_mode(prefill_text: String = "/", focus_input: bool = tru
 	if not line_edit:
 		return
 
+	_suppress_autocomplete_text_changes = true
 	line_edit.text = prefill_text
 	line_edit.caret_column = line_edit.text.length()
+	_suppress_autocomplete_text_changes = false
 	if focus_input:
 		line_edit.grab_focus()
 	else:
 		line_edit.release_focus()
 	on_text_changed_autocomplete(line_edit.text)
-	# Refresh once more next frame so popup geometry is correct on first open.
-	call_deferred("_refresh_command_entry_autocomplete_deferred")
+	# Child controls finish their first layout next frame; only geometry needs refreshing.
+	call_deferred("_refresh_command_entry_geometry_deferred")
 
 
-func _refresh_command_entry_autocomplete_deferred() -> void:
+func _refresh_command_entry_geometry_deferred() -> void:
 	if not _command_entry_mode or not line_edit:
 		return
-	if not line_edit.text.begins_with("/"):
+	if not line_edit.text.begins_with("/") or not _is_command_popup_visible():
 		return
-	update_autocomplete_popup()
+	_update_touch_command_autocomplete_column_visibility()
+	_position_command_autocomplete_popup()
 
 
 func hide_command_entry_mode(clear_input: bool = true) -> void:
@@ -8696,6 +8700,8 @@ func _update_history_popup(query: String = "") -> void:
 
 ## Handle text changes for autocomplete
 func on_text_changed_autocomplete(new_text: String) -> void:
+	if _suppress_autocomplete_text_changes:
+		return
 	_debug_autocomplete("on_text_changed_autocomplete.begin", "new_text=%s" % new_text)
 	# Reset old autocomplete state
 	_suggestions.clear()
