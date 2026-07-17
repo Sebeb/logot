@@ -1742,6 +1742,8 @@ var _current_suggest := 0
 var _suggesting := false
 var _command_entry_mode := false
 var _suppress_autocomplete_text_changes := false
+var _pending_autocomplete_text := ""
+var _autocomplete_text_update_queued := false
 
 # Command history
 var _command_history: Array[String] = []
@@ -8700,6 +8702,18 @@ func _update_history_popup(query: String = "") -> void:
 ## Handle text changes for autocomplete
 func on_text_changed_autocomplete(new_text: String) -> void:
 	if _suppress_autocomplete_text_changes:
+		return
+	_pending_autocomplete_text = new_text
+	if _autocomplete_text_update_queued:
+		return
+	_autocomplete_text_update_queued = true
+	call_deferred("_flush_autocomplete_text_update")
+
+
+func _flush_autocomplete_text_update() -> void:
+	_autocomplete_text_update_queued = false
+	var new_text := _pending_autocomplete_text
+	if line_edit != null and new_text != line_edit.text:
 		return
 	_debug_autocomplete("on_text_changed_autocomplete.begin", "new_text=%s" % new_text)
 	# Reset old autocomplete state
