@@ -1800,6 +1800,7 @@ var _default_menu_hierarchy_cache: Dictionary = {}
 var _all_known_autocomplete_tiers_cache: Array[String] = []
 var _all_known_autocomplete_tiers_cache_valid := false
 var _autocomplete_tiers_with_children: Dictionary = {}
+var _tier_command_group_cache: Dictionary = {}
 var _signal_backed_display_snapshot_cache: Dictionary = {}
 var _autocomplete_text_width_cache: Dictionary = {}
 var _autocomplete_visible_address_columns: Dictionary = {}
@@ -1878,6 +1879,7 @@ func invalidate_command_catalog(refresh_popup: bool = true) -> void:
 	_all_known_autocomplete_tiers_cache.clear()
 	_all_known_autocomplete_tiers_cache_valid = false
 	_autocomplete_tiers_with_children.clear()
+	_tier_command_group_cache.clear()
 	_signal_backed_display_snapshot_cache.clear()
 	_refresh_pinned_display_variables()
 	if refresh_popup and _is_command_popup_visible():
@@ -5577,6 +5579,15 @@ func _get_widget_group_data(address: String) -> Dictionary:
 
 
 func _get_tier_command_group_data(tier: String) -> Dictionary:
+	var cache_key := tier.strip_edges().trim_suffix("/")
+	if _tier_command_group_cache.has(cache_key):
+		return (_tier_command_group_cache[cache_key] as Dictionary).duplicate()
+	var group_data := _calculate_tier_command_group_data(cache_key)
+	_tier_command_group_cache[cache_key] = group_data.duplicate()
+	return group_data
+
+
+func _calculate_tier_command_group_data(tier: String) -> Dictionary:
 	var resolved_tier := _resolve_alias_command_path(tier)
 	if _is_command_option_subcommand_tier(resolved_tier):
 		var option_command_name := resolved_tier.substr(0, resolved_tier.rfind("/"))
