@@ -256,6 +256,8 @@ class AutocompleteCommandColumn:
 	const TOUCH_FLASH_INTERVAL_SECONDS := 0.08
 
 	var _rows: Array[Dictionary] = []
+	var _row_height_prefix := PackedFloat64Array([0.0])
+	var _sticky_group_header_indices := PackedInt32Array()
 	var _metrics: Dictionary = {"name_width": 0, "value_width": 0, "action_width": 0, "width": 0}
 	var _selected_index := -1
 	var _scroll_row := 0
@@ -596,6 +598,7 @@ class AutocompleteCommandColumn:
 		_selected_is_active = selected_is_active
 		_header_title = header_title
 		_header_description = header_description
+		_rebuild_row_geometry_cache()
 		var scrollbar_was_visible := _row_scrollbar != null and _row_scrollbar.visible
 		_update_header_layout()
 		_ensure_selection_visible()
@@ -705,16 +708,20 @@ class AutocompleteCommandColumn:
 		if row_index < 0 or row_index >= _rows.size():
 			return false
 		var clamped_scroll_row := clampi(scroll_row, 0, maxi(0, _rows.size() - 1))
-		var end_index := _get_visible_content_end_index_for_scroll(clamped_scroll_row)
-		return row_index >= clamped_scroll_row and row_index < end_index
+		if row_index < clamped_scroll_row:
+			return false
+		if row_index == clamped_scroll_row:
+			return true
+		var consumed_height := _row_height_prefix[row_index + 1] - _row_height_prefix[clamped_scroll_row]
+		return consumed_height <= _get_visible_content_height_for_scroll(clamped_scroll_row)
 
 	func _get_max_scroll_row() -> int:
 		if _rows.is_empty():
 			return 0
-		for candidate in range(_rows.size()):
-			if _get_visible_content_end_index_for_scroll(candidate) >= _rows.size():
-				return candidate
-		return maxi(0, _rows.size() - 1)
+		var candidate := _rows.size() - 1
+		while candidate > 0 and _get_visible_content_end_index_for_scroll(candidate - 1) >= _rows.size():
+			candidate -= 1
+		return candidate
 
 	func _get_row_height(row_index: int) -> float:
 		if row_index < 0 or row_index >= _rows.size():
@@ -722,6 +729,23 @@ class AutocompleteCommandColumn:
 		var row_data: Dictionary = _rows[row_index]
 		var multiplier := 2.0 if bool(row_data.get("two_line", false)) else float(row_data.get("row_height_multiplier", 1.0))
 		return maxf(float(_row_height), float(_row_height) * maxf(1.0, multiplier))
+
+	func _rebuild_row_geometry_cache() -> void:
+		_row_height_prefix.resize(_rows.size() + 1)
+		_row_height_prefix[0] = 0.0
+		_sticky_group_header_indices.resize(_rows.size())
+		var active_group_header := -1
+		for row_index in range(_rows.size()):
+			_row_height_prefix[row_index + 1] = _row_height_prefix[row_index] + _get_row_height(row_index)
+			var row_data: Dictionary = _rows[row_index]
+			if bool(row_data.get("is_group_header", false)):
+				active_group_header = row_index
+				_sticky_group_header_indices[row_index] = -1
+			elif bool(row_data.get("group_box", false)) and active_group_header >= 0:
+				_sticky_group_header_indices[row_index] = active_group_header
+			else:
+				active_group_header = -1
+				_sticky_group_header_indices[row_index] = -1
 
 	func _get_visible_content_height_for_scroll(scroll_row: int) -> float:
 		var rows_top := _get_rows_top_for_scroll(scroll_row)
@@ -734,22 +758,25 @@ class AutocompleteCommandColumn:
 		if _rows.is_empty():
 			return 0
 		var clamped_scroll_row := clampi(scroll_row, 0, maxi(0, _rows.size() - 1))
-		var visible_height := _get_visible_content_height_for_scroll(clamped_scroll_row)
-		var consumed := 0.0
-		var end_index := clamped_scroll_row
-		while end_index < _rows.size():
-			var row_height := _get_row_height(end_index)
-			if end_index > clamped_scroll_row and consumed + row_height > visible_height:
-				break
-			consumed += row_height
-			end_index += 1
-		return maxi(clamped_scroll_row + 1, end_index)
+		var target_height := _row_height_prefix[clamped_scroll_row] + _get_visible_content_height_for_scroll(clamped_scroll_row)
+		var low := clamped_scroll_row + 1
+		var high := _rows.size()
+		var end_index := low
+		while low <= high:
+			var midpoint := (low + high) >> 1
+			if midpoint == clamped_scroll_row + 1 or _row_height_prefix[midpoint] <= target_height:
+				end_index = midpoint
+				low = midpoint + 1
+			else:
+				high = midpoint - 1
+		return end_index
 
 	func _get_row_offset_from_scroll(scroll_row: int, row_index: int) -> float:
-		var offset := 0.0
-		for index in range(clampi(scroll_row, 0, maxi(0, _rows.size() - 1)), clampi(row_index, 0, _rows.size())):
-			offset += _get_row_height(index)
-		return offset
+		if _rows.is_empty():
+			return 0.0
+		var start_index := clampi(scroll_row, 0, _rows.size() - 1)
+		var end_index := clampi(row_index, start_index, _rows.size())
+		return _row_height_prefix[end_index] - _row_height_prefix[start_index]
 
 	func _draw() -> void:
 		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
@@ -1017,19 +1044,10 @@ class AutocompleteCommandColumn:
 		if _rows.is_empty():
 			return {}
 		var clamped_scroll_row := clampi(scroll_row, 0, _rows.size() - 1)
-		var first_visible_row: Dictionary = _rows[clamped_scroll_row]
-		if bool(first_visible_row.get("is_group_header", false)):
+		if clamped_scroll_row >= _sticky_group_header_indices.size():
 			return {}
-		if not bool(first_visible_row.get("group_box", false)):
-			return {}
-
-		for row_index in range(clamped_scroll_row - 1, -1, -1):
-			var candidate_row: Dictionary = _rows[row_index]
-			if bool(candidate_row.get("is_group_header", false)):
-				return candidate_row
-			if not bool(candidate_row.get("group_box", false)):
-				break
-		return {}
+		var header_index := _sticky_group_header_indices[clamped_scroll_row]
+		return _rows[header_index] if header_index >= 0 else {}
 
 	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
 		if bool(row_data.get("is_group_header", false)):
