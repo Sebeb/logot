@@ -8208,7 +8208,6 @@ func hide_autocomplete() -> void:
 
 	_history_can_switch_to_commands = false
 	_autocomplete_column_states.clear()
-	_autocomplete_column_nodes.clear()
 	_autocomplete_active_column_index = -1
 	_autocomplete_global_search_mode = false
 	_autocomplete_pre_filter_highlighted_tiers.clear()
