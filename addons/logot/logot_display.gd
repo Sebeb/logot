@@ -1779,6 +1779,7 @@ var _base_registered_addresses_cache: Array[String] = []
 var _default_menu_hierarchy_cache: Dictionary = {}
 var _all_known_autocomplete_tiers_cache: Array[String] = []
 var _all_known_autocomplete_tiers_cache_valid := false
+var _autocomplete_tiers_with_children: Dictionary = {}
 var _autocomplete_visible_address_columns: Dictionary = {}
 var _visible_getter_autocomplete_signatures: Dictionary = {}
 var _ingame_overlay_top_edge_override := 0.0
@@ -1854,6 +1855,7 @@ func invalidate_command_catalog(refresh_popup: bool = true) -> void:
 	_default_menu_hierarchy_cache.clear()
 	_all_known_autocomplete_tiers_cache.clear()
 	_all_known_autocomplete_tiers_cache_valid = false
+	_autocomplete_tiers_with_children.clear()
 	_refresh_pinned_display_variables()
 	if refresh_popup and _is_command_popup_visible():
 		update_autocomplete_popup()
@@ -5894,12 +5896,15 @@ func _get_all_known_autocomplete_tiers() -> Array[String]:
 		return _all_known_autocomplete_tiers_cache.duplicate()
 
 	var tiers: Array[String] = []
+	var known_tiers: Dictionary = {}
 	var visited_menu_paths: Dictionary = {}
 	var queue: Array[String] = [""]
+	var queue_index := 0
 
-	while not queue.is_empty():
+	while queue_index < queue.size():
 		var menu_path: String
-		menu_path = str(queue.pop_front())
+		menu_path = str(queue[queue_index])
+		queue_index += 1
 		if visited_menu_paths.has(menu_path):
 			continue
 		visited_menu_paths[menu_path] = true
@@ -5917,20 +5922,24 @@ func _get_all_known_autocomplete_tiers() -> Array[String]:
 			if next_tier.is_empty():
 				continue
 
-			_append_unique_address(tiers, next_tier)
-			if not visited_menu_paths.has(next_tier):
+			if not known_tiers.has(next_tier):
+				known_tiers[next_tier] = true
+				tiers.append(next_tier)
 				queue.append(next_tier)
 
+	_autocomplete_tiers_with_children.clear()
+	for tier in tiers:
+		var separator := tier.rfind("/")
+		if separator > 0:
+			_autocomplete_tiers_with_children[tier.substr(0, separator)] = true
 	_all_known_autocomplete_tiers_cache = tiers.duplicate()
 	_all_known_autocomplete_tiers_cache_valid = true
 	return tiers
 
 
-func _has_autocomplete_tier_children(tier: String, all_tiers: Array[String]) -> bool:
-	for candidate in all_tiers:
-		if candidate.begins_with(tier + "/"):
-			return true
-
+func _has_autocomplete_tier_children(tier: String) -> bool:
+	if _autocomplete_tiers_with_children.has(tier):
+		return true
 	if not _get_command_option_subcommand_addresses(tier, 0).is_empty():
 		return true
 	if not _get_pin_action_subcommand_addresses(tier).is_empty():
@@ -6004,7 +6013,7 @@ func _build_global_command_search_matches(query: String) -> Array[Dictionary]:
 		matches.append({
 			"tier": tier,
 			"score": score,
-			"has_children": _has_autocomplete_tier_children(tier, all_tiers),
+			"has_children": _has_autocomplete_tier_children(tier),
 			"has_command": has_direct_command or has_option_command or has_widget,
 			"has_display_variable": _has_display_variable(tier),
 			"has_widget": has_widget,
