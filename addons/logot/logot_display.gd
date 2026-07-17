@@ -6124,6 +6124,17 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"has_children": false,
 			"can_submit": false,
 		}
+	if match_data.get("suppress_value_text", false):
+		return {
+			"label": _get_autocomplete_tier_label(prefix, match_data),
+			"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
+			"truncate_label_from_start": true,
+			"value_text": "",
+			"value_items": [],
+			"display_variable_address": "",
+			"has_children": match_data.get("has_children", false),
+			"can_submit": match_data.get("has_command", false),
+		}
 
 	var value_data := _get_autocomplete_display_variable_value_data(match_data)
 	var value_text_color: Variant
