@@ -1697,6 +1697,7 @@ var _base_main_dragger_visibility := -1
 var _last_displayed_entry = null
 var _last_displayed_count: int = 0
 var _bbcode_before_last_entry: String = ""  # Stores BBCode content before the last displayed entry
+var _entry_plain_text_cache: Dictionary = {}
 
 # Composition support - providers set by owner
 var _settings_file: String = ""
@@ -4377,7 +4378,7 @@ func _should_display(entry) -> bool:
 	var instance_mode = _get_instance_visibility(entry.session_id)
 
 	if _search_filter != "":
-		var search_text := _format_objects(entry.objects).to_lower()
+		var search_text := _get_entry_plain_text(entry).to_lower()
 		if not search_text.contains(_search_filter):
 			return false
 
@@ -4389,6 +4390,17 @@ func _format_objects(objects: Array) -> String:
 	for obj in objects:
 		parts.append(str(obj))
 	return " ".join(parts)
+
+
+func _get_entry_plain_text(entry) -> String:
+	var entry_id := int(entry.id)
+	if _entry_plain_text_cache.has(entry_id):
+		return str(_entry_plain_text_cache[entry_id])
+	if _entry_plain_text_cache.size() >= 2048:
+		_entry_plain_text_cache.clear()
+	var text := _format_objects(entry.objects)
+	_entry_plain_text_cache[entry_id] = text
+	return text
 
 
 static func _get_level_color_hex(level: int) -> String:
@@ -4584,8 +4596,8 @@ func _display_entry(entry, animate_auto_scroll: bool = true) -> void:
 
 	var is_duplicate := false
 	if _collapse_duplicates and _last_displayed_entry != null:
-		var last_content := _format_objects(_last_displayed_entry.objects)
-		var current_content := _format_objects(entry.objects)
+		var last_content := _get_entry_plain_text(_last_displayed_entry)
+		var current_content := _get_entry_plain_text(entry)
 		is_duplicate = (current_content == last_content
 			and entry.level == _last_displayed_entry.level
 			and entry.channel == _last_displayed_entry.channel)
@@ -4624,23 +4636,57 @@ func _rebuild_display() -> void:
 	if not rich_label:
 		return
 
+	var was_at_bottom := _is_scrolled_to_bottom()
 	_reset_stats()
 	_last_displayed_entry = null
 	_last_displayed_count = 0
-	_bbcode_before_last_entry = _get_welcome_message()
-	rich_label.clear()
-	rich_label.append_text(_get_welcome_message())
+	var welcome_message := _get_welcome_message()
+	var bbcode_parts := PackedStringArray([welcome_message])
+	var collapsed_entry = null
+	var collapsed_content := ""
+	var collapsed_count := 0
 
 	for entry in _get_log_entries():
 		_ensure_channel_exists(entry.channel)
-		_update_stats_for_entry(entry)
-		if _should_display(entry):
-			_display_entry(entry, false)
-		else:
+		if not _update_stats_for_entry(entry):
 			entry.visible = false
+			continue
+
+		entry.visible = true
+		var entry_content := _get_entry_plain_text(entry)
+		var is_duplicate: bool = (
+			_collapse_duplicates
+			and collapsed_entry != null
+			and entry_content == collapsed_content
+			and entry.level == collapsed_entry.level
+			and entry.channel == collapsed_entry.channel
+		)
+		if is_duplicate:
+			collapsed_count += 1
+			collapsed_entry.collapse_count = collapsed_count
+			collapsed_entry.timestamp = entry.timestamp
+			continue
+
+		if collapsed_entry != null:
+			bbcode_parts.append(_get_entry_display_text(collapsed_entry, _truncate_multiline, collapsed_count) + "\n")
+		collapsed_entry = entry
+		collapsed_content = entry_content
+		collapsed_count = 1
+
+	_bbcode_before_last_entry = "".join(bbcode_parts)
+	if collapsed_entry != null:
+		bbcode_parts.append(_get_entry_display_text(collapsed_entry, _truncate_multiline, collapsed_count) + "\n")
+		_last_displayed_entry = collapsed_entry
+		_last_displayed_count = collapsed_count
+
+	rich_label.clear()
+	rich_label.append_text("".join(bbcode_parts))
 
 	_update_sidebar_stats()
-	_update_scroll_to_bottom_button_visibility()
+	if was_at_bottom:
+		_scroll_to_bottom(false)
+	else:
+		_update_scroll_to_bottom_button_visibility()
 	display_rebuilt.emit()
 
 
@@ -4648,7 +4694,7 @@ func _rebuild_display() -> void:
 # STATISTICS
 # =============================================================================
 
-func _update_stats_for_entry(entry) -> void:
+func _update_stats_for_entry(entry) -> bool:
 	var level_mode = _get_level_visibility(entry.level)
 	var channel_mode = _get_channel_visibility(entry.channel)
 	var instance_mode = _get_instance_visibility(entry.session_id)
@@ -4665,7 +4711,7 @@ func _update_stats_for_entry(entry) -> void:
 
 	var hidden_by_search := false
 	if _search_filter != "":
-		var search_text := _format_objects(entry.objects).to_lower()
+		var search_text := _get_entry_plain_text(entry).to_lower()
 		hidden_by_search = not search_text.contains(_search_filter)
 
 	# Entry is shown only if all filters allow it
@@ -4680,6 +4726,7 @@ func _update_stats_for_entry(entry) -> void:
 	else:
 		level_stats.hidden_count += 1
 		channel_stats.hidden_count += 1
+	return is_shown
 
 
 func _reset_stats() -> void:
@@ -4831,6 +4878,7 @@ func _open_file_in_editor(file_path: String, line: int) -> void:
 # =============================================================================
 
 func _clear_logs() -> void:
+	_entry_plain_text_cache.clear()
 	_reset_stats()
 	_last_displayed_entry = null
 	_last_displayed_count = 0
