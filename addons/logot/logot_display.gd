@@ -1587,6 +1587,7 @@ const AUTOCOMPLETE_COLUMN_MIN_WIDTH := 180
 const AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH := 380
 const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
 const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
+const AUTOCOMPLETE_TEXT_WIDTH_CACHE_LIMIT := 4096
 const AUTOCOMPLETE_COMMAND_SLIDE_DURATION := 0.16
 const AUTOCOMPLETE_COMMAND_SLIDE_DISTANCE := 28.0
 const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
@@ -1781,6 +1782,7 @@ var _all_known_autocomplete_tiers_cache: Array[String] = []
 var _all_known_autocomplete_tiers_cache_valid := false
 var _autocomplete_tiers_with_children: Dictionary = {}
 var _signal_backed_display_snapshot_cache: Dictionary = {}
+var _autocomplete_text_width_cache: Dictionary = {}
 var _autocomplete_visible_address_columns: Dictionary = {}
 var _visible_getter_autocomplete_signatures: Dictionary = {}
 var _ingame_overlay_top_edge_override := 0.0
@@ -7169,13 +7171,10 @@ func _refresh_active_preview_column_state() -> bool:
 
 
 func _measure_autocomplete_text_width(control: Control, text: String) -> int:
-	var font := control.get_theme_font("font")
 	var font_size := control.get_theme_font_size("font_size")
-	if font == null:
-		return text.length() * 8
 	if font_size <= 0:
 		font_size = 16
-	return int(ceil(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x))
+	return _measure_autocomplete_text_width_with_font_size(control, text, font_size)
 
 
 func _measure_autocomplete_text_width_with_font_size(control: Control, text: String, font_size: int) -> int:
@@ -7184,7 +7183,14 @@ func _measure_autocomplete_text_width_with_font_size(control: Control, text: Str
 		return text.length() * 8
 	if font_size <= 0:
 		font_size = 16
-	return int(ceil(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x))
+	var cache_key := "%d:%d:%s" % [font.get_instance_id(), font_size, text]
+	if _autocomplete_text_width_cache.has(cache_key):
+		return int(_autocomplete_text_width_cache[cache_key])
+	var measured_width := int(ceil(font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x))
+	if _autocomplete_text_width_cache.size() >= AUTOCOMPLETE_TEXT_WIDTH_CACHE_LIMIT:
+		_autocomplete_text_width_cache.clear()
+	_autocomplete_text_width_cache[cache_key] = measured_width
+	return measured_width
 
 
 func _get_command_autocomplete_max_column_width() -> int:
