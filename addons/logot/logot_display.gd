@@ -231,6 +231,7 @@ class AutocompleteCommandColumn:
 	signal row_activated(row_index: int)
 	signal row_long_pressed(row_index: int)
 	signal header_navigation_pressed
+	signal visible_rows_changed
 
 	const CELL_GAP := 12.0
 	const CONTENT_PADDING_X := 12.0
@@ -515,6 +516,7 @@ class AutocompleteCommandColumn:
 		_scroll_row = next_scroll
 		_update_row_scrollbar()
 		queue_redraw()
+		visible_rows_changed.emit()
 
 	func _scroll_by_pixel_delta(delta_y: float) -> void:
 		_drag_scroll_remainder += delta_y
@@ -614,6 +616,20 @@ class AutocompleteCommandColumn:
 
 	func get_rows() -> Array:
 		return _rows
+
+	func get_visible_row_range() -> Vector2i:
+		if _rows.is_empty():
+			return Vector2i.ZERO
+		var start_index := clampi(_scroll_row, 0, _get_max_scroll_row())
+		return Vector2i(start_index, _get_visible_content_end_index_for_scroll(start_index))
+
+	func replace_rows_preserving_scroll(rows: Array[Dictionary]) -> void:
+		var previous_scroll := _scroll_row
+		_rows = rows
+		_rebuild_row_geometry_cache()
+		_scroll_row = clampi(previous_scroll, 0, _get_max_scroll_row())
+		_update_row_scrollbar()
+		queue_redraw()
 
 	func get_visible_display_variable_addresses() -> Array[String]:
 		var addresses: Array[String] = []
@@ -984,6 +1000,7 @@ class AutocompleteCommandColumn:
 		_scroll_row = next_scroll
 		_update_row_scrollbar()
 		queue_redraw()
+		visible_rows_changed.emit()
 
 	func _escape_bbcode(text: String) -> String:
 		return text.replace("[", "[lb]").replace("]", "[rb]")
@@ -1746,6 +1763,7 @@ var _command_entry_mode := false
 var _suppress_autocomplete_text_changes := false
 var _pending_autocomplete_text := ""
 var _autocomplete_text_update_queued := false
+var _debug_autocomplete_update_count := 0
 
 # Command history
 var _command_history: Array[String] = []
@@ -6132,22 +6150,23 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"value_text": "",
 			"value_items": [],
 			"display_variable_address": "",
+			"value_loaded": true,
 			"has_children": match_data.get("has_children", false),
 			"can_submit": match_data.get("has_command", false),
 		}
 
-	var value_data := _get_autocomplete_display_variable_value_data(match_data)
-	var value_text_color: Variant
-	value_text_color = value_data.get("color", null)
-	var display_variable_address := str(value_data.get("address", ""))
+	var display_variable_address := ""
+	if match_data.get("has_display_variable", false):
+		display_variable_address = _resolve_alias_command_path(str(match_data.get("tier", "")))
 	return {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
 		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
 		"truncate_label_from_start": true,
-		"value_text": "" if match_data.get("suppress_value_text", false) else str(value_data.get("text", "")),
-		"value_text_color": value_text_color,
-		"value_items": value_data.get("items", []),
+		"value_text": "",
+		"value_text_color": null,
+		"value_items": [],
 		"display_variable_address": display_variable_address,
+		"value_loaded": display_variable_address.is_empty(),
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
 	}
@@ -6206,6 +6225,46 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 		"rows": rows,
 		"selected_row_index": selected_row_index,
 	}
+
+
+func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn, column_state: Dictionary, rows: Array[Dictionary]) -> bool:
+	if list == null or rows.is_empty():
+		return false
+	var visible_range := list.get_visible_row_range()
+	var matches: Array = column_state.get("matches", [])
+	var column_width := maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, int(column_state.get("width", list.size.x)))
+	var changed := false
+	for row_index in range(visible_range.x, mini(visible_range.y, rows.size())):
+		var row_data: Dictionary = rows[row_index]
+		if bool(row_data.get("is_group_header", false)) or bool(row_data.get("value_loaded", false)):
+			continue
+		var match_index := int(row_data.get("match_index", -1))
+		if match_index < 0 or match_index >= matches.size():
+			continue
+		var match_data: Dictionary = matches[match_index]
+		var value_data := _get_autocomplete_display_variable_value_data(match_data)
+		row_data["value_text"] = str(value_data.get("text", ""))
+		row_data["value_text_color"] = value_data.get("color", null)
+		row_data["value_items"] = value_data.get("items", [])
+		row_data["display_variable_address"] = str(value_data.get("address", row_data.get("display_variable_address", "")))
+		row_data["value_loaded"] = true
+		var row_value_width := _get_command_autocomplete_row_value_width(list, row_data)
+		var row_action_width := _get_command_autocomplete_row_action_width(row_data)
+		row_data["measured_value_width"] = row_value_width
+		row_data["measured_action_width"] = row_action_width
+		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + _measure_autocomplete_text_width(list, str(row_data.get("label", "")))
+		if row_value_width > 0:
+			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
+		if row_action_width > 0:
+			single_line_width += AUTOCOMPLETE_CELL_GAP + row_action_width
+		var needs_two_line := row_value_width > 0 and single_line_width > column_width
+		row_data["two_line"] = needs_two_line
+		row_data["row_height_multiplier"] = 2.0 if needs_two_line else 1.0
+		rows[row_index] = row_data
+		changed = true
+	if changed:
+		list.replace_rows_preserving_scroll(rows)
+	return changed
 
 
 func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Dictionary:
@@ -7383,6 +7442,7 @@ func _create_command_autocomplete_column() -> AutocompleteCommandColumn:
 	list.row_activated.connect(_on_command_autocomplete_column_row_activated.bind(list))
 	list.row_long_pressed.connect(_on_command_autocomplete_column_row_long_pressed.bind(list))
 	list.header_navigation_pressed.connect(_on_command_autocomplete_header_navigation_pressed)
+	list.visible_rows_changed.connect(_on_command_autocomplete_column_visible_rows_changed.bind(list))
 	return list
 
 
@@ -7391,6 +7451,18 @@ func _get_autocomplete_column_index_for_node(list: AutocompleteCommandColumn) ->
 		if _autocomplete_column_nodes[column_index] == list:
 			return column_index
 	return -1
+
+
+func _on_command_autocomplete_column_visible_rows_changed(list: AutocompleteCommandColumn) -> void:
+	var column_index := _get_autocomplete_column_index_for_node(list)
+	if column_index < 0 or column_index >= _autocomplete_column_states.size():
+		return
+	var rows: Array[Dictionary] = []
+	for row_variant in list.get_rows():
+		if row_variant is Dictionary:
+			rows.append(row_variant as Dictionary)
+	if _hydrate_visible_command_autocomplete_rows(list, _autocomplete_column_states[column_index], rows):
+		_refresh_autocomplete_visible_address_tracking()
 
 
 func _on_command_autocomplete_column_row_activated(row_index: int, list: AutocompleteCommandColumn) -> void:
@@ -7801,6 +7873,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		column_name,
 		column_description
 	)
+	_hydrate_visible_command_autocomplete_rows(list, column_state, rows)
 	var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
 	var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
 	list.set_header_navigation(show_touch_navigation, navigation_label)
@@ -8060,6 +8133,7 @@ func _refresh_command_autocomplete_popup_values() -> void:
 			column_name,
 			column_description
 		)
+		_hydrate_visible_command_autocomplete_rows(list, column_state, rows)
 		var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
 		var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
 		list.set_header_navigation(show_touch_navigation, navigation_label)
@@ -8279,6 +8353,7 @@ func get_active_command_submission_text() -> String:
 
 ## Update the autocomplete popup with filtered and sorted suggestions
 func update_autocomplete_popup() -> void:
+	_debug_autocomplete_update_count += 1
 	_debug_autocomplete("update_autocomplete_popup.begin")
 	if not _command_autocomplete_popup or not line_edit:
 		return
