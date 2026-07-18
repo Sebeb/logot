@@ -102,6 +102,8 @@ const _UNKNOWN_GIT_BRANCH := "unknown"
 const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
 const _PERFORMANCE_OVERVIEW_WIDGET_PATH := "dev/performance/overview"
 const _PERFORMANCE_TIME_RANGE_PATH := "dev/performance/time_range"
+const _PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH := "dev/performance/graphs"
+const _PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH := "dev/performance/graphs/time_range"
 const _PERFORMANCE_CPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/cpu"
 const _PERFORMANCE_GPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/gpu"
 const _PERFORMANCE_CPU_SOURCE_MODE_PATH := "dev/performance/allocation/cpu/mode"
@@ -3907,12 +3909,14 @@ func _get_setting_truncate_multiline() -> bool:
 
 func _cycle_performance_pin_mode() -> void:
 	match _performance_pin_mode:
+		PERFORMANCE_MODE_HIDDEN:
+			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
 		PERFORMANCE_MODE_FPS:
 			_set_performance_pin_mode(PERFORMANCE_MODE_OVERVIEW)
 		PERFORMANCE_MODE_OVERVIEW:
-			_set_performance_pin_mode(PERFORMANCE_MODE_DETAILED)
+			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
 		_:
-			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
+			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
 
 
 func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
@@ -3927,21 +3931,31 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 		PERFORMANCE_MODE_FPS:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_OVERVIEW:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_DETAILED:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, _should_pin_gpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
-		_:
-			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
+		PERFORMANCE_MODE_HIDDEN:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
+		_:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 
@@ -3955,11 +3969,9 @@ func _apply_saved_performance_pin_mode() -> void:
 
 func _normalize_performance_pin_mode(mode: String) -> String:
 	var normalized_mode := mode.strip_edges().to_lower()
-	if normalized_mode in [PERFORMANCE_MODE_FPS, PERFORMANCE_MODE_OVERVIEW, PERFORMANCE_MODE_DETAILED]:
+	if normalized_mode in [PERFORMANCE_MODE_FPS, PERFORMANCE_MODE_OVERVIEW, PERFORMANCE_MODE_DETAILED, PERFORMANCE_MODE_HIDDEN]:
 		return normalized_mode
-	if normalized_mode == PERFORMANCE_MODE_HIDDEN:
-		return PERFORMANCE_MODE_FPS
-	return PERFORMANCE_MODE_FPS
+	return PERFORMANCE_MODE_HIDDEN
 
 
 func _save_performance_pin_mode() -> void:
@@ -4256,6 +4268,15 @@ func _register_performance_commands() -> void:
 		"Performance Overview"
 	)
 	add_widget(
+		_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH,
+		PERFORMANCE_OVERVIEW_WIDGET_SCENE,
+		"Performance graphs (legacy alias for the overview widget).",
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		Vector2(210.0, 170.0),
+		"Performance Graphs"
+	)
+	add_widget(
 		_PERFORMANCE_CPU_SOURCES_WIDGET_PATH,
 		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
 		"Shows the top CPU allocation buckets and their frame-time history.",
@@ -4275,6 +4296,16 @@ func _register_performance_commands() -> void:
 	)
 	add_setget_command(
 		_PERFORMANCE_TIME_RANGE_PATH,
+		_set_performance_graph_time_range,
+		_get_performance_graph_time_range,
+		"Set the performance graph time range.",
+		_get_performance_graph_time_range_options,
+		Callable(),
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+	add_setget_command(
+		_PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH,
 		_set_performance_graph_time_range,
 		_get_performance_graph_time_range,
 		"Set the performance graph time range.",
