@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/logot/widgets/performance_source_graph_widget.gd" id="1_widget"]
+
+[node name="PerformanceSourceGraphWidget" type="VBoxContainer"]
+custom_minimum_size = Vector2(210, 226)
+mouse_filter = 2
+script = ExtResource("1_widget")
+refresh_in_background = false

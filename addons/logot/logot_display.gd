@@ -147,6 +147,7 @@ class LogotDisplayVariable:
 class LogotWidget:
 	var scene_or_path: Variant
 	var description: String
+	var display_label: String
 	var group_name: String
 	var group_priority: int
 	var default_minimum_size: Vector2
@@ -156,10 +157,12 @@ class LogotWidget:
 		in_description: String = "",
 		in_group_name: String = "",
 		in_group_priority: int = 0,
-		in_default_minimum_size: Vector2 = Vector2.ZERO
+		in_default_minimum_size: Vector2 = Vector2.ZERO,
+		in_display_label: String = ""
 	):
 		scene_or_path = in_scene_or_path
 		description = in_description
+		display_label = in_display_label.strip_edges()
 		group_name = in_group_name.strip_edges()
 		group_priority = in_group_priority if not group_name.is_empty() else 0
 		default_minimum_size = in_default_minimum_size
@@ -1623,8 +1626,10 @@ const SCROLL_TO_BOTTOM_BUTTON_MARGIN := 8.0
 const SCROLL_TO_BOTTOM_SCROLLBAR_GAP := 4.0
 const SCROLL_TO_BOTTOM_ANIMATION_DURATION := 0.16
 const PINNED_OVERLAY_MARGIN := 8.0
+const PINNED_OVERLAY_COLUMN_SEPARATION := 6
 const PINNED_OVERLAY_MOUSE_SWAP_PADDING := 36.0
 const PINNED_OVERLAY_MOUSE_RETURN_PADDING := 72.0
+const PINNED_OVERLAY_LAYOUT_POLL_INTERVAL_SEC := 0.25
 const PINNED_OVERLAY_CORNER_TOP_LEFT := "top_left"
 const PINNED_OVERLAY_CORNER_TOP_RIGHT := "top_right"
 const PINNED_OVERLAY_CORNER_BOTTOM_LEFT := "bottom_left"
@@ -1774,6 +1779,7 @@ var _root_command_selection_reset_pending := false
 
 # Display variables
 var _pinned_display_variables: Array[String] = []
+var _transient_pinned_display_variables: Dictionary = {}
 var _pinned_overlay_root: Control
 var _pinned_overlay_corner_containers: Dictionary = {}
 var _pinned_overlay_rows: Dictionary = {}
@@ -1784,6 +1790,8 @@ var _pinned_display_variable_corners: Dictionary = {}
 var _pinned_overlay_visible := true
 var _pinned_overlay_suppressed := false
 var _pinned_corner_redirects: Dictionary = {}
+var _pinned_overlay_layout_poll_signature := ""
+var _pinned_overlay_layout_poll_accum_sec := 0.0
 var _saved_pin_overlays: Dictionary = {}  # {overlay_name: Array[String]}
 var _render_texture_fullscreen_root: Control
 var _render_texture_fullscreen_backdrop: ColorRect
@@ -1795,6 +1803,16 @@ var _display_safe_area_override_enabled := false
 var _display_safe_area_override := Rect2()
 var _palette_widget_instances: Dictionary = {}
 var _command_catalog_dirty := true
+var _ui_update_batch_depth := 0
+var _ui_update_catalog_dirty := false
+var _ui_update_catalog_refresh_popup := false
+var _ui_update_pins_dirty := false
+var _ui_update_settings_dirty := false
+var _ui_update_pin_options_dirty := false
+var _debug_command_catalog_flush_count := 0
+var _debug_pinned_refresh_count := 0
+var _debug_filter_settings_save_count := 0
+var _debug_display_variable_invalidation_count := 0
 var _base_registered_addresses_cache: Array[String] = []
 var _default_menu_hierarchy_cache: Dictionary = {}
 var _all_known_autocomplete_tiers_cache: Array[String] = []
@@ -1872,6 +1890,45 @@ func set_widgets_provider(provider: Callable) -> void:
 	_refresh_pinned_display_variables()
 
 
+func begin_ui_update_batch() -> void:
+	_ui_update_batch_depth += 1
+
+
+func end_ui_update_batch() -> void:
+	if _ui_update_batch_depth <= 0:
+		return
+	_ui_update_batch_depth -= 1
+	if _ui_update_batch_depth > 0:
+		return
+	var save_settings := _ui_update_settings_dirty
+	var refresh_catalog := _ui_update_catalog_dirty
+	var refresh_popup := _ui_update_catalog_refresh_popup
+	var refresh_pins := _ui_update_pins_dirty
+	var refresh_pin_options := _ui_update_pin_options_dirty
+	_ui_update_settings_dirty = false
+	_ui_update_catalog_dirty = false
+	_ui_update_catalog_refresh_popup = false
+	_ui_update_pins_dirty = false
+	_ui_update_pin_options_dirty = false
+	if save_settings:
+		_save_filter_settings()
+	if refresh_catalog:
+		invalidate_command_catalog(refresh_popup)
+	elif refresh_pins:
+		_refresh_pinned_display_variables()
+	if refresh_pin_options and not refresh_catalog:
+		_refresh_pin_option_autocomplete_state()
+
+
+func get_debug_update_counters() -> Dictionary:
+	return {
+		"catalog_flushes": _debug_command_catalog_flush_count,
+		"pinned_refreshes": _debug_pinned_refresh_count,
+		"settings_saves": _debug_filter_settings_save_count,
+		"display_invalidations": _debug_display_variable_invalidation_count,
+	}
+
+
 func invalidate_command_catalog(refresh_popup: bool = true) -> void:
 	_command_catalog_dirty = true
 	_base_registered_addresses_cache.clear()
@@ -1881,6 +1938,12 @@ func invalidate_command_catalog(refresh_popup: bool = true) -> void:
 	_autocomplete_tiers_with_children.clear()
 	_tier_command_group_cache.clear()
 	_signal_backed_display_snapshot_cache.clear()
+	if _ui_update_batch_depth > 0:
+		_ui_update_catalog_dirty = true
+		_ui_update_catalog_refresh_popup = _ui_update_catalog_refresh_popup or refresh_popup
+		_ui_update_pins_dirty = true
+		return
+	_debug_command_catalog_flush_count += 1
 	_refresh_pinned_display_variables()
 	if refresh_popup and _is_command_popup_visible():
 		update_autocomplete_popup()
@@ -1891,6 +1954,7 @@ func invalidate_display_variable(address: String) -> void:
 	if normalized_address.is_empty():
 		return
 	_signal_backed_display_snapshot_cache.erase(normalized_address)
+	_debug_display_variable_invalidation_count += 1
 	if _pinned_display_variables.has(normalized_address):
 		_update_pinned_corner_redirects()
 		_refresh_pinned_display_variable_row(normalized_address)
@@ -2460,6 +2524,7 @@ func _normalize_pin_corner(corner: String) -> String:
 
 
 func pin_display_variable(address: String, corner: String = PINNED_OVERLAY_CORNER_TOP_LEFT) -> void:
+	_transient_pinned_display_variables.erase(address)
 	if address.is_empty() or _pinned_display_variables.has(address):
 		if _pinned_display_variables.has(address):
 			_pinned_display_variable_corners[address] = _normalize_pin_corner(corner)
@@ -2476,6 +2541,7 @@ func pin_display_variable(address: String, corner: String = PINNED_OVERLAY_CORNE
 
 
 func unpin_display_variable(address: String) -> void:
+	_transient_pinned_display_variables.erase(address)
 	var index := _pinned_display_variables.find(address)
 	if index == -1:
 		return
@@ -2494,8 +2560,42 @@ func set_display_variable_pinned(address: String, pinned: bool, corner: String =
 		unpin_display_variable(address)
 
 
+func set_display_variable_transiently_pinned(address: String, pinned: bool, corner: String = PINNED_OVERLAY_CORNER_TOP_LEFT) -> void:
+	var normalized_address := address.strip_edges()
+	if normalized_address.is_empty():
+		return
+	if pinned:
+		_transient_pinned_display_variables[normalized_address] = true
+		var normalized_corner := _normalize_pin_corner(corner)
+		if _pinned_display_variables.has(normalized_address):
+			if _pinned_display_variable_corners.get(normalized_address, "") == normalized_corner:
+				return
+			_pinned_display_variable_corners[normalized_address] = normalized_corner
+			_refresh_pinned_display_variables()
+			_refresh_pin_option_autocomplete_state()
+			return
+		_pinned_display_variables.append(normalized_address)
+		_pinned_display_variable_corners[normalized_address] = normalized_corner
+		invalidate_command_catalog(false)
+		_refresh_pin_option_autocomplete_state()
+		return
+	if not _transient_pinned_display_variables.has(normalized_address):
+		return
+	_transient_pinned_display_variables.erase(normalized_address)
+	var index := _pinned_display_variables.find(normalized_address)
+	if index >= 0:
+		_pinned_display_variables.remove_at(index)
+	_pinned_display_variable_corners.erase(normalized_address)
+	invalidate_command_catalog(false)
+	_refresh_pin_option_autocomplete_state()
+
+
 func is_display_variable_pinned(address: String) -> bool:
 	return _pinned_display_variables.has(address)
+
+
+func is_display_variable_transiently_pinned(address: String) -> bool:
+	return _transient_pinned_display_variables.has(address)
 
 
 func get_pinned_display_variables() -> Array[String]:
@@ -2598,6 +2698,9 @@ func load_pinned_overlay(name: String) -> bool:
 
 
 func _refresh_pin_option_autocomplete_state() -> void:
+	if _ui_update_batch_depth > 0:
+		_ui_update_pin_options_dirty = true
+		return
 	if _is_command_popup_visible():
 		update_autocomplete_popup()
 
@@ -3568,11 +3671,11 @@ func _ensure_pinned_overlay() -> void:
 	add_child(_pinned_overlay_root)
 
 	for corner in PINNED_OVERLAY_CORNERS:
-		var container := VBoxContainer.new()
+		var container := HBoxContainer.new()
 		container.name = "PinnedDisplayVariables_%s" % corner
 		container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		container.alignment = BoxContainer.ALIGNMENT_BEGIN
-		container.add_theme_constant_override("separation", 0)
+		container.alignment = BoxContainer.ALIGNMENT_END if corner in [PINNED_OVERLAY_CORNER_TOP_RIGHT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT] else BoxContainer.ALIGNMENT_BEGIN
+		container.add_theme_constant_override("separation", PINNED_OVERLAY_COLUMN_SEPARATION)
 		_pinned_overlay_root.add_child(container)
 		_pinned_overlay_corner_containers[corner] = container
 
@@ -3730,8 +3833,8 @@ func get_render_texture_widget_view_mode(address: String) -> String:
 	return _render_texture_fullscreen_mode
 
 
-func _get_pinned_overlay_container(corner: String) -> VBoxContainer:
-	return _pinned_overlay_corner_containers.get(_normalize_pin_corner(corner), null) as VBoxContainer
+func _get_pinned_overlay_container(corner: String) -> HBoxContainer:
+	return _pinned_overlay_corner_containers.get(_normalize_pin_corner(corner), null) as HBoxContainer
 
 
 func _get_pinned_overlay_size_for_corner(corner: String) -> Vector2:
@@ -3891,7 +3994,9 @@ func _update_pinned_widget_header_markup(header: RichTextLabel, align_right: boo
 	var address := str(header.get_meta("logot_pin_widget_address", "")).strip_edges()
 	if address.is_empty():
 		return
-	var display_address := _get_pinned_item_display_address(address, base_name_counts)
+	var display_address := _get_widget_display_label(address)
+	if display_address.is_empty():
+		display_address = _get_pinned_item_display_address(address, base_name_counts)
 	if display_address.is_empty():
 		display_address = address
 	var markup := "[bgcolor=#1a202acc] %s [/bgcolor]" % _escape_overlay_bbcode(display_address)
@@ -3916,14 +4021,18 @@ func _update_pinned_widget_headers_in_row(node: Node, align_right: bool, base_na
 
 
 func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
+	var rows_by_corner: Dictionary = {}
 	for corner in PINNED_OVERLAY_CORNERS:
 		var container := _get_pinned_overlay_container(corner)
 		if container != null:
-			for child in container.get_children():
-				container.remove_child(child)
+			rows_by_corner[corner] = []
+			for column in container.get_children():
+				for child in column.get_children():
+					column.remove_child(child)
+				container.remove_child(column)
+				column.free()
 
 	var base_name_counts := _get_visible_pinned_item_base_name_counts()
-	var effective_indices: Dictionary = {}
 	var placed_row_ids: Dictionary = {}
 	for address in visible_addresses:
 		var row = _pinned_overlay_rows.get(address, null)
@@ -3934,17 +4043,11 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 			continue
 		placed_row_ids[row_id] = true
 		var effective_corner := _get_effective_pinned_corner_for_address(address)
-		var container := _get_pinned_overlay_container(effective_corner)
-		if container == null:
+		if not rows_by_corner.has(effective_corner):
 			continue
 		var parent := (row as Node).get_parent()
-		if parent != null and parent != container:
+		if parent != null:
 			(parent as Node).remove_child(row)
-		if (row as Node).get_parent() != container:
-			container.add_child(row)
-		var target_index := int(effective_indices.get(effective_corner, 0))
-		container.move_child(row, target_index)
-		effective_indices[effective_corner] = target_index + 1
 		var align_right: bool = effective_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or effective_corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
 		var horizontal_alignment := HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
 		if row is Control:
@@ -3953,9 +4056,52 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 			_apply_pinned_display_variable_row_snapshot(address, base_name_counts, false)
 		_apply_pinned_overlay_row_alignment(row, horizontal_alignment, align_right)
 		_update_pinned_widget_headers_in_row(row as Node, align_right, base_name_counts)
+		(rows_by_corner[effective_corner] as Array).append(row)
+
+	for corner in PINNED_OVERLAY_CORNERS:
+		_layout_pinned_overlay_corner_columns(corner, rows_by_corner.get(corner, []) as Array)
+
+
+func _layout_pinned_overlay_corner_columns(corner: String, rows: Array) -> void:
+	var container := _get_pinned_overlay_container(corner)
+	if container == null or rows.is_empty():
+		return
+	var viewport_height := get_viewport_rect().size.y
+	var max_column_height := maxf(1.0, viewport_height - PINNED_OVERLAY_MARGIN * 2.0 - _ingame_overlay_top_edge_override - _ingame_overlay_bottom_edge_override)
+	var columns: Array[Array] = []
+	var current_column: Array = []
+	var current_height := 0.0
+	for row in rows:
+		if not (row is Control):
+			continue
+		var row_height := ceil((row as Control).get_combined_minimum_size().y)
+		if not current_column.is_empty() and current_height + row_height > max_column_height:
+			columns.append(current_column)
+			current_column = []
+			current_height = 0.0
+		current_column.append(row)
+		current_height += row_height
+	if not current_column.is_empty():
+		columns.append(current_column)
+
+	var align_right := corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
+	if align_right:
+		columns.reverse()
+	for column_rows in columns:
+		var column := VBoxContainer.new()
+		column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		column.alignment = BoxContainer.ALIGNMENT_END if corner in [PINNED_OVERLAY_CORNER_BOTTOM_LEFT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT] else BoxContainer.ALIGNMENT_BEGIN
+		column.add_theme_constant_override("separation", 0)
+		container.add_child(column)
+		for row in column_rows:
+			column.add_child(row)
 
 
 func _refresh_pinned_display_variables() -> void:
+	if _ui_update_batch_depth > 0:
+		_ui_update_pins_dirty = true
+		return
+	_debug_pinned_refresh_count += 1
 	if not _pinned_overlay_root:
 		return
 
@@ -4178,16 +4324,15 @@ func _get_pinned_item_display_address(address: String, base_name_counts: Diction
 
 
 func _poll_visible_display_variable_consumers(delta: float) -> void:
-	_poll_visible_pinned_display_variable_rows()
+	_poll_visible_pinned_display_variable_rows(delta)
 	_poll_visible_autocomplete_display_variable_rows()
 	_poll_visible_logot_widgets(delta)
 
 
-func _poll_visible_pinned_display_variable_rows() -> void:
+func _poll_visible_pinned_display_variable_rows(delta: float) -> void:
 	if not _are_pinned_display_variables_effectively_visible() or _pinned_overlay_root == null or not _pinned_overlay_root.visible:
 		return
 
-	_update_pinned_corner_redirects()
 	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 	for address in _pinned_row_poll_signatures.keys():
 		if not _pinned_display_variables.has(str(address)) or not _has_display_variable(str(address)):
@@ -4212,9 +4357,42 @@ func _poll_visible_pinned_display_variable_rows() -> void:
 	for address in _pinned_display_variables:
 		if _is_pinned_item_available(address):
 			visible_addresses.append(address)
-	_update_pinned_corner_redirects()
-	_layout_pinned_overlay_rows(visible_addresses)
-	_layout_pinned_overlay_containers()
+	_pinned_overlay_layout_poll_accum_sec += maxf(0.0, delta)
+	var layout_signature := _get_pinned_overlay_poll_layout_signature(visible_addresses)
+	var should_refresh_layout := layout_signature != _pinned_overlay_layout_poll_signature
+	if _pinned_overlay_layout_poll_accum_sec >= PINNED_OVERLAY_LAYOUT_POLL_INTERVAL_SEC:
+		should_refresh_layout = true
+	if should_refresh_layout:
+		_pinned_overlay_layout_poll_accum_sec = 0.0
+		_update_pinned_corner_redirects()
+		_pinned_overlay_layout_poll_signature = _get_pinned_overlay_poll_layout_signature(visible_addresses)
+		_layout_pinned_overlay_rows(visible_addresses)
+		_layout_pinned_overlay_containers()
+
+
+func _get_pinned_overlay_poll_layout_signature(visible_addresses: Array[String]) -> String:
+	var row_signatures: Array[String] = []
+	for address in visible_addresses:
+		var address_text := str(address)
+		var row = _pinned_overlay_rows.get(address_text, null)
+		var row_size := Vector2.ZERO
+		if row is Control and is_instance_valid(row):
+			row_size = (row as Control).get_combined_minimum_size()
+		row_signatures.append("%s|%s|%s|%s" % [
+			address_text,
+			_get_effective_pinned_corner_for_address(address_text),
+			roundi(row_size.x),
+			roundi(row_size.y),
+		])
+	return var_to_str({
+		"rows": row_signatures,
+		"viewport": get_viewport_rect().size.round(),
+		"top": roundi(_ingame_overlay_top_edge_override),
+		"left": roundi(_ingame_overlay_left_edge_override),
+		"right": roundi(_ingame_overlay_right_edge_override),
+		"bottom": roundi(_ingame_overlay_bottom_edge_override),
+		"redirects": _pinned_corner_redirects.duplicate(),
+	})
 
 
 func _get_display_variable_entry(address: String) -> Dictionary:
@@ -4918,9 +5096,13 @@ func _clear_logs() -> void:
 # =============================================================================
 
 func _save_filter_settings() -> void:
+	if _ui_update_batch_depth > 0:
+		_ui_update_settings_dirty = true
+		return
 	var settings_file := _get_settings_file()
 	if settings_file.is_empty():
 		return
+	_debug_filter_settings_save_count += 1
 
 	var config := ConfigFile.new()
 	config.load(settings_file)
@@ -4943,8 +5125,15 @@ func _save_filter_settings() -> void:
 		if setting_name.is_empty():
 			continue
 		config.set_value("settings", setting_name, bool(_custom_setting_values.get(setting_name, setting.get("default", false))))
-	config.set_value("display_variables", "pinned", _pinned_display_variables)
-	config.set_value("display_variables", "pinned_corners", _pinned_display_variable_corners)
+	var persistent_pins: Array[String] = []
+	var persistent_pin_corners: Dictionary = {}
+	for pinned_address in _pinned_display_variables:
+		if _transient_pinned_display_variables.has(pinned_address):
+			continue
+		persistent_pins.append(pinned_address)
+		persistent_pin_corners[pinned_address] = _pinned_display_variable_corners.get(pinned_address, PINNED_OVERLAY_CORNER_TOP_LEFT)
+	config.set_value("display_variables", "pinned", persistent_pins)
+	config.set_value("display_variables", "pinned_corners", persistent_pin_corners)
 	config.set_value("display_variables", "pinned_visible", _pinned_overlay_visible)
 
 	var serialized_pin_overlays := {}
@@ -5014,6 +5203,7 @@ func _load_filter_settings() -> void:
 
 	if config.has_section("display_variables"):
 		var pinned_addresses = config.get_value("display_variables", "pinned", [])
+		_transient_pinned_display_variables.clear()
 		_pinned_display_variables.clear()
 		_pinned_display_variable_corners.clear()
 		if pinned_addresses is Array:
@@ -5576,6 +5766,15 @@ func _get_widget_group_data(address: String) -> Dictionary:
 		var widget_dict := widget as Dictionary
 		return _normalize_command_group_data(widget_dict.get("group_name", ""), widget_dict.get("group_priority", 0))
 	return {"name": "", "priority": 0}
+
+
+func _get_widget_display_label(address: String) -> String:
+	var widget = _get_widget_data(address)
+	if widget is LogotWidget:
+		return (widget as LogotWidget).display_label
+	if widget is Dictionary:
+		return str((widget as Dictionary).get("display_label", "")).strip_edges()
+	return ""
 
 
 func _get_tier_command_group_data(tier: String) -> Dictionary:
@@ -6300,6 +6499,9 @@ func _get_command_autocomplete_column_name(prefix: String) -> String:
 	var command_path := prefix.trim_suffix("/")
 	if command_path.is_empty():
 		return "Commands"
+	var widget_label := _get_widget_display_label(command_path)
+	if not widget_label.is_empty():
+		return widget_label
 	var segments := command_path.split("/", false)
 	if segments.is_empty():
 		return command_path
@@ -8740,6 +8942,11 @@ func autocomplete_move_left() -> void:
 func touch_command_palette_back_or_close() -> bool:
 	if not _is_touch_command_palette_layout() or not _is_command_popup_visible():
 		return false
+	if line_edit != null and line_edit.text.strip_edges().begins_with("/"):
+		var input_state := _get_autocomplete_input_state()
+		if not (input_state.get("segments", []) as Array).is_empty():
+			autocomplete_move_left()
+			return true
 	if _autocomplete_active_column_index <= 0:
 		command_palette_close_requested.emit()
 		return true

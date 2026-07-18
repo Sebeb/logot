@@ -100,8 +100,13 @@ const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
 const _UNKNOWN_GIT_BRANCH := "unknown"
 const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
-const _PERFORMANCE_GRAPHS_WIDGET_PATH := "dev/performance/graphs"
-const _PERFORMANCE_GRAPHS_TIME_RANGE_PATH := "dev/performance/graphs/time_range"
+const _PERFORMANCE_OVERVIEW_WIDGET_PATH := "dev/performance/overview"
+const _PERFORMANCE_TIME_RANGE_PATH := "dev/performance/time_range"
+const _PERFORMANCE_CPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/cpu"
+const _PERFORMANCE_GPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/gpu"
+const _PERFORMANCE_CPU_SOURCE_MODE_PATH := "dev/performance/allocation/cpu/mode"
+const _PERFORMANCE_SOURCE_UPDATE_SPEED_PATH := "dev/performance/allocation/update_speed"
+const _PERFORMANCE_SOURCE_SNAPSHOT_PATH := "dev/performance/allocation/snapshot"
 const DEFAULT_INGAME_POPUP_LIFETIME := 5.0
 const INGAME_POPUP_FADE_DURATION := 0.35
 const INGAME_POPUP_MAX_VISIBLE := 6
@@ -135,10 +140,19 @@ const PERFORMANCE_GRAPH_MAX_FPS := 160
 const PERFORMANCE_SETTINGS_SECTION := "performance"
 const PERFORMANCE_SETTINGS_KEY_MODE := "pin_mode"
 const PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE := "graph_time_range_sec"
-const PERFORMANCE_MODE_HIDDEN := "hidden"
+const PERFORMANCE_SETTINGS_KEY_CPU_SOURCE_MODE := "cpu_source_mode"
+const PERFORMANCE_SETTINGS_KEY_SOURCE_UPDATE_RATE_HZ := "source_update_rate_hz"
 const PERFORMANCE_MODE_FPS := "fps"
+const PERFORMANCE_MODE_OVERVIEW := "overview"
 const PERFORMANCE_MODE_DETAILED := "detailed"
+const PERFORMANCE_MODE_HIDDEN := "hidden"
 const PERFORMANCE_GRAPH_TIME_RANGE_ALL := 0.0
+const PERFORMANCE_CPU_SOURCE_MODE_RENDER := "render"
+const PERFORMANCE_CPU_SOURCE_MODE_WHOLE := "whole"
+const PERFORMANCE_CPU_SOURCE_MODE_BOTH := "both"
+const PERFORMANCE_SOURCE_UPDATE_RATE_DEFAULT_HZ := 4.0
+const PERFORMANCE_SOURCE_BRIDGE_API_VERSION := 1
+const PERFORMANCE_SOURCE_SNAPSHOT_DIR := "user://artifacts/performance_snapshots"
 const PIN_CORNER_TOP_LEFT := "top_left"
 const PIN_CORNER_TOP_RIGHT := "top_right"
 const PIN_CORNER_BOTTOM_LEFT := "bottom_left"
@@ -158,16 +172,22 @@ const TOUCH_TOGGLE_DEFAULT_CENTER_Y_RATIO := 0.72
 const TOUCH_TOGGLE_DRAG_THRESHOLD := 8.0
 const TOUCH_TOGGLE_EDGE_LEFT := "left"
 const TOUCH_TOGGLE_EDGE_RIGHT := "right"
+const TOUCH_TOGGLE_SETTINGS_SECTION := "touch_toggle"
+const TOUCH_TOGGLE_SETTINGS_KEY_EDGE := "edge"
+const TOUCH_TOGGLE_SETTINGS_KEY_CENTER_Y_RATIO := "center_y_ratio"
 const TOUCH_TOGGLE_ACTION_COMMAND := "command"
 const TOUCH_TOGGLE_ACTION_LOG := "log"
 const VIRTUAL_KEYBOARD_SAFE_AREA_EPSILON := 0.5
+const GAME_OVERLAY_CANVAS_LAYER := 8192
 
 # Preload scenes and scripts
 const LogLevel = preload("res://addons/logot/log_level.gd")
 const LogotDisplay = preload("res://addons/logot/logot_display.gd")
 const LogotCommandInput = preload("res://addons/logot/logot_command_input.gd")
 const LOGOT_UI_SCENE := preload("res://addons/logot/logot.tscn")
-const PERFORMANCE_GRAPHS_WIDGET_SCENE := preload("res://addons/logot/widgets/performance_graphs_widget.tscn")
+const PERFORMANCE_OVERVIEW_WIDGET_SCENE := preload("res://addons/logot/widgets/performance_overview_widget.tscn")
+const PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE := preload("res://addons/logot/widgets/performance_source_graph_widget.tscn")
+const PerformanceSourceMonitorScript := preload("res://addons/logot/performance_source_monitor.gd")
 const LogotTestManagerScript = preload("res://addons/logot/testing/logot_test_manager.gd")
 const LogotTestPanelScript = preload("res://addons/logot/testing/logot_test_panel.gd")
 
@@ -230,6 +250,8 @@ var widgets := {}
 var console_history := []
 var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
+var _ui_update_batch_depth := 0
+var _ui_update_batch_displays: Array[LogotDisplay] = []
 var _pending_render_texture_widget_view_mode: Dictionary = {}
 var _external_displays: Array = []
 var _display_variable_signal_connections: Dictionary = {}
@@ -251,6 +273,7 @@ var _touch_toggle_drag_touch_index := -1
 var _touch_toggle_drag_start_position := Vector2.ZERO
 var _touch_toggle_drag_pointer_offset := Vector2.ZERO
 var _touch_toggle_drag_start_edge := TOUCH_TOGGLE_EDGE_RIGHT
+var _touch_toggle_drag_dock_x := -1.0
 var _current_git_branch := ""
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
@@ -263,13 +286,21 @@ var _performance_frametime_cpu_msec := 1000.0 / float(PERFORMANCE_GRAPH_MIN_FPS)
 var _performance_frametime_gpu_msec := 1000.0 / float(PERFORMANCE_GRAPH_MIN_FPS)
 var _performance_frame_time_gradient := Gradient.new()
 var _performance_monitor_initialized := false
-var _performance_pin_mode := PERFORMANCE_MODE_HIDDEN
+var _performance_pin_mode := PERFORMANCE_MODE_FPS
 var _performance_graph_time_range_sec := 10.0
 var _performance_fps_signal_accum_sec := 0.0
 var _performance_fps_display_text := str(PERFORMANCE_GRAPH_MIN_FPS)
 var _performance_fps_display_color := Color.WHITE
 var _performance_frame_time_display_text := "0.00 mspf"
 var _performance_frame_time_display_color := Color.WHITE
+var _performance_source_monitor: RefCounted
+var _performance_cpu_source_mode := PERFORMANCE_CPU_SOURCE_MODE_RENDER
+var _performance_source_update_rate_hz := PERFORMANCE_SOURCE_UPDATE_RATE_DEFAULT_HZ
+var _performance_source_render_lease_frame := -1
+var _performance_source_script_lease_frame := -1
+var _performance_source_snapshot_pending := false
+var _performance_source_snapshot_name := ""
+var _performance_source_snapshot_deadline_msec := 0
 
 # =============================================================================
 # LOG SYSTEM PROPERTIES
@@ -1329,12 +1360,12 @@ func remove_display_variable(address: String) -> void:
 	_notify_command_catalog_changed()
 
 
-func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO) -> void:
+func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO, display_label: String = "") -> void:
 	var normalized_address := address.strip_edges().trim_suffix("/")
 	if normalized_address.is_empty():
 		push_warning("Cannot add Logot widget with an empty address.")
 		return
-	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size)
+	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size, display_label)
 	_notify_command_catalog_changed()
 
 
@@ -1799,6 +1830,25 @@ func _get_active_display() -> LogotDisplay:
 	return null
 
 
+func batch_ui_updates(callback: Callable) -> bool:
+	if not callback.is_valid():
+		push_warning("Logot.batch_ui_updates: Invalid callback.")
+		return false
+	if _ui_update_batch_depth == 0:
+		_ui_update_batch_displays = _get_live_displays()
+		for display in _ui_update_batch_displays:
+			display.begin_ui_update_batch()
+	_ui_update_batch_depth += 1
+	callback.call()
+	_ui_update_batch_depth -= 1
+	if _ui_update_batch_depth == 0:
+		for display in _ui_update_batch_displays:
+			if display != null and is_instance_valid(display):
+				display.end_ui_update_batch()
+		_ui_update_batch_displays.clear()
+	return true
+
+
 func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
 	if target_display == null:
 		return
@@ -1814,10 +1864,17 @@ func _sync_pinned_display_state_to(target_display: LogotDisplay) -> void:
 			var corner := PIN_CORNER_TOP_LEFT
 			if live_display.has_method("get_pinned_display_variable_corner"):
 				corner = _normalize_pin_corner(str(live_display.get_pinned_display_variable_corner(normalized_address)))
-			pinned_addresses[normalized_address] = corner
+			pinned_addresses[normalized_address] = {
+				"corner": corner,
+				"transient": live_display.has_method("is_display_variable_transiently_pinned") and bool(live_display.call("is_display_variable_transiently_pinned", normalized_address)),
+			}
 
 	for address in pinned_addresses:
-		target_display.pin_display_variable(str(address), str(pinned_addresses[address]))
+		var pin_data := pinned_addresses[address] as Dictionary
+		if bool(pin_data.get("transient", false)):
+			target_display.set_display_variable_transiently_pinned(str(address), true, str(pin_data.get("corner", PIN_CORNER_TOP_LEFT)))
+		else:
+			target_display.pin_display_variable(str(address), str(pin_data.get("corner", PIN_CORNER_TOP_LEFT)))
 
 
 func _sync_render_texture_widget_view_mode_to(target_display: LogotDisplay) -> void:
@@ -1873,6 +1930,20 @@ func set_display_variable_pinned(address: String, pinned: bool, corner: String =
 		pin_display_variable(address, corner)
 	else:
 		unpin_display_variable(address)
+
+
+func set_display_variable_transiently_pinned(address: String, pinned: bool, corner: String = PIN_CORNER_TOP_LEFT) -> void:
+	var live_displays := _get_live_displays()
+	if live_displays.is_empty():
+		_pending_pinned_display_variables[address] = {
+			"pinned": pinned,
+			"corner": _normalize_pin_corner(corner),
+			"transient": true,
+		}
+		return
+	_pending_pinned_display_variables.erase(address)
+	for display in live_displays:
+		display.set_display_variable_transiently_pinned(address, pinned, _normalize_pin_corner(corner))
 
 
 func is_display_variable_pinned(address: String) -> bool:
@@ -2056,6 +2127,7 @@ func _enter_tree() -> void:
 	# Only set up game UI when NOT in editor
 	if not Engine.is_editor_hint():
 		_load_ingame_popup_settings()
+		_load_touch_toggle_settings()
 		_setup_game_ui()
 		_setup_debugger_connection()
 		call_deferred("_apply_saved_performance_pin_mode")
@@ -2330,7 +2402,7 @@ func _setup_game_ui() -> void:
 
 	# Create CanvasLayer for overlay
 	var canvas_layer := CanvasLayer.new()
-	canvas_layer.layer = 3
+	canvas_layer.layer = GAME_OVERLAY_CANVAS_LAYER
 	add_child(canvas_layer)
 
 	# Create the display base
@@ -3171,6 +3243,37 @@ func _load_ingame_popup_settings() -> void:
 			_ingame_popup_levels[level] = legacy_enabled
 
 
+func _save_touch_toggle_settings() -> void:
+	var config := ConfigFile.new()
+	config.load(SETTINGS_FILE)
+	config.set_value(TOUCH_TOGGLE_SETTINGS_SECTION, TOUCH_TOGGLE_SETTINGS_KEY_EDGE, _touch_toggle_edge)
+	var viewport_size := _get_touch_toggle_viewport_size()
+	if viewport_size.y > 0.0 and _touch_toggle_center_y >= 0.0:
+		config.set_value(
+			TOUCH_TOGGLE_SETTINGS_SECTION,
+			TOUCH_TOGGLE_SETTINGS_KEY_CENTER_Y_RATIO,
+			clampf(_touch_toggle_center_y / viewport_size.y, 0.0, 1.0)
+		)
+	config.save(SETTINGS_FILE)
+
+
+func _load_touch_toggle_settings() -> void:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_FILE) != OK:
+		return
+	var edge := str(config.get_value(TOUCH_TOGGLE_SETTINGS_SECTION, TOUCH_TOGGLE_SETTINGS_KEY_EDGE, _touch_toggle_edge))
+	if edge == TOUCH_TOGGLE_EDGE_LEFT or edge == TOUCH_TOGGLE_EDGE_RIGHT:
+		_touch_toggle_edge = edge
+	var viewport_size := _get_touch_toggle_viewport_size()
+	if viewport_size.y > 0.0:
+		var center_y_ratio := float(config.get_value(
+			TOUCH_TOGGLE_SETTINGS_SECTION,
+			TOUCH_TOGGLE_SETTINGS_KEY_CENTER_Y_RATIO,
+			TOUCH_TOGGLE_DEFAULT_CENTER_Y_RATIO
+		))
+		_touch_toggle_center_y = clampf(center_y_ratio, 0.0, 1.0) * viewport_size.y
+
+
 func _set_ingame_popup_level_enabled(level: int, enabled: bool) -> bool:
 	_init_ingame_popup_level_defaults()
 	if enabled and not _is_ingame_popup_level_available(level):
@@ -3324,12 +3427,16 @@ func _apply_pending_pinned_display_variables_to(target_display: LogotDisplay, cl
 		var pending = _pending_pinned_display_variables[address]
 		var pinned := false
 		var corner := PIN_CORNER_TOP_LEFT
+		var transient := false
 		if pending is Dictionary:
 			pinned = bool((pending as Dictionary).get("pinned", false))
 			corner = _normalize_pin_corner(str((pending as Dictionary).get("corner", PIN_CORNER_TOP_LEFT)))
+			transient = bool((pending as Dictionary).get("transient", false))
 		else:
 			pinned = bool(pending)
-		if pinned:
+		if transient:
+			target_display.set_display_variable_transiently_pinned(str(address), pinned, corner)
+		elif pinned:
 			target_display.pin_display_variable(str(address), corner)
 		else:
 			target_display.unpin_display_variable(str(address))
@@ -3378,6 +3485,8 @@ func _exit_tree() -> void:
 	if _engine_logger != null:
 		OS.remove_logger(_engine_logger)
 		_engine_logger = null
+	if _performance_source_monitor != null:
+		_performance_source_monitor.call("set_capture_enabled", false, false)
 
 	# Only save history when running as game
 	if Engine.is_editor_hint():
@@ -3545,6 +3654,8 @@ func _update_touch_toggle_button_layout() -> void:
 	var dock_y := clampf(_touch_toggle_center_y - dock_size.y * 0.5, min_y, max_y)
 	_touch_toggle_center_y = dock_y + dock_size.y * 0.5
 	var dock_x := 0.0 if _touch_toggle_edge == TOUCH_TOGGLE_EDGE_LEFT else viewport_size.x - dock_size.x
+	if _touch_toggle_drag_active and _touch_toggle_drag_moved and _touch_toggle_drag_dock_x >= 0.0:
+		dock_x = clampf(_touch_toggle_drag_dock_x, 0.0, maxf(0.0, viewport_size.x - dock_size.x))
 
 	_touch_toggle_dock.position = Vector2(dock_x, dock_y)
 	_touch_toggle_dock.size = dock_size
@@ -3675,6 +3786,7 @@ func _begin_touch_toggle_drag(pointer_position: Vector2, action: String, touch_i
 	_touch_toggle_drag_start_position = pointer_position
 	_touch_toggle_drag_pointer_offset = pointer_position - _touch_toggle_dock.global_position
 	_touch_toggle_drag_start_edge = _touch_toggle_edge
+	_touch_toggle_drag_dock_x = _touch_toggle_dock.position.x
 
 
 func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
@@ -3685,23 +3797,31 @@ func _update_touch_toggle_drag(pointer_position: Vector2) -> void:
 	if not _touch_toggle_drag_moved:
 		return
 
-	_touch_toggle_edge = _touch_toggle_drag_start_edge
+	var viewport_size := _get_touch_toggle_viewport_size()
+	if viewport_size.x > 0.0:
+		_touch_toggle_drag_dock_x = pointer_position.x - _touch_toggle_drag_pointer_offset.x
 	var dock_height := TOUCH_EDGE_BUTTON_SIZE.y * 2.0 + TOUCH_EDGE_BUTTON_GAP
 	_touch_toggle_center_y = pointer_position.y - _touch_toggle_drag_pointer_offset.y + dock_height * 0.5
 	_update_touch_toggle_button_layout()
 
 
 func _end_touch_toggle_drag(pointer_position: Vector2) -> void:
-	if _touch_toggle_drag_moved:
+	var did_drag := _touch_toggle_drag_moved
+	if did_drag:
 		_update_touch_toggle_drag(pointer_position)
 		var viewport_size := _get_touch_toggle_viewport_size()
 		if viewport_size.x > 0.0:
-			_touch_toggle_edge = TOUCH_TOGGLE_EDGE_LEFT if pointer_position.x < viewport_size.x * 0.5 else TOUCH_TOGGLE_EDGE_RIGHT
+			var dock_width := TOUCH_EDGE_BUTTON_SIZE.x
+			var dock_center_x := clampf(_touch_toggle_drag_dock_x, 0.0, maxf(0.0, viewport_size.x - dock_width)) + dock_width * 0.5
+			_touch_toggle_edge = TOUCH_TOGGLE_EDGE_LEFT if dock_center_x < viewport_size.x * 0.5 else TOUCH_TOGGLE_EDGE_RIGHT
 	_touch_toggle_drag_active = false
 	_touch_toggle_drag_moved = false
 	_touch_toggle_drag_action = ""
 	_touch_toggle_drag_touch_index = -1
+	_touch_toggle_drag_dock_x = -1.0
 	_update_touch_toggle_button_layout()
+	if did_drag:
+		_save_touch_toggle_settings()
 
 
 func _activate_touch_edge_button(action: String) -> void:
@@ -3787,12 +3907,12 @@ func _get_setting_truncate_multiline() -> bool:
 
 func _cycle_performance_pin_mode() -> void:
 	match _performance_pin_mode:
-		PERFORMANCE_MODE_HIDDEN:
-			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
 		PERFORMANCE_MODE_FPS:
+			_set_performance_pin_mode(PERFORMANCE_MODE_OVERVIEW)
+		PERFORMANCE_MODE_OVERVIEW:
 			_set_performance_pin_mode(PERFORMANCE_MODE_DETAILED)
 		_:
-			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
+			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
 
 
 func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
@@ -3806,13 +3926,24 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 	match normalized_mode:
 		PERFORMANCE_MODE_FPS:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
+		PERFORMANCE_MODE_OVERVIEW:
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_DETAILED:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, _should_pin_gpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 		_:
-			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
+			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 
 	if save:
 		_save_performance_pin_mode()
@@ -3824,9 +3955,11 @@ func _apply_saved_performance_pin_mode() -> void:
 
 func _normalize_performance_pin_mode(mode: String) -> String:
 	var normalized_mode := mode.strip_edges().to_lower()
-	if normalized_mode in [PERFORMANCE_MODE_FPS, PERFORMANCE_MODE_DETAILED, PERFORMANCE_MODE_HIDDEN]:
+	if normalized_mode in [PERFORMANCE_MODE_FPS, PERFORMANCE_MODE_OVERVIEW, PERFORMANCE_MODE_DETAILED]:
 		return normalized_mode
-	return PERFORMANCE_MODE_HIDDEN
+	if normalized_mode == PERFORMANCE_MODE_HIDDEN:
+		return PERFORMANCE_MODE_FPS
+	return PERFORMANCE_MODE_FPS
 
 
 func _save_performance_pin_mode() -> void:
@@ -3834,23 +3967,35 @@ func _save_performance_pin_mode() -> void:
 	config.load(SETTINGS_FILE)
 	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_MODE, _performance_pin_mode)
 	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE, _performance_graph_time_range_sec)
+	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_CPU_SOURCE_MODE, _performance_cpu_source_mode)
+	config.set_value(PERFORMANCE_SETTINGS_SECTION, PERFORMANCE_SETTINGS_KEY_SOURCE_UPDATE_RATE_HZ, _performance_source_update_rate_hz)
 	config.save(SETTINGS_FILE)
 
 
 func _load_performance_pin_mode() -> void:
 	var config := ConfigFile.new()
 	if config.load(SETTINGS_FILE) != OK:
-		_performance_pin_mode = PERFORMANCE_MODE_HIDDEN
+		_performance_pin_mode = PERFORMANCE_MODE_FPS
 		return
 	_performance_pin_mode = _normalize_performance_pin_mode(str(config.get_value(
 		PERFORMANCE_SETTINGS_SECTION,
 		PERFORMANCE_SETTINGS_KEY_MODE,
-		PERFORMANCE_MODE_HIDDEN
+		PERFORMANCE_MODE_FPS
 	)))
 	_performance_graph_time_range_sec = _normalize_performance_graph_time_range(float(config.get_value(
 		PERFORMANCE_SETTINGS_SECTION,
 		PERFORMANCE_SETTINGS_KEY_GRAPH_TIME_RANGE,
 		_performance_graph_time_range_sec
+	)))
+	_performance_cpu_source_mode = _normalize_performance_source_cpu_mode(str(config.get_value(
+		PERFORMANCE_SETTINGS_SECTION,
+		PERFORMANCE_SETTINGS_KEY_CPU_SOURCE_MODE,
+		PERFORMANCE_CPU_SOURCE_MODE_RENDER
+	)))
+	_performance_source_update_rate_hz = _normalize_performance_source_update_rate_hz(float(config.get_value(
+		PERFORMANCE_SETTINGS_SECTION,
+		PERFORMANCE_SETTINGS_KEY_SOURCE_UPDATE_RATE_HZ,
+		PERFORMANCE_SOURCE_UPDATE_RATE_DEFAULT_HZ
 	)))
 
 
@@ -4102,20 +4247,68 @@ func _register_performance_commands() -> void:
 		&"performance_fps_changed"
 	)
 	add_widget(
-		_PERFORMANCE_GRAPHS_WIDGET_PATH,
-		PERFORMANCE_GRAPHS_WIDGET_SCENE,
-		"Shows FPS and frame timing graphs.",
+		_PERFORMANCE_OVERVIEW_WIDGET_PATH,
+		PERFORMANCE_OVERVIEW_WIDGET_SCENE,
+		"Performance Overview: FPS and aggregate frame timing graphs.",
 		PERFORMANCE_COMMAND_GROUP_NAME,
 		PERFORMANCE_COMMAND_GROUP_PRIORITY,
-		Vector2(210.0, 170.0)
+		Vector2(210.0, 170.0),
+		"Performance Overview"
+	)
+	add_widget(
+		_PERFORMANCE_CPU_SOURCES_WIDGET_PATH,
+		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
+		"Shows the top CPU allocation buckets and their frame-time history.",
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		Vector2(210.0, 226.0),
+		"CPU Allocation"
+	)
+	add_widget(
+		_PERFORMANCE_GPU_SOURCES_WIDGET_PATH,
+		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
+		"Shows the top GPU allocation buckets and their frame-time history.",
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		Vector2(210.0, 226.0),
+		"GPU Allocation"
 	)
 	add_setget_command(
-		_PERFORMANCE_GRAPHS_TIME_RANGE_PATH,
+		_PERFORMANCE_TIME_RANGE_PATH,
 		_set_performance_graph_time_range,
 		_get_performance_graph_time_range,
 		"Set the performance graph time range.",
 		_get_performance_graph_time_range_options,
 		Callable(),
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+	add_setget_command(
+		_PERFORMANCE_CPU_SOURCE_MODE_PATH,
+		_set_performance_source_cpu_mode,
+		get_performance_source_cpu_mode,
+		"Choose render CPU, whole-frame CPU, or both allocation panels.",
+		_get_performance_source_cpu_mode_options,
+		Callable(),
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+	add_setget_command(
+		_PERFORMANCE_SOURCE_UPDATE_SPEED_PATH,
+		_set_performance_source_update_rate_hz,
+		get_performance_source_update_rate_hz,
+		"Set allocation widget update speed in refreshes per second.",
+		_get_performance_source_update_rate_options,
+		Callable(),
+		PERFORMANCE_COMMAND_GROUP_NAME,
+		PERFORMANCE_COMMAND_GROUP_PRIORITY
+	)
+	add_command(
+		_PERFORMANCE_SOURCE_SNAPSHOT_PATH,
+		_command_performance_source_snapshot,
+		["name"],
+		0,
+		"Save the current CPU/GPU allocation breakdown and visible history as JSON.",
 		PERFORMANCE_COMMAND_GROUP_NAME,
 		PERFORMANCE_COMMAND_GROUP_PRIORITY
 	)
@@ -4127,6 +4320,7 @@ func _command_performance_fps() -> void:
 
 func _set_performance_graph_time_range(value: Variant) -> void:
 	_performance_graph_time_range_sec = _normalize_performance_graph_time_range(float(value))
+	_trim_performance_source_history_to_time_range()
 	_save_performance_pin_mode()
 
 
@@ -4151,6 +4345,63 @@ func _normalize_performance_graph_time_range(value: float) -> float:
 	return clampf(value, 1.0, 300.0)
 
 
+func _set_performance_source_cpu_mode(value: Variant) -> void:
+	_performance_cpu_source_mode = _normalize_performance_source_cpu_mode(str(value))
+	_save_performance_pin_mode()
+	_update_performance_source_capture_requests()
+
+
+func get_performance_source_cpu_mode() -> String:
+	return _performance_cpu_source_mode
+
+
+func _normalize_performance_source_cpu_mode(value: String) -> String:
+	var normalized := value.strip_edges().to_lower()
+	if normalized in [
+		PERFORMANCE_CPU_SOURCE_MODE_RENDER,
+		PERFORMANCE_CPU_SOURCE_MODE_WHOLE,
+		PERFORMANCE_CPU_SOURCE_MODE_BOTH,
+	]:
+		return normalized
+	return PERFORMANCE_CPU_SOURCE_MODE_RENDER
+
+
+func _get_performance_source_cpu_mode_options() -> Array:
+	return [
+		{"label": "Render CPU", "value": PERFORMANCE_CPU_SOURCE_MODE_RENDER},
+		{"label": "Whole Frame", "value": PERFORMANCE_CPU_SOURCE_MODE_WHOLE},
+		{"label": "Both", "value": PERFORMANCE_CPU_SOURCE_MODE_BOTH},
+	]
+
+
+func _set_performance_source_update_rate_hz(value: Variant) -> void:
+	_performance_source_update_rate_hz = _normalize_performance_source_update_rate_hz(float(value))
+	_save_performance_pin_mode()
+
+
+func get_performance_source_update_rate_hz() -> float:
+	return _performance_source_update_rate_hz
+
+
+func get_performance_source_update_interval_sec() -> float:
+	return 1.0 / maxf(1.0, _performance_source_update_rate_hz)
+
+
+func _normalize_performance_source_update_rate_hz(value: float) -> float:
+	return clampf(value, 1.0, 60.0)
+
+
+func _get_performance_source_update_rate_options() -> Array:
+	return [
+		{"label": "1 Hz", "value": 1.0},
+		{"label": "2 Hz", "value": 2.0},
+		{"label": "4 Hz", "value": 4.0},
+		{"label": "10 Hz", "value": 10.0},
+		{"label": "30 Hz", "value": 30.0},
+		{"label": "60 Hz", "value": 60.0},
+	]
+
+
 func _ensure_performance_monitor_initialized() -> void:
 	if _performance_monitor_initialized:
 		return
@@ -4163,6 +4414,8 @@ func _ensure_performance_monitor_initialized() -> void:
 	_performance_frame_history_gpu.fill(_performance_frametime_gpu_msec)
 	_performance_fps_history.resize(PERFORMANCE_HISTORY_NUM_FRAMES)
 	_performance_fps_history.fill(_performance_frames_per_second)
+	_performance_source_monitor = PerformanceSourceMonitorScript.new()
+	_performance_source_monitor.call("initialize")
 
 	# Match DebugMenu's non-linear FPS color mapping:
 	# red = 10 FPS, yellow = 60 FPS, green = 110 FPS, cyan = 160 FPS.
@@ -4190,13 +4443,18 @@ func _update_performance_monitor(delta: float) -> void:
 	if _performance_frame_history_total.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_frame_history_total.pop_front()
 
+	_update_performance_source_capture_requests()
+	var source_totals: Dictionary = _performance_source_monitor.call("drain_bridge_frames", frame_time_msec) as Dictionary
+
 	var viewport_rid := get_viewport().get_viewport_rid()
-	_performance_frametime_cpu_msec = RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid) + RenderingServer.get_frame_setup_time_cpu()
+	var measured_cpu_msec := RenderingServer.viewport_get_measured_render_time_cpu(viewport_rid) + RenderingServer.get_frame_setup_time_cpu()
+	_performance_frametime_cpu_msec = float(source_totals.get("cpu_ms", measured_cpu_msec))
 	_performance_frame_history_cpu.push_back(_performance_frametime_cpu_msec)
 	if _performance_frame_history_cpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_frame_history_cpu.pop_front()
 
-	_performance_frametime_gpu_msec = RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
+	var measured_gpu_msec := RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
+	_performance_frametime_gpu_msec = float(source_totals.get("gpu_ms", measured_gpu_msec))
 	_performance_frame_history_gpu.push_back(_performance_frametime_gpu_msec)
 	if _performance_frame_history_gpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_frame_history_gpu.pop_front()
@@ -4206,11 +4464,14 @@ func _update_performance_monitor(delta: float) -> void:
 	_performance_fps_history.push_back(_performance_frames_per_second)
 	if _performance_fps_history.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_fps_history.pop_front()
+	_trim_performance_source_history_to_time_range()
 
 	_performance_fps_signal_accum_sec += delta
 	if _performance_fps_signal_accum_sec >= 1.0:
 		_performance_fps_signal_accum_sec = fmod(_performance_fps_signal_accum_sec, 1.0)
 		_update_performance_fps_display_cache(true)
+
+	_update_pending_performance_source_snapshot()
 
 
 func _avg_last_float(values: Array[float], num_values: int) -> float:
@@ -4222,6 +4483,193 @@ func _avg_last_float(values: Array[float], num_values: int) -> float:
 	for i in range(start_index, values.size()):
 		sum += values[i]
 	return sum / float(count)
+
+
+func request_performance_source_collection(widget_kind: String, cpu_mode: String = "") -> void:
+	_ensure_performance_monitor_initialized()
+	var lease_until := int(Engine.get_process_frames()) + 2
+	if widget_kind == "gpu":
+		if can_collect_gpu_performance_sources():
+			_performance_source_render_lease_frame = maxi(_performance_source_render_lease_frame, lease_until)
+	else:
+		var normalized_mode := _normalize_performance_source_cpu_mode(cpu_mode if not cpu_mode.is_empty() else _performance_cpu_source_mode)
+		if normalized_mode in [PERFORMANCE_CPU_SOURCE_MODE_RENDER, PERFORMANCE_CPU_SOURCE_MODE_BOTH]:
+			_performance_source_render_lease_frame = maxi(_performance_source_render_lease_frame, lease_until)
+		if normalized_mode in [PERFORMANCE_CPU_SOURCE_MODE_WHOLE, PERFORMANCE_CPU_SOURCE_MODE_BOTH]:
+			_performance_source_script_lease_frame = maxi(_performance_source_script_lease_frame, lease_until)
+	_update_performance_source_capture_requests()
+
+
+func _trim_performance_source_history_to_time_range() -> void:
+	if _performance_source_monitor == null:
+		return
+	_performance_source_monitor.call("trim_history_limit", _get_performance_source_visible_sample_count())
+
+
+func _update_performance_source_capture_requests() -> void:
+	if _performance_source_monitor == null:
+		return
+	var current_frame := int(Engine.get_process_frames())
+	var render_requested := current_frame <= _performance_source_render_lease_frame
+	var scripts_requested := current_frame <= _performance_source_script_lease_frame
+	if _performance_source_snapshot_pending:
+		render_requested = true
+		scripts_requested = true
+	_performance_source_monitor.call("set_capture_enabled", render_requested, scripts_requested)
+
+
+func is_performance_source_test_mode() -> bool:
+	return _performance_source_monitor != null and bool(_performance_source_monitor.call("is_test_mode"))
+
+
+func can_collect_gpu_performance_sources() -> bool:
+	if RenderingServer.get_current_rendering_driver_name() == "metal":
+		return false
+	if _performance_source_monitor == null:
+		return true
+	var status: Dictionary = _performance_source_monitor.call("refresh_status") as Dictionary
+	if bool(status.get("render_profile_seen", false)) and not bool(status.get("gpu_timestamps_available", false)):
+		return false
+	return true
+
+
+func _should_pin_gpu_performance_sources() -> bool:
+	_ensure_performance_monitor_initialized()
+	if _performance_source_monitor != null and bool(_performance_source_monitor.call("is_test_mode")):
+		return not (_performance_source_monitor.call("get_current", "gpu") as Dictionary).is_empty()
+	if _performance_source_monitor != null and not bool(_performance_source_monitor.call("is_available")):
+		return false
+	return can_collect_gpu_performance_sources()
+
+
+func get_performance_source_widget_snapshot(kind: String) -> Dictionary:
+	_ensure_performance_monitor_initialized()
+	var visible_sample_count := _get_performance_source_visible_sample_count()
+	var source_snapshot: Dictionary = _performance_source_monitor.call(
+		"get_widget_snapshot",
+		kind,
+		visible_sample_count,
+		_performance_graph_time_range_sec
+	) as Dictionary
+	var current: Dictionary = source_snapshot.get("current", {}) as Dictionary
+	var available := bool(_performance_source_monitor.call("is_available"))
+	var message := "Waiting for profiler samples…"
+	if not available:
+		message = str(_performance_source_monitor.call("get_error"))
+	elif current.is_empty():
+		var status: Dictionary = _performance_source_monitor.call("refresh_status") as Dictionary
+		if kind == "gpu" and (not can_collect_gpu_performance_sources() or (bool(status.get("render_profile_seen", false)) and not bool(status.get("gpu_timestamps_available", false)))):
+			message = _get_gpu_timestamp_unavailable_message()
+		else:
+			message = "Collecting profiler samples…"
+	return {
+		"available": available,
+		"message": message,
+		"current": current,
+		"history": source_snapshot.get("history", []),
+		"graph_min_fps": PERFORMANCE_GRAPH_MIN_FPS,
+		"graph_max_fps": PERFORMANCE_GRAPH_MAX_FPS,
+		"graph_time_range_sec": float(source_snapshot.get("graph_time_range_sec", _performance_graph_time_range_sec)),
+		"visible_sample_count": visible_sample_count,
+	}
+
+
+func _get_performance_source_visible_sample_count() -> int:
+	if _performance_graph_time_range_sec <= 0.0:
+		return 0
+	return maxi(2, roundi(_performance_graph_time_range_sec * maxf(1.0, _performance_frames_per_second)))
+
+
+func _get_gpu_timestamp_unavailable_message() -> String:
+	var driver := RenderingServer.get_current_rendering_driver_name()
+	var method := RenderingServer.get_current_rendering_method()
+	if driver == "metal":
+		return "No per-pass GPU timestamps\nGodot 4.7 Metal limitation\nUse Vulkan on Windows/Linux"
+	return "GPU timestamps unavailable for %s/%s" % [method, driver]
+
+
+func get_performance_source_snapshot(include_history: bool = true) -> Dictionary:
+	_ensure_performance_monitor_initialized()
+	return _performance_source_monitor.call(
+		"get_snapshot",
+		include_history,
+		_get_performance_source_visible_sample_count(),
+		_performance_cpu_source_mode,
+		_performance_graph_time_range_sec
+	) as Dictionary
+
+
+func save_performance_source_snapshot(name: String = "") -> String:
+	var global_directory := ProjectSettings.globalize_path(PERFORMANCE_SOURCE_SNAPSHOT_DIR)
+	var directory_error := DirAccess.make_dir_recursive_absolute(global_directory)
+	if directory_error != OK and directory_error != ERR_ALREADY_EXISTS:
+		push_error("Failed to create performance snapshot directory: %s" % error_string(directory_error))
+		return ""
+	var timestamp := Time.get_datetime_string_from_system(false, true).replace("-", "").replace(":", "").replace(" ", "-")
+	var safe_name := _sanitize_performance_snapshot_name(name)
+	var filename := timestamp + ("-" + safe_name if not safe_name.is_empty() else "") + ".json"
+	var path := PERFORMANCE_SOURCE_SNAPSHOT_DIR.path_join(filename)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_error("Failed to open performance snapshot: %s" % path)
+		return ""
+	file.store_string(JSON.stringify(get_performance_source_snapshot(true), "\t", false))
+	file.close()
+	return path
+
+
+func _sanitize_performance_snapshot_name(value: String) -> String:
+	var result := ""
+	for character in value.strip_edges().to_lower():
+		if character in "abcdefghijklmnopqrstuvwxyz0123456789-_":
+			result += character
+		elif not result.ends_with("-"):
+			result += "-"
+	return result.trim_prefix("-").trim_suffix("-").left(64)
+
+
+func _command_performance_source_snapshot(name: String = "") -> void:
+	if _performance_source_snapshot_pending:
+		print_line("A performance source snapshot is already being collected.")
+		return
+	_ensure_performance_monitor_initialized()
+	_performance_source_snapshot_pending = true
+	_performance_source_snapshot_name = name
+	_performance_source_snapshot_deadline_msec = Time.get_ticks_msec() + 2000
+	_update_performance_source_capture_requests()
+	print_line("Collecting CPU/GPU source snapshot…")
+
+
+func _update_pending_performance_source_snapshot() -> void:
+	if not _performance_source_snapshot_pending:
+		return
+	var has_render := not (_performance_source_monitor.call("get_current", "render_cpu") as Dictionary).is_empty()
+	var has_gpu := not (_performance_source_monitor.call("get_current", "gpu") as Dictionary).is_empty()
+	var has_whole := not (_performance_source_monitor.call("get_current", "whole_cpu") as Dictionary).is_empty()
+	var timed_out := Time.get_ticks_msec() >= _performance_source_snapshot_deadline_msec
+	if not timed_out and not (has_render and has_gpu and has_whole):
+		return
+	var path := save_performance_source_snapshot(_performance_source_snapshot_name)
+	_performance_source_snapshot_pending = false
+	_performance_source_snapshot_name = ""
+	_performance_source_snapshot_deadline_msec = 0
+	_update_performance_source_capture_requests()
+	if path.is_empty():
+		print_line("Failed to save performance source snapshot.")
+	elif timed_out:
+		print_line("Saved partial performance source snapshot after timeout: %s" % path)
+	else:
+		print_line("Saved performance source snapshot: %s" % path)
+
+
+func set_performance_source_test_histories(render_cpu: Array, gpu: Array, whole_cpu: Array = []) -> void:
+	_ensure_performance_monitor_initialized()
+	_performance_source_monitor.call("set_test_histories", render_cpu, gpu, whole_cpu)
+
+
+func clear_performance_source_test_histories() -> void:
+	if _performance_source_monitor != null:
+		_performance_source_monitor.call("clear_test_mode")
 
 
 func _get_performance_fps_text() -> String:
@@ -4276,6 +4724,7 @@ func get_performance_snapshot() -> Dictionary:
 		"graph_min_fps": PERFORMANCE_GRAPH_MIN_FPS,
 		"graph_max_fps": PERFORMANCE_GRAPH_MAX_FPS,
 		"graph_time_range_sec": _performance_graph_time_range_sec,
+		"visible_sample_count": _get_performance_source_visible_sample_count(),
 		"color": _performance_color_for_fps(_performance_frames_per_second),
 		"total_color": _performance_color_for_frametime(float(total_stats.get("avg", 0.0))),
 		"cpu_color": _performance_color_for_frametime(float(cpu_stats.get("avg", 0.0))),
@@ -4634,6 +5083,10 @@ func _input(event : InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
 
+	if _handle_mobile_back_event(event):
+		get_tree().get_root().set_input_as_handled()
+		return
+
 	if event is InputEventJoypadButton:
 		var joypad_button_event := event as InputEventJoypadButton
 		if _handle_controller_shortcut_input(joypad_button_event):
@@ -4677,8 +5130,8 @@ func _input(event : InputEvent) -> void:
 			get_tree().get_root().set_input_as_handled()
 		elif (event.get_physical_keycode_with_modifiers() == KEY_ESCAPE or event.keycode == KEY_BACK) and console_visible:
 			if event.pressed:
-				_set_current_input_method_keyboard()
-				if not _handle_touch_command_palette_back_or_close():
+				if not _handle_mobile_back_input():
+					_set_current_input_method_keyboard()
 					_handle_escape_input()
 				get_tree().get_root().set_input_as_handled()
 		if console_visible and event.pressed and rich_label != null and is_instance_valid(rich_label):
@@ -4847,6 +5300,32 @@ func _handle_touch_command_palette_back_or_close() -> bool:
 		and _display.has_method("touch_command_palette_back_or_close")
 		and bool(_display.touch_command_palette_back_or_close())
 	)
+
+
+func _handle_mobile_back_event(event: InputEvent) -> bool:
+	if event == null:
+		return false
+	if event.is_action_pressed("ui_cancel"):
+		return _handle_mobile_back_input()
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		if key_event.pressed and not key_event.echo and (key_event.keycode == KEY_BACK or key_event.keycode == KEY_ESCAPE):
+			return _handle_mobile_back_input()
+	return false
+
+
+func _handle_mobile_back_input() -> bool:
+	if not _touch_mode_enabled or not _is_console_control_visible():
+		return false
+
+	if _display:
+		_display.set_current_input_method(LogotDisplay.INPUT_METHOD_TOUCH)
+
+	if _handle_touch_command_palette_back_or_close():
+		return true
+
+	toggle_console(true)
+	return true
 
 
 func _handle_touch_sidebar_back_or_close() -> bool:

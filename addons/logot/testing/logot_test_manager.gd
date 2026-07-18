@@ -13,6 +13,9 @@ const TEST_CASES_ROOT := "res://tests/logot_cases"
 const TEST_ARTIFACTS_ROOT := "user://artifacts/tests"
 const TEST_GROUP_NAME := "Tests"
 const TEST_GROUP_PRIORITY := 250
+const TEST_ALL_COMMAND := "test/all"
+const EFFECTIVE_ASSERTION_CHECK := "effective_assertion_required"
+const EFFECTIVE_ASSERTION_DETAILS := "Logot tests must record at least one code or visual check."
 
 signal tests_changed()
 signal recent_results_changed()
@@ -21,8 +24,11 @@ signal test_run_completed(result)
 signal running_state_changed(is_running: bool)
 
 var console = null
+var _discovery_roots: Array[String] = [TEST_CASES_ROOT]
 var _tests_by_id: Dictionary = {}
 var _invalid_test_messages: Array[String] = []
+var _last_discovery_report: Dictionary = {}
+var _last_batch_report: Dictionary = {}
 var _recent_results: Array = []
 var _results_by_run_id: Dictionary = {}
 var _latest_result_by_test_id: Dictionary = {}
@@ -49,6 +55,7 @@ func _ready() -> void:
 
 func refresh() -> void:
 	_discover_tests()
+	_last_discovery_report = _build_discovery_report()
 	_load_recent_results()
 	_register_commands()
 	tests_changed.emit()
@@ -65,6 +72,30 @@ func get_tests() -> Array:
 
 func get_invalid_test_messages() -> Array[String]:
 	return _invalid_test_messages.duplicate()
+
+
+func get_discovery_roots() -> Array[String]:
+	return _discovery_roots.duplicate()
+
+
+func set_discovery_roots(roots: Array[String]) -> void:
+	var normalized: Array[String] = []
+	for root in roots:
+		var path := str(root).strip_edges()
+		if path.is_empty() or normalized.has(path):
+			continue
+		normalized.append(path)
+	if normalized.is_empty():
+		normalized.append(TEST_CASES_ROOT)
+	_discovery_roots = normalized
+
+
+func get_discovery_report() -> Dictionary:
+	return _last_discovery_report.duplicate(true)
+
+
+func get_last_batch_report() -> Dictionary:
+	return _last_batch_report.duplicate(true)
 
 
 func get_recent_results(limit := 25) -> Array:
@@ -97,7 +128,25 @@ func run_test(test_id: String) -> bool:
 	if not _tests_by_id.has(test_id):
 		_print_error("Unknown test '%s'." % test_id)
 		return false
+	_set_running_state(true)
 	call_deferred("_run_test_async", test_id)
+	return true
+
+
+func run_all_tests() -> bool:
+	if _is_running:
+		_print_error("A test run is already in progress.")
+		return false
+	if not _invalid_test_messages.is_empty():
+		_last_batch_report = _build_batch_report([], "Invalid test definitions prevent running all tests.")
+		return false
+	var tests := get_tests()
+	if tests.is_empty():
+		_last_batch_report = _build_batch_report([], "No tests discovered.")
+		_print_error("No tests discovered.")
+		return false
+	_set_running_state(true)
+	call_deferred("_run_all_tests_async")
 	return true
 
 
@@ -143,15 +192,30 @@ func capture_visual_checkpoint(name: String, path: String = ""):
 
 
 func _run_test_async(test_id: String):
-	_is_running = true
-	running_state_changed.emit(true)
-
 	var test_case = _tests_by_id.get(test_id, null)
 	if test_case == null:
-		_is_running = false
-		running_state_changed.emit(false)
+		_set_running_state(false)
 		return
+	await _run_test_case_async(test_case)
+	_set_running_state(false)
 
+
+func _run_all_tests_async() -> void:
+	var run_entries: Array[Dictionary] = []
+	for test_case in get_tests():
+		var completed_result = await _run_test_case_async(test_case)
+		if completed_result == null:
+			continue
+		run_entries.append(_serialize_batch_result(completed_result))
+	_last_batch_report = _build_batch_report(run_entries)
+	if bool(_last_batch_report.get("ok", false)):
+		_print_line("All %d Logot test(s) passed." % int(_last_batch_report.get("total_tests", 0)))
+	else:
+		_print_error(str(_last_batch_report.get("error", "All-tests run failed.")))
+	_set_running_state(false)
+
+
+func _run_test_case_async(test_case):
 	_active_test_case = test_case
 	_active_result = LogotTestRunResultScript.new()
 	_active_result.run_id = _build_run_id()
@@ -192,6 +256,7 @@ func _run_test_async(test_id: String):
 		_print_error(run_error)
 
 	_active_result.completed_at = _timestamp_now()
+	_ensure_effective_assertion(_active_result)
 	_collect_active_logs()
 	_active_result.passed = _compute_result_passed(_active_result)
 	_active_result.summary = _build_result_summary(_active_result)
@@ -213,8 +278,12 @@ func _run_test_async(test_id: String):
 	_active_test_case = null
 	_active_scene_root = null
 	_reset_sandbox_root()
-	_is_running = false
-	running_state_changed.emit(false)
+	return completed_result
+
+
+func _set_running_state(is_running: bool) -> void:
+	_is_running = is_running
+	running_state_changed.emit(is_running)
 
 
 func _ensure_sandbox_root() -> void:
@@ -235,19 +304,25 @@ func _reset_sandbox_root() -> void:
 func _discover_tests() -> void:
 	_tests_by_id.clear()
 	_invalid_test_messages.clear()
+	_last_batch_report = {}
 
-	for script_path in _list_gd_files(TEST_CASES_ROOT):
-		var script_resource = load(script_path)
-		if script_resource == null:
-			_invalid_test_messages.append("Failed to load test script: %s" % script_path)
-			continue
-		var test_case = script_resource.new()
-		if not (test_case is LogotTestCaseScript):
-			_invalid_test_messages.append("Script does not extend LogotTestCase: %s" % script_path)
-			continue
-		if not _validate_test_case(test_case, script_path):
-			continue
-		_tests_by_id[test_case.id] = test_case
+	var seen_paths: Dictionary = {}
+	for root_path in _discovery_roots:
+		for script_path in _list_gd_files(root_path):
+			if seen_paths.has(script_path):
+				continue
+			seen_paths[script_path] = true
+			var script_resource = load(script_path)
+			if script_resource == null:
+				_invalid_test_messages.append("Failed to load test script: %s" % script_path)
+				continue
+			var test_case = script_resource.new()
+			if not (test_case is LogotTestCaseScript):
+				_invalid_test_messages.append("Script does not extend LogotTestCase: %s" % script_path)
+				continue
+			if not _validate_test_case(test_case, script_path):
+				continue
+			_tests_by_id[test_case.id] = test_case
 
 
 func _validate_test_case(test_case, script_path: String) -> bool:
@@ -317,6 +392,7 @@ func _register_commands() -> void:
 	_registered_dynamic_commands.clear()
 
 	_register_command("test/list", Callable(self, "_command_list_tests"), [], 0, "Lists discovered Logot tests.")
+	_register_command(TEST_ALL_COMMAND, Callable(self, "_command_run_all_tests"), [], 0, "Runs every discovered Logot test in deterministic ID order.")
 	_register_command("test/recent", Callable(self, "_command_recent_results"), [], 0, "Lists recently completed test runs.")
 	_register_command("test/last", Callable(self, "_command_last_result"), [], 0, "Shows the most recent test result.")
 	_register_command("test/reload", Callable(self, "_command_reload"), [], 0, "Reloads test definitions and persisted results.")
@@ -364,6 +440,10 @@ func _register_command(command_name: String, callable: Callable, arguments: Arra
 
 func _command_reload() -> void:
 	refresh()
+	if not _invalid_test_messages.is_empty():
+		_print_error("Reload found %d invalid Logot test definition(s)." % _invalid_test_messages.size())
+		_log_invalid_test_messages()
+		return
 	_print_line("Reloaded %d test(s)." % _tests_by_id.size())
 
 
@@ -374,9 +454,20 @@ func _command_list_tests() -> void:
 		lines.append("  [color=light_green]%s[/color] -> %s" % [test_case.id, test_case.display_name])
 	if lines.size() == 1:
 		lines.append("  No tests discovered.")
-	for message in _invalid_test_messages:
-		lines.append("  [color=tomato]%s[/color]" % message)
 	console.log(["\n".join(lines)], LogLevel.MESSAGE, "Tests")
+	if not _invalid_test_messages.is_empty():
+		_print_error("Discovery found %d invalid Logot test definition(s)." % _invalid_test_messages.size())
+		_log_invalid_test_messages()
+
+
+func _command_run_all_tests() -> void:
+	if not _invalid_test_messages.is_empty():
+		_last_batch_report = _build_batch_report([], "Invalid test definitions prevent running all tests.")
+		_print_error("Cannot run all tests while discovery has invalid definitions.")
+		_log_invalid_test_messages()
+		return
+	if not run_all_tests() and str(_last_batch_report.get("error", "")).is_empty():
+		_last_batch_report = _build_batch_report([], "Unable to start all-tests run.")
 
 
 func _command_recent_results() -> void:
@@ -466,6 +557,19 @@ func _compute_result_passed(result) -> bool:
 		if int(log_record.level) == LogLevel.ERROR:
 			return false
 	return true
+
+
+func _ensure_effective_assertion(result) -> void:
+	if result == null:
+		return
+	if not result.code_checks.is_empty() or not result.visual_checks.is_empty():
+		return
+	var check_result = LogotTestCheckResultScript.new()
+	check_result.name = EFFECTIVE_ASSERTION_CHECK
+	check_result.passed = false
+	check_result.details = EFFECTIVE_ASSERTION_DETAILS
+	check_result.timestamp = _timestamp_now()
+	result.code_checks.append(check_result)
 
 
 func _build_result_summary(result) -> String:
@@ -579,6 +683,63 @@ func _get_console_log_count() -> int:
 	if console == null or not console.has_method("get_log_entries"):
 		return 0
 	return console.get_log_entries().size()
+
+
+func _build_discovery_report() -> Dictionary:
+	var discovered_test_ids: Array[String] = []
+	for test_case in get_tests():
+		discovered_test_ids.append(str(test_case.id))
+	return {
+		"ok": _invalid_test_messages.is_empty(),
+		"test_count": discovered_test_ids.size(),
+		"test_ids": discovered_test_ids,
+		"invalid_test_messages": get_invalid_test_messages(),
+	}
+
+
+func _build_batch_report(run_entries: Array[Dictionary], error_text := "") -> Dictionary:
+	var passed_test_ids: Array[String] = []
+	var failed_test_ids: Array[String] = []
+	var failing_tests: Array[Dictionary] = []
+	for entry in run_entries:
+		if bool(entry.get("passed", false)):
+			passed_test_ids.append(str(entry.get("test_id", "")))
+		else:
+			failed_test_ids.append(str(entry.get("test_id", "")))
+			failing_tests.append(entry.duplicate(true))
+	var resolved_error := str(error_text)
+	if resolved_error.is_empty() and not failed_test_ids.is_empty():
+		resolved_error = "%d of %d Logot test(s) failed." % [failed_test_ids.size(), run_entries.size()]
+	var ok := resolved_error.is_empty() and failed_test_ids.is_empty() and not run_entries.is_empty() and _invalid_test_messages.is_empty()
+	return {
+		"ok": ok,
+		"error": resolved_error,
+		"total_tests": run_entries.size(),
+		"passed_test_ids": passed_test_ids,
+		"failed_test_ids": failed_test_ids,
+		"failing_tests": failing_tests,
+		"results": run_entries.duplicate(true),
+		"invalid_test_messages": get_invalid_test_messages(),
+	}
+
+
+func _serialize_batch_result(result) -> Dictionary:
+	return {
+		"test_id": str(result.test_id),
+		"display_name": str(result.display_name),
+		"passed": bool(result.passed),
+		"run_id": str(result.run_id),
+		"artifact_path": str(result.artifact_path),
+		"summary": str(result.summary),
+		"check_count": result.code_checks.size(),
+		"visual_count": result.visual_checks.size(),
+		"log_count": result.logs.size(),
+	}
+
+
+func _log_invalid_test_messages() -> void:
+	for message in _invalid_test_messages:
+		_print_error(message)
 
 
 func _print_line(message: String) -> void:

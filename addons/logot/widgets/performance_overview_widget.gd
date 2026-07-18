@@ -1,11 +1,9 @@
 @tool
-extends VBoxContainer
+extends "res://addons/logot/widgets/performance_widget_base.gd"
 
 const DEFAULT_HISTORY_NUM_FRAMES := 500
 const DEFAULT_GRAPH_MIN_FPS := 10.0
 const DEFAULT_GRAPH_MAX_FPS := 160.0
-
-var refresh_in_background := true
 
 var _fps_label: Label
 var _frame_time_label: Label
@@ -14,7 +12,7 @@ var _stats_grid: GridContainer
 var _graphs: Dictionary = {}
 
 
-class PerformanceGraphPanel:
+class PerformanceOverviewGraphPanel:
 	extends Panel
 
 	var history: Array = []
@@ -158,7 +156,7 @@ func _add_graph_row(key: String, title_text: String, values_are_fps: bool) -> vo
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(title)
 
-	var graph := PerformanceGraphPanel.new()
+	var graph := PerformanceOverviewGraphPanel.new()
 	graph.values_are_fps = values_are_fps
 	graph.size_flags_horizontal = Control.SIZE_SHRINK_END
 	row.add_child(graph)
@@ -167,9 +165,9 @@ func _add_graph_row(key: String, title_text: String, values_are_fps: bool) -> vo
 
 func _update_graph(key: String, history: Variant, values_are_fps: bool, color: Variant, min_fps: float, max_fps: float) -> void:
 	var graph = _graphs.get(key, null)
-	if not (graph is PerformanceGraphPanel):
+	if not (graph is PerformanceOverviewGraphPanel):
 		return
-	var panel := graph as PerformanceGraphPanel
+	var panel := graph as PerformanceOverviewGraphPanel
 	panel.history = history as Array if history is Array else []
 	panel.values_are_fps = values_are_fps
 	panel.graph_color = color if color is Color else Color8(128, 226, 95)
@@ -190,6 +188,8 @@ func _make_label(text: String, font_size: int, alignment: HorizontalAlignment) -
 
 
 func _get_visible_sample_count(snapshot: Dictionary) -> int:
+	if snapshot.has("visible_sample_count"):
+		return maxi(0, int(snapshot.get("visible_sample_count", 0)))
 	var range_sec := float(snapshot.get("graph_time_range_sec", 0.0))
 	if range_sec <= 0.0:
 		return 0
@@ -215,12 +215,7 @@ func _color_for_frametime(frametime_msec: float) -> Color:
 
 
 func _get_performance_snapshot() -> Dictionary:
-	if Engine.is_editor_hint():
-		return _empty_snapshot()
-	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null:
-		return _empty_snapshot()
-	var console := tree.root.get_node_or_null("Console")
+	var console := _get_logot_console()
 	if console != null and console.has_method("get_performance_snapshot"):
 		return console.call("get_performance_snapshot") as Dictionary
 	return _empty_snapshot()
