@@ -234,7 +234,7 @@ func _run_test_case_async(test_case):
 	_print_line("[color=cyan]Running test:[/color] %s" % _active_result.display_name)
 	test_run_started.emit(_active_result)
 
-	_reset_sandbox_root()
+	await _drain_sandbox_root_async()
 
 	var run_error := ""
 	var scene_instance: Node = null
@@ -277,7 +277,7 @@ func _run_test_case_async(test_case):
 	_active_result = null
 	_active_test_case = null
 	_active_scene_root = null
-	_reset_sandbox_root()
+	await _drain_sandbox_root_async()
 	return completed_result
 
 
@@ -299,6 +299,17 @@ func _reset_sandbox_root() -> void:
 	_ensure_sandbox_root()
 	for child in _sandbox_root.get_children():
 		child.queue_free()
+
+
+func _drain_sandbox_root_async(max_frames := 30) -> void:
+	_reset_sandbox_root()
+	for _frame in range(max_frames):
+		if _sandbox_root.get_child_count() == 0:
+			for _flush_frame in range(4):
+				await get_tree().process_frame
+			if _sandbox_root.get_child_count() == 0:
+				return
+		await get_tree().process_frame
 
 
 func _discover_tests() -> void:
