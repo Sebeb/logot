@@ -1399,7 +1399,9 @@ func remove_widget(address: String) -> void:
 
 
 func get_widgets() -> Dictionary:
-	return widgets
+	var filtered := widgets.duplicate()
+	filtered.erase(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH)
+	return filtered
 
 
 func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
@@ -1995,7 +1997,9 @@ func get_render_texture_widget_view_mode(address: String) -> String:
 
 
 func get_console_commands() -> Dictionary:
-	return console_commands
+	var filtered := console_commands.duplicate()
+	filtered.erase(_PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH)
+	return filtered
 
 
 func get_display_variables() -> Dictionary:
@@ -3914,7 +3918,9 @@ func _cycle_performance_pin_mode() -> void:
 		PERFORMANCE_MODE_FPS:
 			_set_performance_pin_mode(PERFORMANCE_MODE_OVERVIEW)
 		PERFORMANCE_MODE_OVERVIEW:
-			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
+			_set_performance_pin_mode(PERFORMANCE_MODE_DETAILED)
+		PERFORMANCE_MODE_DETAILED:
+			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
 		_:
 			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
 
@@ -3936,14 +3942,14 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_OVERVIEW:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_DETAILED:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, _should_pin_gpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 		PERFORMANCE_MODE_HIDDEN:
