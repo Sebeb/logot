@@ -9,6 +9,16 @@ class EngineLogger extends Logger:
 	var _in_logger_callback := false
 	var console = null
 
+	## Engine logger callbacks fire on whichever thread raised the message, and
+	## the resource loader parses scripts off the main thread. Console.log()
+	## touches the SceneTree (display nodes, in-game popups), so anything that
+	## arrives off-thread has to be handed back to the main thread first.
+	func _dispatch(objects: Array, level: int, channel: String, backtrace_str: String) -> void:
+		if OS.get_thread_caller_id() == OS.get_main_thread_id():
+			console.log(objects, level, channel, backtrace_str)
+		else:
+			console.call_deferred("log", objects, level, channel, backtrace_str)
+
 	## Intercepts engine errors and warnings (push_error, push_warning, etc.)
 	func _log_error(function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, error_type: int, script_backtraces: Array[ScriptBacktrace]) -> void:
 		# Prevent recursive logging loops if our own logging triggers engine output.
@@ -48,7 +58,7 @@ class EngineLogger extends Logger:
 				backtrace_str = str(script_backtraces[gdscript_idx])
 
 		var full_message := message + source_info
-		console.log([full_message], level, "Godot", backtrace_str)
+		_dispatch([full_message], level, "Godot", backtrace_str)
 		_in_logger_callback = false
 
 	## Intercepts engine messages (print, print_rich, etc.)
@@ -85,7 +95,7 @@ class EngineLogger extends Logger:
 			backtrace_str = "\n".join(lines)
 
 		var level := LogLevel.ERROR if error else LogLevel.INFO
-		console.log([message], level, "Godot", backtrace_str)
+		_dispatch([message], level, "Godot", backtrace_str)
 		_in_logger_callback = false
 
 
