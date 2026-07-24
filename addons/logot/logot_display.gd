@@ -691,9 +691,12 @@ class AutocompleteCommandColumn:
 			if visible_height <= 0.0:
 				continue
 
-			var center_row := visible_height * 0.5
-			var selected_offset := _get_row_offset_from_scroll(candidate, selected_row)
-			var center_distance := absf(selected_offset - center_row)
+			# Compare visual centres, rather than the row's top edge.  Apart from
+			# looking more natural, this makes the first and last selectable rows
+			# settle at the true scroll limits when they cannot be centred.
+			var content_center := visible_height * 0.5
+			var selected_center := _get_row_offset_from_scroll(candidate, selected_row) + _get_row_height(selected_row) * 0.5
+			var center_distance := absf(selected_center - content_center)
 			var scroll_delta := absi(candidate - current_scroll)
 			if center_distance < best_center_distance:
 				best_center_distance = center_distance
