@@ -8534,6 +8534,13 @@ func _set_active_command_column_selection(index: int) -> void:
 		index = matches.size() - 1
 	elif index >= matches.size():
 		index = 0
+	var selection_step := -1 if int(column_state.get("selected_index", -1)) > index else 1
+	var attempts := 0
+	while bool(matches[index].get("disabled", false)) and attempts < matches.size():
+		index = posmod(index + selection_step, matches.size())
+		attempts += 1
+	if bool(matches[index].get("disabled", false)):
+		return
 
 	column_state["selected_index"] = index
 	_autocomplete_column_states[_autocomplete_active_column_index] = column_state
