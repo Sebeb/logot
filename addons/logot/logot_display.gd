@@ -84,6 +84,8 @@ class LogotCommand:
 	var group_priority: int
 	var option_group_name: String
 	var option_group_priority: int
+	var display_label: String
+	var icon: Texture2D
 
 	func _init(
 		in_function: Callable,
@@ -96,7 +98,9 @@ class LogotCommand:
 		in_group_name: String = "",
 		in_group_priority: int = 0,
 		in_option_group_name: String = "",
-		in_option_group_priority: int = 0
+		in_option_group_priority: int = 0,
+		in_display_label: String = "",
+		in_icon: Texture2D = null
 	):
 		function = in_function
 		arguments = in_arguments
@@ -109,6 +113,8 @@ class LogotCommand:
 		group_priority = in_group_priority if not group_name.is_empty() else 0
 		option_group_name = in_option_group_name.strip_edges()
 		option_group_priority = in_option_group_priority if not option_group_name.is_empty() else 0
+		display_label = in_display_label.strip_edges()
+		icon = in_icon
 
 
 class LogotDisplayVariable:
@@ -1095,8 +1101,19 @@ class AutocompleteCommandColumn:
 		var value_width := float(row_data.get("measured_value_width", 0))
 		var action_width := float(row_data.get("measured_action_width", 0))
 		var text_color := _resolve_row_text_color(selection_state)
+		if bool(row_data.get("disabled", false)):
+			text_color.a *= 0.45
 		var text_baseline := row_rect.position.y + baseline_offset
 		var content_left := row_rect.position.x + CONTENT_PADDING_X
+		var icon_texture := row_data.get("icon") as Texture2D
+		var reserve_icon_space := bool(row_data.get("column_has_icons", false))
+		if reserve_icon_space:
+			var icon_size := minf(row_rect.size.y - 8.0, 20.0)
+			if icon_texture != null:
+				var icon_rect := Rect2(content_left, row_rect.position.y + (row_rect.size.y - icon_size) * 0.5, icon_size, icon_size)
+				draw_rect(icon_rect.grow(2.0), Color(0.0, 0.0, 0.0, 0.35), true)
+				draw_texture_rect(icon_texture, icon_rect, false, text_color)
+			content_left += icon_size + CELL_GAP
 		var content_right := row_rect.position.x + row_rect.size.x - CONTENT_PADDING_X
 		var info_cursor_x := content_right
 
@@ -1730,6 +1747,7 @@ var _welcome_message: String = "Logot\n"
 var _log_entries_provider: Callable
 var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
+var _command_path_disabled_provider: Callable  # Returns whether a command path is disabled
 var _display_variables_provider: Callable  # Returns Dictionary of address -> display_variable
 var _widgets_provider: Callable  # Returns Dictionary of address -> widget_data
 var _rejected_level_count_provider: Callable  # Returns int for a given level
@@ -1878,6 +1896,11 @@ func set_entry_text_provider(provider: Callable) -> void:
 
 func set_commands_provider(provider: Callable) -> void:
 	_commands_provider = provider
+	invalidate_command_catalog(false)
+
+
+func set_command_path_disabled_provider(provider: Callable) -> void:
+	_command_path_disabled_provider = provider
 	invalidate_command_catalog(false)
 
 
@@ -5851,6 +5874,7 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 		"has_command": has_direct_command or has_option_command or has_widget,
 		"has_display_variable": _has_display_variable(tier_text),
 		"has_widget": has_widget,
+		"disabled": _is_command_path_disabled(tier_text),
 	}
 	if not tier_label_override.is_empty():
 		match_data["tier_label_override"] = tier_label_override
@@ -6289,10 +6313,16 @@ func _get_autocomplete_tier_label(prefix: String, match_data: Dictionary) -> Str
 	if not tier_label_override.is_empty():
 		return tier_label_override
 	var tier: String = match_data.get("tier", "")
+	var display_label := _get_command_display_label(tier)
+	if not display_label.is_empty():
+		return display_label
 	return tier.substr(prefix.length()) if tier.begins_with(prefix) else tier
 
 
 func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary) -> Dictionary:
+	var tier := str(match_data.get("tier", ""))
+	var disabled := bool(match_data.get("disabled", false))
+	var icon := _get_command_icon(tier)
 	if match_data.get("is_text_input", false):
 		return {
 			"label": _get_autocomplete_tier_label(prefix, match_data),
@@ -6300,6 +6330,8 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"value_text": "",
 			"has_children": false,
 			"can_submit": match_data.get("has_command", false),
+			"disabled": disabled,
+			"icon": icon,
 			"row_background_tint": match_data.get("row_background_tint", null),
 		}
 
@@ -6310,6 +6342,8 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"value_text": "",
 			"has_children": false,
 			"can_submit": false,
+			"disabled": disabled,
+			"icon": icon,
 		}
 	if match_data.get("suppress_value_text", false):
 		return {
@@ -6338,6 +6372,8 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		"value_loaded": display_variable_address.is_empty(),
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
+		"disabled": disabled,
+		"icon": icon,
 	}
 
 
@@ -6528,6 +6564,28 @@ func _get_command_data_direct(command_name: String) -> Variant:
 
 func _get_command_data(command_name: String) -> Variant:
 	return _get_command_data_direct(_resolve_alias_command_path(command_name))
+
+
+func _is_command_path_disabled(command_path: String) -> bool:
+	return _command_path_disabled_provider.is_valid() and bool(_command_path_disabled_provider.call(command_path))
+
+
+func _get_command_display_label(command_name: String) -> String:
+	var command_data := _get_command_data(command_name)
+	if command_data is LogotCommand:
+		return str((command_data as LogotCommand).display_label)
+	if command_data is Dictionary:
+		return str((command_data as Dictionary).get("display_label", ""))
+	return ""
+
+
+func _get_command_icon(command_name: String) -> Texture2D:
+	var command_data := _get_command_data(command_name)
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).icon
+	if command_data is Dictionary:
+		return (command_data as Dictionary).get("icon") as Texture2D
+	return null
 
 
 func _command_path_takes_parameter(command_name: String) -> bool:
@@ -7531,6 +7589,11 @@ func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
 
 
 func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String) -> Dictionary:
+	var column_has_icons := false
+	for candidate_row in rows:
+		if (candidate_row as Dictionary).get("icon") is Texture2D:
+			column_has_icons = true
+			break
 	var name_width := 0
 	var value_width := 0
 	var action_width := 0
@@ -7538,6 +7601,9 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	for row_index in range(rows.size()):
 		var row_data: Dictionary = rows[row_index]
 		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
+		if column_has_icons and not bool(row_data.get("is_group_header", false)):
+			row_name_width += 20 + int(AutocompleteCommandColumn.CELL_GAP)
+			row_data["column_has_icons"] = true
 		var row_value_width := 0
 		var row_action_width := 0
 		if bool(row_data.get("is_group_header", false)):
@@ -7708,6 +7774,8 @@ func _get_submission_text_for_autocomplete_match(column_state: Dictionary, match
 
 func _activate_command_autocomplete_match(column_state: Dictionary, match_data: Dictionary) -> void:
 	if match_data.is_empty():
+		return
+	if bool(match_data.get("disabled", false)):
 		return
 	if bool(match_data.get("is_option", false)):
 		var option_submission_text := _get_submission_text_for_autocomplete_match(column_state, match_data)

@@ -253,6 +253,7 @@ var rich_label: RichTextLabel
 var line_edit: LineEdit
 
 var console_commands := {}
+var _disabled_command_paths: Dictionary = {}
 var display_variables := {}
 var widgets := {}
 var console_history := []
@@ -683,17 +684,17 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
+func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null) -> void:
 	if arguments is int:
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon)
 	_notify_command_catalog_changed()
 
 
@@ -1314,7 +1315,7 @@ func _resolve_console_command_path(command_path: String) -> Dictionary:
 
 
 func can_execute_console_command(command_path: String) -> bool:
-	return bool(_resolve_console_command_path(command_path).get("valid", false))
+	return not is_command_path_disabled(command_path) and bool(_resolve_console_command_path(command_path).get("valid", false))
 
 
 func _execute_setget_command_setter(command_name: String, setter: Callable, getter: Callable, value_text: String, options_provider: Callable = Callable()) -> void:
@@ -1353,7 +1354,31 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 
 func remove_command(command_name : String) -> void:
 	console_commands.erase(command_name)
+	_disabled_command_paths.erase(command_name)
 	_notify_command_catalog_changed()
+
+
+## Disables a command path and every descendant path in Logot's command palette.
+func set_command_path_disabled(command_path: String, disabled: bool = true) -> void:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty():
+		return
+	if disabled:
+		_disabled_command_paths[normalized_path] = true
+	else:
+		_disabled_command_paths.erase(normalized_path)
+	_notify_command_catalog_changed()
+
+
+func is_command_path_disabled(command_path: String) -> bool:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty():
+		return false
+	for disabled_path_variant in _disabled_command_paths:
+		var disabled_path := str(disabled_path_variant)
+		if normalized_path == disabled_path or normalized_path.begins_with(disabled_path + "/"):
+			return true
+	return false
 
 func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"", display_label_provider: Callable = Callable()) -> void:
 	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name, display_label_provider)
@@ -2435,6 +2460,7 @@ func _setup_game_ui() -> void:
 	_display.set_log_entries_provider(func(): return _log_entries)
 	_display.set_entry_text_provider(func(entry, truncate): return get_collapsed_display_text(entry, truncate))
 	_display.set_commands_provider(func(): return console_commands)
+	_display.set_command_path_disabled_provider(is_command_path_disabled)
 	_display.set_display_variables_provider(func(): return display_variables)
 	_display.set_widgets_provider(func(): return widgets)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))
@@ -5678,6 +5704,9 @@ func _execute_command(command_input: String) -> Dictionary:
 		return {"ok": false, "error": "Command is empty."}
 
 	var requested_command := str(text_split[0]).strip_edges()
+	if is_command_path_disabled(requested_command):
+		print_error("Command is disabled: /%s" % requested_command)
+		return {"ok": false, "error": "Command is disabled: /%s" % requested_command}
 	var command_resolution := _resolve_console_command_path(requested_command)
 	if not command_resolution.get("valid", false):
 		console_unknown_command.emit(requested_command)
