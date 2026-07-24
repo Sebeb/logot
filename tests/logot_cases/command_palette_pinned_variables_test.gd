@@ -20,6 +20,21 @@ func run(ctx) -> void:
 	var address := "tests/command_palette_pin"
 	console.add_display_variable(address, func(): return "visible")
 	console.pin_display_variable(address)
+	var root_matches: Array = display._build_tier_matches("", "")
+	var pins_matches: Array = display._build_tier_matches("pins/", "")
+	var encoded_address := address.uri_encode()
+	var root_contains_pinned_address := false
+	var pins_match: Dictionary = {}
+	for match_data in root_matches:
+		var tier := str((match_data as Dictionary).get("tier", ""))
+		if tier == address:
+			root_contains_pinned_address = true
+	for match_data in pins_matches:
+		if str((match_data as Dictionary).get("tier", "")) == "pins/%s" % encoded_address:
+			pins_match = match_data
+	ctx.check("pinned variable is absent from root autocomplete", not root_contains_pinned_address)
+	ctx.check("pinned variable appears directly under pins", not pins_match.is_empty())
+	ctx.check("pinned variable group is prioritized", int(pins_match.get("group_priority", 0)) < 0)
 
 	console._set_touch_mode_enabled(false, false)
 	if console.control != null:

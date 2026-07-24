@@ -143,8 +143,6 @@ const INGAME_POPUP_ENABLED_MARK := "✓"
 const INGAME_POPUP_DISABLED_MARK := "✗"
 const TIMER_COMMAND_GROUP_NAME := "Timers"
 const TIMER_COMMAND_GROUP_PRIORITY := 225
-const PERFORMANCE_COMMAND_GROUP_NAME := "Performance"
-const PERFORMANCE_COMMAND_GROUP_PRIORITY := 230
 const PERFORMANCE_HISTORY_NUM_FRAMES := 500
 const PERFORMANCE_FPS_NUM_FRAMES := 25
 const PERFORMANCE_GRAPH_MIN_FPS := 10
@@ -1113,10 +1111,10 @@ func _resolve_pins_view_alias_token_target(token: String) -> String:
 
 func _resolve_pins_view_alias_command_path(command_path: String) -> String:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
-	if normalized_path == "pins/view" or not normalized_path.begins_with("pins/view/"):
+	if console_commands.has(normalized_path) or not normalized_path.begins_with("pins/"):
 		return normalized_path
 
-	var alias_remainder := normalized_path.substr("pins/view/".length())
+	var alias_remainder := normalized_path.substr("pins/".length())
 	if alias_remainder.is_empty():
 		return normalized_path
 
@@ -4255,9 +4253,7 @@ func _register_performance_commands() -> void:
 		_command_performance_fps,
 		[],
 		0,
-		"Prints the current FPS.",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		"Prints the current FPS."
 	)
 	add_display_variable(
 		_PERFORMANCE_FPS_PATH,
@@ -4265,8 +4261,8 @@ func _register_performance_commands() -> void:
 		_get_performance_fps_color,
 		Callable(),
 		true,
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		"",
+		0,
 		self,
 		&"performance_fps_changed"
 	)
@@ -4274,8 +4270,8 @@ func _register_performance_commands() -> void:
 		_PERFORMANCE_OVERVIEW_WIDGET_PATH,
 		PERFORMANCE_OVERVIEW_WIDGET_SCENE,
 		"Performance Overview: FPS and aggregate frame timing graphs.",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		"",
+		0,
 		Vector2(210.0, 170.0),
 		"Performance Overview"
 	)
@@ -4283,8 +4279,8 @@ func _register_performance_commands() -> void:
 		_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH,
 		PERFORMANCE_OVERVIEW_WIDGET_SCENE,
 		"Performance graphs (legacy alias for the overview widget).",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		"",
+		0,
 		Vector2(210.0, 170.0),
 		"Performance Graphs"
 	)
@@ -4292,8 +4288,8 @@ func _register_performance_commands() -> void:
 		_PERFORMANCE_CPU_SOURCES_WIDGET_PATH,
 		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
 		"Shows the top CPU allocation buckets and their frame-time history.",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		"",
+		0,
 		Vector2(210.0, 226.0),
 		"CPU Allocation"
 	)
@@ -4301,8 +4297,8 @@ func _register_performance_commands() -> void:
 		_PERFORMANCE_GPU_SOURCES_WIDGET_PATH,
 		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
 		"Shows the top GPU allocation buckets and their frame-time history.",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY,
+		"",
+		0,
 		Vector2(210.0, 226.0),
 		"GPU Allocation"
 	)
@@ -4312,9 +4308,7 @@ func _register_performance_commands() -> void:
 		_get_performance_graph_time_range,
 		"Set the performance graph time range.",
 		_get_performance_graph_time_range_options,
-		Callable(),
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		Callable()
 	)
 	add_setget_command(
 		_PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH,
@@ -4322,9 +4316,7 @@ func _register_performance_commands() -> void:
 		_get_performance_graph_time_range,
 		"Set the performance graph time range.",
 		_get_performance_graph_time_range_options,
-		Callable(),
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		Callable()
 	)
 	add_setget_command(
 		_PERFORMANCE_CPU_SOURCE_MODE_PATH,
@@ -4332,9 +4324,7 @@ func _register_performance_commands() -> void:
 		get_performance_source_cpu_mode,
 		"Choose render CPU, whole-frame CPU, or both allocation panels.",
 		_get_performance_source_cpu_mode_options,
-		Callable(),
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		Callable()
 	)
 	add_setget_command(
 		_PERFORMANCE_SOURCE_UPDATE_SPEED_PATH,
@@ -4342,18 +4332,14 @@ func _register_performance_commands() -> void:
 		get_performance_source_update_rate_hz,
 		"Set allocation widget update speed in refreshes per second.",
 		_get_performance_source_update_rate_options,
-		Callable(),
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		Callable()
 	)
 	add_command(
 		_PERFORMANCE_SOURCE_SNAPSHOT_PATH,
 		_command_performance_source_snapshot,
 		["name"],
 		0,
-		"Save the current CPU/GPU allocation breakdown and visible history as JSON.",
-		PERFORMANCE_COMMAND_GROUP_NAME,
-		PERFORMANCE_COMMAND_GROUP_PRIORITY
+		"Save the current CPU/GPU allocation breakdown and visible history as JSON."
 	)
 
 

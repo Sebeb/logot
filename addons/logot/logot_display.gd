@@ -1646,9 +1646,9 @@ const PINNED_OVERLAY_OPPOSITE_CORNER := {
 	PINNED_OVERLAY_CORNER_BOTTOM_LEFT: PINNED_OVERLAY_CORNER_BOTTOM_RIGHT,
 	PINNED_OVERLAY_CORNER_BOTTOM_RIGHT: PINNED_OVERLAY_CORNER_BOTTOM_LEFT,
 }
-const PINS_VIEW_ALIAS_PREFIX := "pins/view/"
-const ROOT_COMMAND_GROUP_PINNED_NAME := "pinned commands"
-const ROOT_COMMAND_GROUP_PINNED_PRIORITY := -100
+const PINS_ALIAS_PREFIX := "pins/"
+const PINNED_COMMAND_GROUP_NAME := "pinned variables"
+const PINNED_COMMAND_GROUP_PRIORITY := -100
 const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
 const DEBUG_AUTOCOMPLETE_DEFAULT := false
 const DEBUG_AUTOCOMPLETE_ENV := "LOGOT_DEBUG_AUTOCOMPLETE"
@@ -5524,6 +5524,10 @@ func _decode_pins_view_alias_token(token: String) -> String:
 	return token.uri_decode()
 
 
+func _get_pins_alias_path(address: String) -> String:
+	return PINS_ALIAS_PREFIX + _encode_pins_view_alias_token(address)
+
+
 func _resolve_pins_view_alias_token_target(token: String) -> String:
 	if token.is_empty():
 		return ""
@@ -5561,10 +5565,10 @@ func _resolve_pins_view_alias_target_path(alias_remainder: String) -> String:
 
 func _resolve_alias_command_path(command_path: String) -> String:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
-	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+	if _get_command_data_direct(normalized_path) != null or not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return normalized_path
 
-	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	var alias_remainder := normalized_path.substr(PINS_ALIAS_PREFIX.length())
 	if alias_remainder.is_empty():
 		return normalized_path
 
@@ -5574,10 +5578,10 @@ func _resolve_alias_command_path(command_path: String) -> String:
 
 func _get_display_alias_command_path(command_path: String) -> String:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
-	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+	if _get_command_data_direct(normalized_path) != null or not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return normalized_path
 
-	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	var alias_remainder := normalized_path.substr(PINS_ALIAS_PREFIX.length())
 	if alias_remainder.is_empty():
 		return normalized_path
 
@@ -5587,15 +5591,15 @@ func _get_display_alias_command_path(command_path: String) -> String:
 	var token_target := _resolve_pins_view_alias_token_target(alias_token)
 	if token_target.is_empty():
 		return normalized_path
-	return PINS_VIEW_ALIAS_PREFIX + token_target + token_suffix
+	return PINS_ALIAS_PREFIX + token_target + token_suffix
 
 
 func _get_internal_alias_command_path(command_path: String) -> String:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
-	if normalized_path == "pins/view" or not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+	if _get_command_data_direct(normalized_path) != null or not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return normalized_path
 
-	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	var alias_remainder := normalized_path.substr(PINS_ALIAS_PREFIX.length())
 	if alias_remainder.is_empty():
 		return normalized_path
 
@@ -5614,7 +5618,7 @@ func _get_internal_alias_command_path(command_path: String) -> String:
 		return normalized_path
 
 	var suffix := alias_remainder.substr(best_match.length())
-	return PINS_VIEW_ALIAS_PREFIX + _encode_pins_view_alias_token(best_match) + suffix
+	return PINS_ALIAS_PREFIX + _encode_pins_view_alias_token(best_match) + suffix
 
 
 func _set_line_edit_command_path(command_path: String, include_trailing_separator: bool) -> void:
@@ -5632,16 +5636,18 @@ func _set_line_edit_command_path(command_path: String, include_trailing_separato
 func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String]:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
 	var addresses: Array[String] = []
-	if normalized_path != "pins/view" and not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+	if normalized_path != "pins" and not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return addresses
 
 	for pinned_address in _get_available_pinned_display_variables():
-		_append_unique_address(addresses, PINS_VIEW_ALIAS_PREFIX + _encode_pins_view_alias_token(pinned_address))
+		var alias_path := _get_pins_alias_path(pinned_address)
+		if _get_command_data_direct(alias_path) == null:
+			_append_unique_address(addresses, alias_path)
 
-	if not normalized_path.begins_with(PINS_VIEW_ALIAS_PREFIX):
+	if not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return addresses
 
-	var alias_remainder := normalized_path.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	var alias_remainder := normalized_path.substr(PINS_ALIAS_PREFIX.length())
 	if alias_remainder.is_empty():
 		return addresses
 
@@ -5659,7 +5665,7 @@ func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Ar
 		var first_separator := alias_remainder.find("/")
 		if first_separator != -1:
 			alias_token = alias_remainder.substr(0, first_separator)
-		_append_unique_address(addresses, PINS_VIEW_ALIAS_PREFIX + alias_token + suffix)
+		_append_unique_address(addresses, PINS_ALIAS_PREFIX + alias_token + suffix)
 
 	return addresses
 
@@ -5805,48 +5811,7 @@ func _calculate_tier_command_group_data(tier: String) -> Dictionary:
 	var widget_group_name := str(widget_group.get("name", "")).strip_edges()
 	if not widget_group_name.is_empty():
 		return widget_group
-
-	var separator := resolved_tier.rfind("/")
-	if separator > 0:
-		var parent_command := resolved_tier.substr(0, separator)
-		if _get_command_data_direct(parent_command) != null:
-			return _get_command_group_data(parent_command)
-	return _get_descendant_tier_command_group_data(resolved_tier)
-
-
-func _get_descendant_tier_command_group_data(tier: String) -> Dictionary:
-	var normalized_tier := tier.strip_edges().trim_suffix("/")
-	if normalized_tier.is_empty():
-		return {"name": "", "priority": 0}
-
-	var matched_group_name := ""
-	var matched_group_priority := 0
-	var found_direct_command := false
-	var tier_prefix := normalized_tier + "/"
-
-	for address in _get_menu_hierarchy_addresses(normalized_tier):
-		var address_text := str(address)
-		if not address_text.begins_with(tier_prefix):
-			continue
-		if _get_command_data_direct(address_text) == null:
-			continue
-
-		found_direct_command = true
-		var group_data := _get_command_group_data(address_text)
-		var group_name := str(group_data.get("name", "")).strip_edges()
-		var group_priority := int(group_data.get("priority", 0))
-		if group_name.is_empty():
-			continue
-		if matched_group_name.is_empty():
-			matched_group_name = group_name
-			matched_group_priority = group_priority
-			continue
-		if group_name != matched_group_name or group_priority != matched_group_priority:
-			return {"name": "", "priority": 0}
-
-	if not found_direct_command or matched_group_name.is_empty():
-		return {"name": "", "priority": 0}
-	return _normalize_command_group_data(matched_group_name, matched_group_priority)
+	return {"name": "", "priority": 0}
 
 
 func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Dictionary:
@@ -5870,8 +5835,8 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 	var has_direct_command := _get_commands().has(resolved_tier)
 	var has_widget := _has_widget_direct(resolved_tier)
 	var tier_label_override := ""
-	if prefix == PINS_VIEW_ALIAS_PREFIX and tier_text.begins_with(PINS_VIEW_ALIAS_PREFIX):
-		var alias_token := tier_text.substr(PINS_VIEW_ALIAS_PREFIX.length())
+	if prefix == PINS_ALIAS_PREFIX and _get_command_data_direct(tier_text) == null and tier_text.begins_with(PINS_ALIAS_PREFIX):
+		var alias_token := tier_text.substr(PINS_ALIAS_PREFIX.length())
 		var token_target := _resolve_pins_view_alias_token_target(alias_token)
 		if not token_target.is_empty():
 			tier_label_override = token_target
@@ -5892,6 +5857,9 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 	if not group_name.is_empty():
 		match_data["group_name"] = group_name
 		match_data["group_priority"] = int(command_group.get("priority", 0))
+	if (tier_text == "pins" and not prefix.is_empty()) or not tier_label_override.is_empty():
+		match_data["group_name"] = PINNED_COMMAND_GROUP_NAME
+		match_data["group_priority"] = PINNED_COMMAND_GROUP_PRIORITY
 
 	return match_data
 
@@ -5929,20 +5897,6 @@ func _merge_tier_match(matches: Array[Dictionary], candidate: Dictionary) -> voi
 		return
 
 	matches.append(candidate)
-
-
-func _append_root_group_direct_matches(prefix: String, query: String, matches: Array[Dictionary]) -> void:
-	if not prefix.is_empty():
-		return
-
-	for pinned_address in _get_available_pinned_display_variables():
-		var score := _calculate_match_score(pinned_address, query)
-		if score < 0:
-			continue
-		var pinned_match := _build_tier_match_data(pinned_address, score, prefix)
-		pinned_match["group_name"] = ROOT_COMMAND_GROUP_PINNED_NAME
-		pinned_match["group_priority"] = ROOT_COMMAND_GROUP_PINNED_PRIORITY
-		_merge_tier_match(matches, pinned_match)
 
 
 func _sort_tier_matches(matches: Array[Dictionary], apply_group_sorting: bool) -> void:
@@ -6155,8 +6109,6 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 	for tier in tier_matches:
 		var tier_text := str(tier)
 		_merge_tier_match(matches, _build_tier_match_data(tier_text, int(tier_matches[tier]), prefix))
-
-	_append_root_group_direct_matches(prefix, query, matches)
 
 	var text_input_match := _build_text_input_tier_match(prefix, query)
 	if not text_input_match.is_empty():
