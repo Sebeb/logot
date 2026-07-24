@@ -16,6 +16,20 @@ func run(ctx) -> void:
 	ctx.check("active display exists", display != null)
 	if display == null:
 		return
+	var root_matches: Array = display._build_tier_matches("", "")
+	var console_root_match: Dictionary = {}
+	var pins_root_match: Dictionary = {}
+	for match_data in root_matches:
+		if str((match_data as Dictionary).get("tier", "")) == "console":
+			console_root_match = match_data
+		elif str((match_data as Dictionary).get("tier", "")) == "pins":
+			pins_root_match = match_data
+	ctx.check("console root command is in the console group", console_root_match.get("group_name", "") == "console")
+	ctx.check("pins root command is in the console group", pins_root_match.get("group_name", "") == "console")
+
+	var render_scale_matches: Array = display._build_tier_matches("console/settings/render_scale/", "")
+	for match_data in render_scale_matches:
+		ctx.check("render scale commands have no group", not (match_data as Dictionary).has("group_name"))
 
 	var fresh_display := LogotDisplay.new()
 	ctx.check(

@@ -175,8 +175,6 @@ const PIN_CORNERS := [
 	PIN_CORNER_BOTTOM_LEFT,
 	PIN_CORNER_BOTTOM_RIGHT,
 ]
-const RENDER_SCALE_COMMAND_GROUP_NAME := "Console render scale"
-const RENDER_SCALE_COMMAND_GROUP_PRIORITY := 210
 const TOUCH_EDGE_BUTTON_SIZE := Vector2(88.0, 104.0)
 const TOUCH_EDGE_BUTTON_GAP := 8.0
 const TOUCH_TOGGLE_BUTTON_MARGIN := 10.0
@@ -4093,8 +4091,6 @@ func _register_render_scale_setting_command(command_name: String, target: String
 		description,
 		_get_render_scale_options,
 		Callable(),
-		RENDER_SCALE_COMMAND_GROUP_NAME,
-		RENDER_SCALE_COMMAND_GROUP_PRIORITY
 	)
 
 

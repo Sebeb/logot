@@ -6180,6 +6180,10 @@ func _build_tier_matches(prefix: String, query: String) -> Array[Dictionary]:
 					"has_command": false,
 					"has_display_variable": false,
 				})
+		for match_index in range(matches.size()):
+			if str(matches[match_index].get("tier", "")) in ["console", "pins"]:
+				matches[match_index]["group_name"] = "console"
+				matches[match_index]["group_priority"] = 0
 
 	_sort_tier_matches(matches, query.is_empty())
 	return matches
