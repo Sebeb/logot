@@ -284,6 +284,7 @@ var _touch_toggle_drag_pointer_offset := Vector2.ZERO
 var _touch_toggle_drag_start_edge := TOUCH_TOGGLE_EDGE_RIGHT
 var _touch_toggle_drag_dock_x := -1.0
 var _current_git_branch := ""
+var _current_git_branch_remote_status := ""
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
 var _performance_frame_history_cpu: Array[float] = []
@@ -4976,12 +4977,33 @@ func _command_current_git_branch() -> void:
 
 func _get_current_git_branch() -> String:
 	if not _current_git_branch.is_empty():
-		return _current_git_branch
+		return _current_git_branch + _current_git_branch_remote_status
 
 	_current_git_branch = _resolve_current_git_branch()
 	if _current_git_branch.is_empty():
 		_current_git_branch = _UNKNOWN_GIT_BRANCH
-	return _current_git_branch
+	return _current_git_branch + _current_git_branch_remote_status
+
+
+func _refresh_current_git_branch_remote_status() -> void:
+	if _get_current_git_branch() == _UNKNOWN_GIT_BRANCH:
+		return
+
+	var command_output: Array = []
+	var status := OS.execute("git", ["fetch", "--quiet"], command_output, true)
+	if status != OK:
+		return
+
+	command_output.clear()
+	status = OS.execute("git", ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"], command_output, true)
+	if status != OK or command_output.is_empty():
+		return
+
+	var counts := str(command_output[0]).strip_edges().replace("\t", " ").split(" ", false)
+	if counts.size() != 2 or not counts[0].is_valid_int() or not counts[1].is_valid_int():
+		return
+
+	_current_git_branch_remote_status = " +%d -%d" % [counts[0].to_int(), counts[1].to_int()]
 
 
 func _resolve_current_git_branch() -> String:
@@ -5117,6 +5139,7 @@ func _ready() -> void:
 		_register_console_interfacing_test_commands()
 	_register_console_setting_commands()
 	_register_dev_commands()
+	_refresh_current_git_branch_remote_status()
 	_register_pin_commands()
 	_register_timer_commands()
 
