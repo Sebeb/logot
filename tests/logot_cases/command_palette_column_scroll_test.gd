@@ -48,3 +48,17 @@ func run(ctx) -> void:
 		list._scroll_row == list._get_max_scroll_row() and last_row >= visible_range.x and last_row < visible_range.y,
 		"scroll=%s max=%s visible=%s" % [list._scroll_row, list._get_max_scroll_row(), visible_range]
 	)
+
+	# A horizontal scrollbar reduces the actual clipping viewport after the
+	# nominal column height has already been chosen.
+	var clipped_height: int = display._calculate_command_autocomplete_column_viewport_height(224.0, 28.0, true, 224)
+	ctx.check("horizontal scrollbar height is removed from column viewport", clipped_height == 196, "height=%s" % clipped_height)
+	list.custom_minimum_size.y = clipped_height
+	list.size.y = clipped_height
+	list.ensure_current_is_visible()
+	visible_range = list.get_visible_row_range()
+	ctx.check(
+		"last selection remains visible in clipped multi-column viewport",
+		list._scroll_row == list._get_max_scroll_row() and last_row >= visible_range.x and last_row < visible_range.y,
+		"scroll=%s max=%s visible=%s" % [list._scroll_row, list._get_max_scroll_row(), visible_range]
+	)

@@ -7876,6 +7876,7 @@ func _position_command_autocomplete_popup() -> void:
 	_command_autocomplete_target_size = Vector2(popup_width, popup_height)
 	_apply_command_autocomplete_popup_visual_state()
 	_update_command_palette_log_reserved_space()
+	call_deferred("_fit_command_autocomplete_columns_to_viewport")
 
 	_debug_command_popup_height("_position_command_autocomplete_popup")
 
@@ -7988,6 +7989,29 @@ func _get_command_autocomplete_target_height() -> int:
 	var desired_height := float(_get_command_autocomplete_popup_height())
 	var available_height := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap())
 	return maxi(1, int(floor(minf(desired_height, available_height))))
+
+
+func _get_command_autocomplete_column_viewport_height() -> int:
+	var target_height := _get_command_autocomplete_target_height()
+	if _command_autocomplete_scroll == null or not _command_autocomplete_scroll.is_inside_tree():
+		return target_height
+
+	var horizontal_scrollbar := _command_autocomplete_scroll.get_h_scroll_bar()
+	return _calculate_command_autocomplete_column_viewport_height(
+		_command_autocomplete_scroll.size.y,
+		horizontal_scrollbar.size.y if horizontal_scrollbar != null else 0.0,
+		horizontal_scrollbar != null and horizontal_scrollbar.visible,
+		target_height
+	)
+
+
+func _calculate_command_autocomplete_column_viewport_height(scroll_height: float, horizontal_scrollbar_height: float, horizontal_scrollbar_visible: bool, fallback_height: int) -> int:
+	var viewport_height := scroll_height
+	if horizontal_scrollbar_visible:
+		viewport_height -= horizontal_scrollbar_height
+	if viewport_height <= 0.0:
+		return fallback_height
+	return maxi(1, int(floor(viewport_height)))
 
 
 func _get_command_autocomplete_target_width() -> int:
@@ -8109,7 +8133,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
 		column_state["width"] = int(_get_touch_command_autocomplete_column_size().x)
 
-	var column_height := _get_command_autocomplete_target_height()
+	var column_height := _get_command_autocomplete_column_viewport_height()
 	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
 		column_height = int(_get_touch_command_autocomplete_column_size().y)
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
@@ -8334,6 +8358,23 @@ func _render_command_autocomplete_popup() -> void:
 			_command_autocomplete_scroll.scroll_horizontal = 0
 	else:
 		_scroll_command_autocomplete_columns_to_end()
+	_refresh_autocomplete_visible_address_tracking()
+
+
+func _fit_command_autocomplete_columns_to_viewport() -> void:
+	if not _is_command_popup_visible() or _is_touch_command_palette_layout():
+		return
+	var viewport_height := _get_command_autocomplete_column_viewport_height()
+	for node in _autocomplete_column_nodes:
+		if not (node is AutocompleteCommandColumn):
+			continue
+		var list := node as AutocompleteCommandColumn
+		if is_equal_approx(list.custom_minimum_size.y, float(viewport_height)) and is_equal_approx(list.size.y, float(viewport_height)):
+			list.ensure_current_is_visible()
+			continue
+		list.custom_minimum_size.y = viewport_height
+		list.size.y = viewport_height
+		list.ensure_current_is_visible()
 	_refresh_autocomplete_visible_address_tracking()
 
 
