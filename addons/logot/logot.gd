@@ -109,6 +109,9 @@ const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_inte
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
 const _UNKNOWN_GIT_BRANCH := "unknown"
+const _CURRENT_GIT_BRANCH_AHEAD_COLOR := Color(0.42, 0.9, 0.42, 1.0)
+const _CURRENT_GIT_BRANCH_BEHIND_COLOR := Color(0.88, 0.44, 0.44, 1.0)
+const _CURRENT_GIT_BRANCH_UNCOMMITTED_COLOR := Color(0.65, 0.65, 0.68, 1.0)
 const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
 const _PERFORMANCE_OVERVIEW_WIDGET_PATH := "dev/performance/overview"
 const _PERFORMANCE_TIME_RANGE_PATH := "dev/performance/time_range"
@@ -285,6 +288,9 @@ var _touch_toggle_drag_start_edge := TOUCH_TOGGLE_EDGE_RIGHT
 var _touch_toggle_drag_dock_x := -1.0
 var _current_git_branch := ""
 var _current_git_branch_remote_status := ""
+var _current_git_branch_ahead := 0
+var _current_git_branch_behind := 0
+var _current_git_branch_uncommitted_files := 0
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
 var _performance_frame_history_cpu: Array[float] = []
@@ -4269,7 +4275,7 @@ func _register_dev_commands() -> void:
 		0,
 		"Prints the current git branch name."
 	)
-	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch)
+	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch, Callable(), _get_current_git_branch_display_items)
 	_register_performance_commands()
 
 
@@ -4985,12 +4991,33 @@ func _get_current_git_branch() -> String:
 	return _current_git_branch + _current_git_branch_remote_status
 
 
+func _get_current_git_branch_display_items() -> Array[Dictionary]:
+	_get_current_git_branch()
+	var items: Array[Dictionary] = [{"text": _current_git_branch}]
+	if _current_git_branch_ahead > 0:
+		items.append({"text": "+%d" % _current_git_branch_ahead, "color": _CURRENT_GIT_BRANCH_AHEAD_COLOR})
+	if _current_git_branch_behind > 0:
+		items.append({"text": "-%d" % _current_git_branch_behind, "color": _CURRENT_GIT_BRANCH_BEHIND_COLOR})
+	if _current_git_branch_uncommitted_files > 0:
+		items.append({"text": "~%d" % _current_git_branch_uncommitted_files, "color": _CURRENT_GIT_BRANCH_UNCOMMITTED_COLOR})
+	return items
+
+
 func _refresh_current_git_branch_remote_status() -> void:
+	_current_git_branch_remote_status = ""
+	_current_git_branch_ahead = 0
+	_current_git_branch_behind = 0
+	_current_git_branch_uncommitted_files = 0
 	if _get_current_git_branch() == _UNKNOWN_GIT_BRANCH:
 		return
 
 	var command_output: Array = []
-	var status := OS.execute("git", ["fetch", "--quiet"], command_output, true)
+	var status := OS.execute("git", ["status", "--porcelain"], command_output, true)
+	if status == OK and not command_output.is_empty():
+		_current_git_branch_uncommitted_files = str(command_output[0]).strip_edges().split("\n", false).size()
+
+	command_output.clear()
+	status = OS.execute("git", ["fetch", "--quiet"], command_output, true)
 	if status != OK:
 		return
 
@@ -5003,7 +5030,15 @@ func _refresh_current_git_branch_remote_status() -> void:
 	if counts.size() != 2 or not counts[0].is_valid_int() or not counts[1].is_valid_int():
 		return
 
-	_current_git_branch_remote_status = " +%d -%d" % [counts[0].to_int(), counts[1].to_int()]
+	_current_git_branch_ahead = counts[0].to_int()
+	_current_git_branch_behind = counts[1].to_int()
+	var remote_status_parts: PackedStringArray = []
+	if _current_git_branch_ahead > 0:
+		remote_status_parts.append("+%d" % _current_git_branch_ahead)
+	if _current_git_branch_behind > 0:
+		remote_status_parts.append("-%d" % _current_git_branch_behind)
+	if not remote_status_parts.is_empty():
+		_current_git_branch_remote_status = " " + " ".join(remote_status_parts)
 
 
 func _resolve_current_git_branch() -> String:

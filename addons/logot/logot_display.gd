@@ -2835,7 +2835,29 @@ func _apply_pinned_variable_width_cap(row: RichTextLabel, plain_text: String = "
 	row.size.x = capped_width
 
 
-func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool) -> void:
+func _append_pinned_display_variable_value(row: RichTextLabel, value_text: String, value_color: Color, value_items: Array = []) -> void:
+	if value_items.is_empty():
+		if value_color.a > 0.0:
+			row.push_color(value_color)
+		row.add_text(value_text)
+		if value_color.a > 0.0:
+			row.pop()
+		return
+
+	for item_index in range(value_items.size()):
+		if item_index > 0:
+			row.add_text(" ")
+		var item := value_items[item_index] as Dictionary
+		var item_text := str(item.get("text", ""))
+		var item_color := item.get("color", Color.TRANSPARENT) as Color
+		if item_color.a > 0.0:
+			row.push_color(item_color)
+		row.add_text(item_text)
+		if item_color.a > 0.0:
+			row.pop()
+
+
+func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool, value_items: Array = []) -> void:
 	if row == null:
 		return
 	row.push_bgcolor(PINNED_OVERLAY_ROW_BG_COLOR)
@@ -2844,11 +2866,7 @@ func _append_pinned_display_variable_row_text(row: RichTextLabel, display_addres
 		row.set_table_column_expand(0, true)
 		row.set_table_column_expand(1, false)
 		row.push_cell()
-		if value_color.a > 0.0:
-			row.push_color(value_color)
-		row.add_text(value_text)
-		if value_color.a > 0.0:
-			row.pop()
+		_append_pinned_display_variable_value(row, value_text, value_color, value_items)
 		row.pop()
 		row.push_cell()
 		row.add_text(display_address)
@@ -2860,11 +2878,7 @@ func _append_pinned_display_variable_row_text(row: RichTextLabel, display_addres
 		row.add_text("%s:" % display_address)
 		row.pop()
 		row.push_cell()
-		if value_color.a > 0.0:
-			row.push_color(value_color)
-		row.add_text(value_text)
-		if value_color.a > 0.0:
-			row.pop()
+		_append_pinned_display_variable_value(row, value_text, value_color, value_items)
 		row.pop()
 	row.pop()
 	row.pop()
@@ -4320,8 +4334,9 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 	if force or _pinned_row_render_cache.get(address, "") != signature:
 		var value_text := str(snapshot.get("text", ""))
 		var value_color: Color = snapshot.get("inline_color", Color.TRANSPARENT)
+		var value_items: Array = snapshot.get("items", [])
 		(row as RichTextLabel).clear()
-		_append_pinned_display_variable_row_text(row as RichTextLabel, display_address, value_text, value_color, align_right)
+		_append_pinned_display_variable_row_text(row as RichTextLabel, display_address, value_text, value_color, align_right, value_items)
 		var plain_text := "%s %s" % [value_text, display_address] if align_right else "%s: %s" % [display_address, value_text]
 		_apply_pinned_variable_width_cap(row as RichTextLabel, plain_text)
 		_pinned_row_render_cache[address] = signature
