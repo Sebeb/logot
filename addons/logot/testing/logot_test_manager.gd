@@ -307,6 +307,7 @@ func _drain_sandbox_root_async(max_frames := 30) -> void:
 		if _sandbox_root.get_child_count() == 0:
 			for _flush_frame in range(4):
 				await get_tree().process_frame
+				await get_tree().physics_frame
 			if _sandbox_root.get_child_count() == 0:
 				return
 		await get_tree().process_frame
@@ -558,16 +559,20 @@ func _collect_active_logs() -> void:
 
 
 func _compute_result_passed(result) -> bool:
+	var ok := true
 	for check_result in result.code_checks:
 		if not check_result.passed:
-			return false
+			print("DEBUGPGO96 failing check: %s :: %s" % [check_result.name, check_result.details])
+			ok = false
 	for visual_result in result.visual_checks:
 		if not visual_result.passed:
-			return false
+			print("DEBUGPGO96 failing visual: %s" % [visual_result.name])
+			ok = false
 	for log_record in result.logs:
 		if int(log_record.level) == LogLevel.ERROR:
-			return false
-	return true
+			print("DEBUGPGO96 failing log: %s :: %s" % [log_record.channel, log_record.message])
+			ok = false
+	return ok
 
 
 func _ensure_effective_assertion(result) -> void:
