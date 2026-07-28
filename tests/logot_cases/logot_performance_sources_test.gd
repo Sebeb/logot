@@ -5,6 +5,7 @@ const GPU_WIDGET_PATH := "dev/performance/allocation/gpu"
 const OVERVIEW_WIDGET_PATH := "dev/performance/overview"
 const PERFORMANCE_TIME_RANGE_PATH := "dev/performance/time_range"
 const PERFORMANCE_ALLOCATION_UPDATE_SPEED_PATH := "dev/performance/allocation/update_speed"
+const PERFORMANCE_ALLOCATION_CPU_MODE_PATH := "dev/performance/allocation/cpu/mode"
 const LEGACY_OVERVIEW_TIME_RANGE_PATH := "dev/performance/overview/time_range"
 const LEGACY_CPU_SOURCES_WIDGET_PATH := "dev/performance/sources/cpu"
 const LEGACY_GPU_SOURCES_WIDGET_PATH := "dev/performance/sources/gpu"
@@ -56,6 +57,26 @@ func run(ctx) -> void:
 		not commands.has(LEGACY_CPU_SOURCES_WIDGET_PATH) and not commands.has(LEGACY_GPU_SOURCES_WIDGET_PATH) and not commands.has(LEGACY_SOURCES_SNAPSHOT_PATH),
 		str(commands.keys())
 	)
+
+	# Option labels such as "Render CPU" and "10 Hz" become palette sub-command paths, and a
+	# label containing a space must still execute instead of failing on argument count.
+	var spaced_option_failures: Array[String] = []
+	for option_path in [
+		"%s/Render CPU" % PERFORMANCE_ALLOCATION_CPU_MODE_PATH,
+		"%s/Whole Frame" % PERFORMANCE_ALLOCATION_CPU_MODE_PATH,
+		"%s/10 Hz" % PERFORMANCE_ALLOCATION_UPDATE_SPEED_PATH,
+	]:
+		var option_result: Dictionary = Console.execute_console_command(option_path)
+		if not bool(option_result.get("ok", false)):
+			spaced_option_failures.append("%s -> %s" % [option_path, option_result.get("error", "")])
+	ctx.check("options_with_spaced_labels_execute", spaced_option_failures.is_empty(), str(spaced_option_failures))
+	ctx.check(
+		"options_with_spaced_labels_apply_their_value",
+		Console.get_performance_source_cpu_mode() == "whole" and is_equal_approx(Console.get_performance_source_update_rate_hz(), 10.0),
+		"mode=%s rate=%f" % [Console.get_performance_source_cpu_mode(), Console.get_performance_source_update_rate_hz()]
+	)
+	Console._set_performance_source_cpu_mode("render")
+	Console._set_performance_source_update_rate_hz(10.0)
 
 	var display: LogotDisplay = Console._get_active_display()
 	if not ctx.check("active_display", display != null):

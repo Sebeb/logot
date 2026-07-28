@@ -5836,6 +5836,9 @@ func _execute_command(command_input: String) -> Dictionary:
 		return {"ok": false, "error": "Command is disabled: /%s" % requested_command}
 	var command_resolution := _resolve_console_command_path(requested_command)
 	if not command_resolution.get("valid", false):
+		var labelled_option_result := _execute_labelled_option_command(command_text)
+		if not labelled_option_result.is_empty():
+			return labelled_option_result
 		console_unknown_command.emit(requested_command)
 		print_error("Command not found: /%s" % requested_command)
 		return {"ok": false, "error": "Command not found: /%s" % requested_command}
@@ -5876,6 +5879,9 @@ func _execute_command(command_input: String) -> Dictionary:
 		print_error("Too few arguments! Required < %d >" % console_commands[text_command].required)
 		return {"ok": false, "error": "Too few arguments."}
 	elif arguments.size() > console_commands[text_command].arguments.size():
+		var labelled_option_result := _execute_labelled_option_command(command_text)
+		if not labelled_option_result.is_empty():
+			return labelled_option_result
 		print_error("Too many arguments! < %d > Max" % console_commands[text_command].arguments.size())
 		return {"ok": false, "error": "Too many arguments."}
 
@@ -5883,6 +5889,31 @@ func _execute_command(command_input: String) -> Dictionary:
 		arguments.append("")
 
 	console_commands[text_command].function.callv(arguments)
+	return {"ok": true}
+
+
+## Option sub-commands are addressed by their label ("…/allocation/cpu/mode/Render CPU"), so a
+## label containing spaces is split into several tokens by the regular line parser. Re-resolve
+## the untouched line as a single command path before reporting an argument-count failure.
+func _execute_labelled_option_command(command_text: String) -> Dictionary:
+	var whole_path := command_text.strip_edges()
+	if not whole_path.contains(" ") or is_command_path_disabled(whole_path):
+		return {}
+	var resolution := _resolve_console_command_path(whole_path)
+	if not resolution.get("valid", false) or not resolution.get("is_option_subcommand", false):
+		return {}
+	var command_name := str(resolution.get("command_name", ""))
+	if not console_commands.has(command_name):
+		return {}
+	var arguments: Array = []
+	for injected_argument in resolution.get("injected_arguments", []):
+		arguments.append(str(injected_argument))
+	var accepted_argument_count: int = console_commands[command_name].arguments.size()
+	if arguments.size() < console_commands[command_name].required or arguments.size() > accepted_argument_count:
+		return {}
+	while arguments.size() < accepted_argument_count:
+		arguments.append("")
+	console_commands[command_name].function.callv(arguments)
 	return {"ok": true}
 
 
