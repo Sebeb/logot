@@ -235,6 +235,7 @@ func run(ctx) -> void:
 		var colors: Dictionary = panel.get("colors", {}) as Dictionary
 		var stack_top_to_bottom_paths: Array = panel.get("stack_top_to_bottom_paths", []) as Array
 		ctx.check("current_top_ten", top_paths.size() == 10, str(top_paths))
+		ctx.check("bridge_other_bucket_is_not_a_legend_source", not top_paths.has("__other__"), str(top_paths))
 		ctx.check("top_ten_colors_unique", _unique_values(colors.values()).size() == 10, str(colors))
 		ctx.check(
 			"graph_stack_order_matches_source_list_order",
@@ -402,6 +403,10 @@ func _build_histories() -> Dictionary:
 			name = "Shared"
 		current_sources.append({"path": path, "name": name, "duration_ms": duration})
 		total += duration
+	# The profiler bridge reports its own overflow bucket, which must merge into the widget's
+	# "Other" remainder instead of claiming the largest legend row.
+	current_sources.append({"path": "__other__", "name": "Other", "duration_ms": 3.0})
+	total += 3.0
 	var render := [
 		{"frame_number": 100, "available": true, "total_ms": 16.0, "sources": old_sources},
 		{"frame_number": 101, "available": false},

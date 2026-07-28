@@ -14,6 +14,9 @@ const PALETTE := [
 	Color8(192, 132, 252),
 ]
 const OTHER_COLOR := Color(0.48, 0.51, 0.57, 0.88)
+# The profiler bridge folds everything past its retained-source cap into this bucket, which is
+# the same thing this widget's own "Other" remainder represents.
+const OTHER_PATH := "__other__"
 const PINNED_WIDGET_WIDTH := 210.0
 const PALETTE_WIDGET_WIDTH := 220.0
 const PANEL_HEIGHT := 226.0
@@ -65,8 +68,13 @@ class SourceBreakdownPanel:
 		var ranked_sources: Array[Dictionary] = []
 		if raw_sources is Array:
 			for source_variant in raw_sources:
-				if source_variant is Dictionary and float((source_variant as Dictionary).get("duration_ms", 0.0)) > 0.0:
-					ranked_sources.append((source_variant as Dictionary).duplicate(true))
+				if not (source_variant is Dictionary):
+					continue
+				var raw_source := source_variant as Dictionary
+				if str(raw_source.get("path", "")) == OTHER_PATH:
+					continue
+				if float(raw_source.get("duration_ms", 0.0)) > 0.0:
+					ranked_sources.append(raw_source.duplicate(true))
 		ranked_sources.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			var a_duration := float(a.get("duration_ms", 0.0))
 			var b_duration := float(b.get("duration_ms", 0.0))
@@ -346,7 +354,7 @@ class SourceBreakdownPanel:
 		for source in top_sources:
 			top_total += float(source.get("duration_ms", 0.0))
 		if maxf(0.0, float(sample.get("total_ms", 0.0)) - top_total) > 0.0001:
-			paths.append("__other__")
+			paths.append(OTHER_PATH)
 		return paths
 
 	func _total_to_y(total_ms: float, rect: Rect2) -> float:
