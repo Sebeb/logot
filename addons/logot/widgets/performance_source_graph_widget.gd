@@ -21,6 +21,8 @@ const GRAPH_HEIGHT := 70.0
 const NOW_BAR_WIDTH := 10.5
 const HISTORY_SLICE_MAX_WIDTH := NOW_BAR_WIDTH
 const HISTORY_SLICE_MIN_WIDTH := 1.0
+const GRAPH_SCALE_HEADROOM := 1.12
+const GRAPH_MIN_SCALE_MS := 0.05
 const LEGEND_TIME_PILL_WIDTH := 31.0
 const LEGEND_TIME_PILL_HEIGHT := 9.0
 const LEGEND_NAME_FONT_SIZE := 10
@@ -45,6 +47,7 @@ class SourceBreakdownPanel:
 	var debug_state: Dictionary = {}
 	var ordered_paths: Array[String] = []
 	var overtake_elapsed: Dictionary = {}
+	var graph_scale_ms := GRAPH_MIN_SCALE_MS
 
 	func _init(panel_title: String) -> void:
 		title = panel_title
@@ -192,6 +195,7 @@ class SourceBreakdownPanel:
 		var now_rect := Rect2(size.x - now_width - 8.0, 30.0, now_width, GRAPH_HEIGHT)
 		var graph_rect := Rect2(8.0, 30.0, now_rect.position.x - 16.0, GRAPH_HEIGHT)
 		var legend_rect := Rect2(8.0, graph_rect.end.y + 7.0, size.x - 16.0, size.y - graph_rect.end.y - 15.0)
+		graph_scale_ms = _graph_scale_ms(graph_rect)
 		_draw_history(graph_rect)
 		_draw_now(now_rect, current)
 		_draw_legend(font, legend_rect, total_ms)
@@ -223,6 +227,9 @@ class SourceBreakdownPanel:
 			"history_slice_width": float(_history_layout(graph_rect).get("slice_width", 0.0)),
 			"history_blank_left_width": maxf(0.0, float(_history_layout(graph_rect).get("start_x", graph_rect.end.x)) - graph_rect.position.x),
 			"history_renderer": "right_packed_fixed_width_slices",
+			"graph_scale_ms": graph_scale_ms,
+			"graph_scale_mode": "auto_peak_visible",
+			"current_stack_height_fraction": clampf(total_ms / graph_scale_ms, 0.0, 1.0) if graph_scale_ms > 0.0 else 0.0,
 		}
 
 	func _draw_legend(font: Font, rect: Rect2, total_ms: float) -> void:
@@ -343,10 +350,17 @@ class SourceBreakdownPanel:
 		return paths
 
 	func _total_to_y(total_ms: float, rect: Rect2) -> float:
-		var min_fps := float(snapshot.get("graph_min_fps", 10.0))
-		var max_fps := float(snapshot.get("graph_max_fps", 160.0))
-		var fps := 1000.0 / total_ms if total_ms > 0.0 else max_fps
-		return remap(clampf(fps, min_fps, max_fps), min_fps, max_fps, rect.end.y, rect.position.y)
+		var fraction := clampf(total_ms / graph_scale_ms, 0.0, 1.0) if graph_scale_ms > 0.0 else 0.0
+		return rect.end.y - rect.size.y * fraction
+
+	# A panel measures a slice of the frame (render CPU is ~1 ms of an ~8 ms frame), so a
+	# fixed frame-time scale would peg every bar to the top. Scale to the tallest sample on
+	# screen instead, which keeps the bar heights readable as relative CPU/GPU usage.
+	func _graph_scale_ms(rect: Rect2) -> float:
+		var peak_ms := float((snapshot.get("current", {}) as Dictionary).get("total_ms", 0.0))
+		for sample in _history_layout(rect).get("samples", []) as Array:
+			peak_ms = maxf(peak_ms, float((sample as Dictionary).get("total_ms", 0.0)))
+		return maxf(GRAPH_MIN_SCALE_MS, peak_ms * GRAPH_SCALE_HEADROOM)
 
 	func _source_value_map(sample: Dictionary) -> Dictionary:
 		var values := {}

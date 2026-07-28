@@ -267,6 +267,27 @@ func run(ctx) -> void:
 
 	var stable_gpu := histories["gpu"] as Array
 	var stable_whole := histories["whole"] as Array
+
+	# Sub-millisecond render-CPU totals must still scale across the graph height instead of
+	# pegging every bar to the top, and a quiet frame must draw shorter than a busy one.
+	Console.set_performance_source_test_histories(_make_scale_history(1.2, 0.3), stable_gpu, stable_whole)
+	widget.refresh_logot_widget(0.0)
+	await ctx.wait_frames(1)
+	var quiet_panel: Dictionary = ((widget.get_debug_state().get("panels", []) as Array)[0] as Dictionary)
+	var quiet_fraction := float(quiet_panel.get("current_stack_height_fraction", -1.0))
+	Console.set_performance_source_test_histories(_make_scale_history(1.2, 1.2), stable_gpu, stable_whole)
+	widget.refresh_logot_widget(0.0)
+	await ctx.wait_frames(1)
+	var busy_panel: Dictionary = ((widget.get_debug_state().get("panels", []) as Array)[0] as Dictionary)
+	var busy_fraction := float(busy_panel.get("current_stack_height_fraction", -1.0))
+	ctx.check("graph_height_autoscales_to_visible_peak", str(busy_panel.get("graph_scale_mode", "")) == "auto_peak_visible", str(busy_panel))
+	ctx.check(
+		"submillisecond_totals_use_the_graph_height",
+		quiet_fraction > 0.0 and quiet_fraction < 0.5 and busy_fraction > 0.8 and busy_fraction <= 1.0,
+		"quiet=%f busy=%f quiet_panel=%s busy_panel=%s" % [quiet_fraction, busy_fraction, quiet_panel, busy_panel]
+	)
+	Console.set_performance_source_test_histories(histories["render"], histories["gpu"], histories["whole"])
+
 	var long_history := _make_long_history(500)
 	Console.set_performance_source_test_histories(long_history, stable_gpu, stable_whole)
 	Console._set_performance_graph_time_range(1.0)
@@ -375,6 +396,23 @@ func _build_histories() -> Dictionary:
 	var whole_total := total + 8.0
 	var whole := [{"frame_number": 102, "available": true, "total_ms": whole_total, "sources": whole_sources}]
 	return {"render": render, "gpu": gpu, "whole": whole}
+
+
+func _make_scale_history(peak_ms: float, current_ms: float) -> Array:
+	return [
+		{
+			"frame_number": 400,
+			"available": true,
+			"total_ms": peak_ms,
+			"sources": [{"path": "scale/a", "name": "Scale A", "duration_ms": peak_ms}] as Array[Dictionary],
+		},
+		{
+			"frame_number": 401,
+			"available": true,
+			"total_ms": current_ms,
+			"sources": [{"path": "scale/a", "name": "Scale A", "duration_ms": current_ms}] as Array[Dictionary],
+		},
+	]
 
 
 func _unique_values(values: Array) -> Array:
