@@ -1660,6 +1660,12 @@ const PINNED_OVERLAY_CORNERS := [
 	PINNED_OVERLAY_CORNER_BOTTOM_LEFT,
 	PINNED_OVERLAY_CORNER_BOTTOM_RIGHT,
 ]
+## Addresses Logot no longer registers. Settings files written by older versions
+## still list them, and a pin whose widget cannot be resolved renders a
+## "Widget unavailable" row, so they are dropped while loading pin state.
+const RETIRED_PIN_ADDRESSES := [
+	"dev/performance/graphs",
+]
 const PINNED_OVERLAY_OPPOSITE_CORNER := {
 	PINNED_OVERLAY_CORNER_TOP_LEFT: PINNED_OVERLAY_CORNER_TOP_RIGHT,
 	PINNED_OVERLAY_CORNER_TOP_RIGHT: PINNED_OVERLAY_CORNER_TOP_LEFT,
@@ -5314,6 +5320,8 @@ func _load_filter_settings() -> void:
 				var address_str := str(address)
 				if address_str.is_empty() or _pinned_display_variables.has(address_str):
 					continue
+				if address_str in RETIRED_PIN_ADDRESSES:
+					continue
 				_pinned_display_variables.append(address_str)
 				_pinned_display_variable_corners[address_str] = PINNED_OVERLAY_CORNER_TOP_LEFT
 		var pinned_corners = config.get_value("display_variables", "pinned_corners", {})
@@ -5341,7 +5349,7 @@ func _load_filter_settings() -> void:
 							corner = _normalize_pin_corner(str((address_entry as Dictionary).get("corner", PINNED_OVERLAY_CORNER_TOP_LEFT)))
 						else:
 							address_str = str(address_entry)
-						if address_str.is_empty():
+						if address_str.is_empty() or address_str in RETIRED_PIN_ADDRESSES:
 							continue
 						var duplicate := false
 						for existing_entry in overlay_addresses:

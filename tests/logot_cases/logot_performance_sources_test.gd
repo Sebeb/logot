@@ -178,7 +178,18 @@ func run(ctx) -> void:
 		registered_widgets.has(OVERVIEW_WIDGET_PATH) and registered_widgets.has(CPU_WIDGET_PATH) and registered_widgets.has(GPU_WIDGET_PATH),
 		str(registered_widgets.keys())
 	)
-	ctx.check("legacy_graphs_widget_renamed", not registered_widgets.has("dev/performance/graphs"), str(registered_widgets.keys()))
+	# Checked against the raw registries, not the public getters, because the
+	# duplicate graphs widget used to be registered and merely filtered out.
+	ctx.check(
+		"duplicate_graphs_widget_not_registered",
+		not Console.widgets.has("dev/performance/graphs"),
+		str(Console.widgets.keys())
+	)
+	ctx.check(
+		"duplicate_graphs_time_range_command_not_registered",
+		not Console.console_commands.has("dev/performance/graphs/time_range"),
+		str(Console.console_commands.keys())
+	)
 	ctx.check(
 		"performance_widget_labels",
 		str(registered_widgets[OVERVIEW_WIDGET_PATH].get("display_label")) == "Performance Overview"

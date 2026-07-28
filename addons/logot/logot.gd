@@ -115,8 +115,6 @@ const _CURRENT_GIT_BRANCH_UNCOMMITTED_COLOR := Color(0.65, 0.65, 0.68, 1.0)
 const _PERFORMANCE_FPS_PATH := "dev/performance/fps"
 const _PERFORMANCE_OVERVIEW_WIDGET_PATH := "dev/performance/overview"
 const _PERFORMANCE_TIME_RANGE_PATH := "dev/performance/time_range"
-const _PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH := "dev/performance/graphs"
-const _PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH := "dev/performance/graphs/time_range"
 const _PERFORMANCE_CPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/cpu"
 const _PERFORMANCE_GPU_SOURCES_WIDGET_PATH := "dev/performance/allocation/gpu"
 const _PERFORMANCE_CPU_SOURCE_MODE_PATH := "dev/performance/allocation/cpu/mode"
@@ -1443,9 +1441,7 @@ func remove_widget(address: String) -> void:
 
 
 func get_widgets() -> Dictionary:
-	var filtered := widgets.duplicate()
-	filtered.erase(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH)
-	return filtered
+	return widgets.duplicate()
 
 
 func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
@@ -2082,9 +2078,7 @@ func get_render_texture_widget_view_mode(address: String) -> String:
 
 
 func get_console_commands() -> Dictionary:
-	var filtered := console_commands.duplicate()
-	filtered.erase(_PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH)
-	return filtered
+	return console_commands.duplicate()
 
 
 func get_display_variables() -> Dictionary:
@@ -4028,31 +4022,26 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 		PERFORMANCE_MODE_FPS:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_OVERVIEW:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		PERFORMANCE_MODE_DETAILED:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, _should_pin_cpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, _should_pin_gpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 		PERFORMANCE_MODE_HIDDEN:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 		_:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, false)
-			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, false)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, false)
 
@@ -4364,15 +4353,6 @@ func _register_performance_commands() -> void:
 		"Performance Overview"
 	)
 	add_widget(
-		_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH,
-		PERFORMANCE_OVERVIEW_WIDGET_SCENE,
-		"Performance graphs (legacy alias for the overview widget).",
-		"",
-		0,
-		Vector2(210.0, 170.0),
-		"Performance Graphs"
-	)
-	add_widget(
 		_PERFORMANCE_CPU_SOURCES_WIDGET_PATH,
 		PERFORMANCE_SOURCE_GRAPH_WIDGET_SCENE,
 		"Shows the top CPU allocation buckets and their frame-time history.",
@@ -4392,14 +4372,6 @@ func _register_performance_commands() -> void:
 	)
 	add_setget_command(
 		_PERFORMANCE_TIME_RANGE_PATH,
-		_set_performance_graph_time_range,
-		_get_performance_graph_time_range,
-		"Set the performance graph time range.",
-		_get_performance_graph_time_range_options,
-		Callable()
-	)
-	add_setget_command(
-		_PERFORMANCE_GRAPHS_LEGACY_TIME_RANGE_PATH,
 		_set_performance_graph_time_range,
 		_get_performance_graph_time_range,
 		"Set the performance graph time range.",
