@@ -1808,6 +1808,12 @@ var _pinned_row_render_cache: Dictionary = {}
 var _pinned_row_render_snapshots: Dictionary = {}
 var _pinned_row_poll_signatures: Dictionary = {}
 var _pinned_display_variable_corners: Dictionary = {}
+var _pinned_corner_enabled := {
+	PINNED_OVERLAY_CORNER_TOP_LEFT: true,
+	PINNED_OVERLAY_CORNER_TOP_RIGHT: true,
+	PINNED_OVERLAY_CORNER_BOTTOM_LEFT: true,
+	PINNED_OVERLAY_CORNER_BOTTOM_RIGHT: true,
+}
 var _pinned_overlay_visible := true
 var _pinned_overlay_suppressed := false
 var _pinned_corner_redirects: Dictionary = {}
@@ -2630,6 +2636,34 @@ func get_pinned_display_variables() -> Array[String]:
 
 func get_pinned_display_variable_corner(address: String) -> String:
 	return _normalize_pin_corner(str(_pinned_display_variable_corners.get(address, PINNED_OVERLAY_CORNER_TOP_LEFT)))
+
+
+func set_pinned_corner_enabled(corner: String, enabled: bool) -> bool:
+	var normalized_corner := _normalize_pin_corner(corner)
+	if bool(_pinned_corner_enabled.get(normalized_corner, true)) == enabled:
+		return true
+	if not enabled and get_enabled_pinned_corners().size() <= 1:
+		return false
+	_pinned_corner_enabled[normalized_corner] = enabled
+	_pinned_corner_redirects.erase(normalized_corner)
+	_refresh_pinned_display_variables()
+	return true
+
+
+func is_pinned_corner_enabled(corner: String) -> bool:
+	return bool(_pinned_corner_enabled.get(_normalize_pin_corner(corner), true))
+
+
+func get_enabled_pinned_corners() -> Array[String]:
+	var enabled_corners: Array[String] = []
+	for corner in PINNED_OVERLAY_CORNERS:
+		if bool(_pinned_corner_enabled.get(corner, true)):
+			enabled_corners.append(corner)
+	return enabled_corners
+
+
+func get_effective_pinned_display_variable_corner(address: String) -> String:
+	return _get_effective_pinned_corner_for_address(address)
 
 
 func set_pinned_display_variables_visible(visible: bool) -> void:
@@ -3944,6 +3978,9 @@ func _update_pinned_corner_redirects() -> void:
 	var current_redirects := _pinned_corner_redirects.duplicate()
 	var desired_redirects: Dictionary = {}
 	for corner in PINNED_OVERLAY_CORNERS:
+		if not is_pinned_corner_enabled(corner):
+			desired_redirects[corner] = false
+			continue
 		var source_size := _get_pinned_overlay_size_for_corner(corner)
 		if source_size.x <= 0.0 or source_size.y <= 0.0:
 			desired_redirects[corner] = false
@@ -3985,7 +4022,32 @@ func _update_pinned_corner_redirects() -> void:
 func _get_effective_pinned_corner(corner: String) -> String:
 	var normalized_corner := _normalize_pin_corner(corner)
 	if bool(_pinned_corner_redirects.get(normalized_corner, false)):
-		return str(PINNED_OVERLAY_OPPOSITE_CORNER.get(normalized_corner, normalized_corner))
+		normalized_corner = str(PINNED_OVERLAY_OPPOSITE_CORNER.get(normalized_corner, normalized_corner))
+	return _resolve_enabled_pinned_corner(normalized_corner)
+
+
+func _resolve_enabled_pinned_corner(corner: String) -> String:
+	var normalized_corner := _normalize_pin_corner(corner)
+	if is_pinned_corner_enabled(normalized_corner):
+		return normalized_corner
+	var fallback_order: Array[String] = []
+	fallback_order.append(str(PINNED_OVERLAY_OPPOSITE_CORNER.get(normalized_corner, normalized_corner)))
+	match normalized_corner:
+		PINNED_OVERLAY_CORNER_BOTTOM_LEFT:
+			fallback_order.append(PINNED_OVERLAY_CORNER_TOP_LEFT)
+			fallback_order.append(PINNED_OVERLAY_CORNER_TOP_RIGHT)
+		PINNED_OVERLAY_CORNER_BOTTOM_RIGHT:
+			fallback_order.append(PINNED_OVERLAY_CORNER_TOP_RIGHT)
+			fallback_order.append(PINNED_OVERLAY_CORNER_TOP_LEFT)
+		PINNED_OVERLAY_CORNER_TOP_LEFT:
+			fallback_order.append(PINNED_OVERLAY_CORNER_BOTTOM_LEFT)
+			fallback_order.append(PINNED_OVERLAY_CORNER_BOTTOM_RIGHT)
+		PINNED_OVERLAY_CORNER_TOP_RIGHT:
+			fallback_order.append(PINNED_OVERLAY_CORNER_BOTTOM_RIGHT)
+			fallback_order.append(PINNED_OVERLAY_CORNER_BOTTOM_LEFT)
+	for fallback_corner in fallback_order:
+		if is_pinned_corner_enabled(fallback_corner):
+			return fallback_corner
 	return normalized_corner
 
 

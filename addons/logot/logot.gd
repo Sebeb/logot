@@ -363,6 +363,12 @@ var _ingame_overlay_top_edge_override := 0.0
 var _ingame_overlay_left_edge_override := 0.0
 var _ingame_overlay_right_edge_override := 0.0
 var _ingame_overlay_bottom_edge_override := 0.0
+var _pinned_corner_enabled := {
+	PIN_CORNER_TOP_LEFT: true,
+	PIN_CORNER_TOP_RIGHT: true,
+	PIN_CORNER_BOTTOM_LEFT: true,
+	PIN_CORNER_BOTTOM_RIGHT: true,
+}
 
 
 # =============================================================================
@@ -1820,6 +1826,7 @@ func register_external_display(display: LogotDisplay) -> void:
 
 	_external_displays.append(weakref(display))
 	_sync_pinned_display_state_to(display)
+	_apply_pinned_corner_availability_to(display)
 	_sync_render_texture_widget_view_mode_to(display)
 	if display.has_method("set_pinned_display_variables_suppressed"):
 		display.set_pinned_display_variables_suppressed(_should_suppress_pinned_overlay())
@@ -1996,6 +2003,46 @@ func is_display_variable_pinned(address: String) -> bool:
 	if pending is Dictionary:
 		return bool((pending as Dictionary).get("pinned", false))
 	return bool(pending)
+
+
+func set_pinned_corner_enabled(corner: String, enabled: bool) -> bool:
+	var normalized_corner := _normalize_pin_corner(corner)
+	if bool(_pinned_corner_enabled.get(normalized_corner, true)) == enabled:
+		return true
+	if not enabled and get_enabled_pinned_corners().size() <= 1:
+		print_error("Cannot disable pinned corner '%s': at least one pinned variable corner must remain enabled." % normalized_corner)
+		return false
+	_pinned_corner_enabled[normalized_corner] = enabled
+	for display in _get_live_displays():
+		if display.has_method("set_pinned_corner_enabled"):
+			display.set_pinned_corner_enabled(normalized_corner, enabled)
+	return true
+
+
+func is_pinned_corner_enabled(corner: String) -> bool:
+	return bool(_pinned_corner_enabled.get(_normalize_pin_corner(corner), true))
+
+
+func get_enabled_pinned_corners() -> Array[String]:
+	var enabled_corners: Array[String] = []
+	for corner in PIN_CORNERS:
+		if bool(_pinned_corner_enabled.get(corner, true)):
+			enabled_corners.append(corner)
+	return enabled_corners
+
+
+func get_effective_pinned_display_variable_corner(address: String) -> String:
+	var active_display := _get_active_display()
+	if active_display != null and active_display.has_method("get_effective_pinned_display_variable_corner"):
+		return str(active_display.get_effective_pinned_display_variable_corner(address))
+	return PIN_CORNER_TOP_LEFT
+
+
+func _apply_pinned_corner_availability_to(target_display: LogotDisplay) -> void:
+	if target_display == null or not target_display.has_method("set_pinned_corner_enabled"):
+		return
+	for corner in PIN_CORNERS:
+		target_display.set_pinned_corner_enabled(corner, bool(_pinned_corner_enabled.get(corner, true)))
 
 
 func set_render_texture_widget_view_mode(address: String, mode: String) -> bool:
@@ -2486,6 +2533,7 @@ func _setup_game_ui() -> void:
 
 	# Initialize the display
 	_display.initialize_display()
+	_apply_pinned_corner_availability_to(_display)
 	_sync_console_setting_cache_from_display()
 	_set_touch_mode_enabled(_get_console_setting_value("touch_mode", _should_enable_touch_mode_by_default()), false)
 	_ensure_ingame_popup_overlay()
