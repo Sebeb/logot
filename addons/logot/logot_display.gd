@@ -90,6 +90,10 @@ class LogotCommand:
 	var icon: Texture2D
 	var default_child_path: String
 	var default_child_provider: Callable
+	var keyboard_shortcut: Key
+	var orderable_group: String
+	var orderable_object_id: Variant
+	var orderable_order: int = 0
 
 	func _init(
 		in_function: Callable,
@@ -108,7 +112,10 @@ class LogotCommand:
 		in_group_tint: Color = Color.TRANSPARENT,
 		in_option_group_tint: Color = Color.TRANSPARENT,
 		in_default_child_path: String = "",
-		in_default_child_provider: Callable = Callable()
+		in_default_child_provider: Callable = Callable(),
+		in_keyboard_shortcut: Key = KEY_NONE,
+		in_orderable_group: String = "",
+		in_orderable_object_id: Variant = null
 	):
 		function = in_function
 		arguments = in_arguments
@@ -127,6 +134,9 @@ class LogotCommand:
 		icon = in_icon
 		default_child_path = in_default_child_path.strip_edges()
 		default_child_provider = in_default_child_provider
+		keyboard_shortcut = in_keyboard_shortcut
+		orderable_group = in_orderable_group.strip_edges().trim_suffix("/")
+		orderable_object_id = in_orderable_object_id
 
 
 class LogotDisplayVariable:
@@ -251,6 +261,7 @@ class AutocompleteCommandColumn:
 
 	signal row_activated(row_index: int)
 	signal row_long_pressed(row_index: int)
+	signal row_reordered(from_row_index: int, to_row_index: int)
 	signal header_navigation_pressed
 	signal visible_rows_changed
 
@@ -304,6 +315,8 @@ class AutocompleteCommandColumn:
 	var _press_row_index := -1
 	var _press_moved := false
 	var _press_long_press_sent := false
+	var _press_reordering := false
+	var _press_reorder_target_row := -1
 	var _press_token := 0
 	var _drag_scroll_remainder := 0.0
 	var _transient_highlight_row := -1
@@ -432,6 +445,8 @@ class AutocompleteCommandColumn:
 		_drag_scroll_remainder = 0.0
 		_press_row_index = _get_row_index_at_position(position)
 		if _press_row_index >= 0 and _press_row_index < _rows.size() and not bool((_rows[_press_row_index] as Dictionary).get("is_group_header", false)):
+			_press_reordering = bool((_rows[_press_row_index] as Dictionary).get("draggable", false)) and position.x >= size.x - 48.0
+			_press_reorder_target_row = _press_row_index
 			_set_transient_highlight(_press_row_index)
 			_schedule_long_press(_press_row_index)
 		else:
@@ -444,6 +459,11 @@ class AutocompleteCommandColumn:
 		if movement.length() >= TOUCH_SCROLL_DRAG_THRESHOLD:
 			_press_moved = true
 			_clear_transient_highlight()
+		if _press_reordering and _press_moved:
+			var candidate := _get_row_index_at_position(position)
+			if candidate >= 0 and candidate < _rows.size() and bool((_rows[candidate] as Dictionary).get("draggable", false)):
+				_press_reorder_target_row = candidate
+			return
 		if _press_moved:
 			_scroll_by_pixel_delta(_press_last_position.y - position.y)
 		_press_last_position = position
@@ -459,13 +479,20 @@ class AutocompleteCommandColumn:
 			and row_index >= 0
 			and row_index < _rows.size()
 		)
+		var should_reorder := _press_reordering and _press_moved and _press_reorder_target_row >= 0 and _press_reorder_target_row != _press_row_index
+		var reorder_from := _press_row_index
+		var reorder_to := _press_reorder_target_row
 		_press_active = false
+		_press_reordering = false
+		_press_reorder_target_row = -1
 		_press_pointer_id = -1
 		_press_token += 1
 		if should_activate:
 			var row_data: Dictionary = _rows[row_index]
 			if not bool(row_data.get("is_group_header", false)):
 				row_activated.emit(row_index)
+		elif should_reorder:
+			row_reordered.emit(reorder_from, reorder_to)
 		_schedule_transient_highlight_clear()
 
 	func _schedule_long_press(row_index: int) -> void:
@@ -678,6 +705,14 @@ class AutocompleteCommandColumn:
 
 		var max_scroll := _get_max_scroll_row()
 		if _is_preview:
+			var highlighted_rows: Array[int] = []
+			for row_index in range(_rows.size()):
+				var row: Dictionary = _rows[row_index]
+				if bool(row.get("highlighted", false)) or bool(row.get("default_focus", false)):
+					highlighted_rows.append(row_index)
+			if highlighted_rows.size() > 1:
+				_scroll_row = clampi(highlighted_rows[0], 0, max_scroll)
+				return
 			_scroll_row = 0 if _embedded_widget != null else max_scroll
 			return
 
@@ -1186,6 +1221,7 @@ class AutocompleteCommandColumn:
 					action_rect,
 					bool(row_data.get("has_children", false)),
 					bool(row_data.get("can_submit", false)),
+					bool(row_data.get("draggable", false)),
 					selection_state,
 					text_color
 				)
@@ -1225,6 +1261,7 @@ class AutocompleteCommandColumn:
 				action_rect,
 				bool(row_data.get("has_children", false)),
 				bool(row_data.get("can_submit", false)),
+				bool(row_data.get("draggable", false)),
 				selection_state,
 				text_color
 			)
@@ -1289,7 +1326,7 @@ class AutocompleteCommandColumn:
 		if bool(row_data.get("group_box_end", false)):
 			draw_line(Vector2(left, bottom), Vector2(right, bottom), border_color, 1.0)
 
-	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, selection_state: int, icon_color: Color) -> void:
+	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, draggable: bool, selection_state: int, icon_color: Color) -> void:
 		if action_rect.size.x <= 0.0:
 			return
 
@@ -1297,6 +1334,8 @@ class AutocompleteCommandColumn:
 		if has_children:
 			icon_count += 1
 		if can_submit:
+			icon_count += 1
+		if draggable:
 			icon_count += 1
 		if icon_count == 0:
 			return
@@ -1310,6 +1349,9 @@ class AutocompleteCommandColumn:
 			current_x += ACTION_ICON_DIAMETER + ACTION_ICON_GAP
 		if can_submit:
 			_draw_action_icon(Vector2(current_x + ACTION_ICON_DIAMETER * 0.5, center_y), false, true, selection_state, icon_color)
+			current_x += ACTION_ICON_DIAMETER + ACTION_ICON_GAP
+		if draggable:
+			_draw_action_symbol(Vector2(current_x + ACTION_ICON_DIAMETER * 0.5, center_y), "≡", icon_color)
 
 	func _draw_action_icon(center: Vector2, draw_filled_arrow: bool, draw_return_symbol: bool, selection_state: int, icon_color: Color) -> void:
 		# var radius := ACTION_ICON_DIAMETER * 0.5
@@ -1806,6 +1848,7 @@ var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
 var _command_path_disabled_provider: Callable  # Returns whether a command path is disabled
 var _default_child_resolver: Callable  # Resolves recursive default-child command paths
+var _orderable_reorder_handler: Callable
 var _display_variables_provider: Callable  # Returns Dictionary of address -> display_variable
 var _widgets_provider: Callable  # Returns Dictionary of address -> widget_data
 var _rejected_level_count_provider: Callable  # Returns int for a given level
@@ -1835,6 +1878,7 @@ var _autocomplete_column_nodes: Array[Control] = []
 var _autocomplete_active_column_index := -1
 var _autocomplete_highlighted_tiers: Dictionary = {}
 var _autocomplete_pre_filter_highlighted_tiers: Dictionary = {}
+var _autocomplete_shortcut_winners: Dictionary = {}
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
 var _pending_autocomplete_column_sync_scroll_to_end := false
@@ -1972,6 +2016,10 @@ func set_command_path_disabled_provider(provider: Callable) -> void:
 func set_default_child_resolver(provider: Callable) -> void:
 	_default_child_resolver = provider
 	invalidate_command_catalog(false)
+
+
+func set_orderable_reorder_handler(handler: Callable) -> void:
+	_orderable_reorder_handler = handler
 
 
 func set_display_variables_provider(provider: Callable) -> void:
@@ -5924,6 +5972,30 @@ func _get_command_option_group_data(command_name: String) -> Dictionary:
 	return {"name": "", "priority": 0}
 
 
+func _get_command_keyboard_shortcut(command_name: String) -> Key:
+	var command_data = _get_command_data(command_name)
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).keyboard_shortcut
+	if command_data is Dictionary:
+		var raw_key = (command_data as Dictionary).get("keyboard_shortcut", KEY_NONE)
+		if raw_key is int:
+			return int(raw_key) as Key
+	return KEY_NONE
+
+
+func _get_command_orderable_data(command_name: String) -> Dictionary:
+	var command_data = _get_command_data(command_name)
+	if command_data is LogotCommand:
+		var command := command_data as LogotCommand
+		if not command.orderable_group.is_empty() and command.orderable_object_id != null:
+			return {"group": command.orderable_group, "id": command.orderable_object_id, "order": command.orderable_order}
+	if command_data is Dictionary:
+		var data := command_data as Dictionary
+		if not str(data.get("orderable_group", "")).is_empty() and data.has("orderable_object_id"):
+			return {"group": str(data.get("orderable_group")), "id": data.get("orderable_object_id"), "order": int(data.get("orderable_order", 0))}
+	return {}
+
+
 func _get_display_variable_group_data(address: String) -> Dictionary:
 	var resolved_address := _resolve_alias_command_path(address)
 	var display_variable = _get_display_variables().get(resolved_address)
@@ -6019,7 +6091,14 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 		"has_display_variable": _has_display_variable(tier_text),
 		"has_widget": has_widget,
 		"disabled": _is_command_path_disabled(tier_text),
+		"keyboard_shortcut": _get_command_keyboard_shortcut(resolved_tier),
 	}
+	var orderable_data := _get_command_orderable_data(resolved_tier)
+	if not orderable_data.is_empty():
+		match_data["draggable"] = true
+		match_data["orderable_group"] = orderable_data.get("group")
+		match_data["orderable_object_id"] = orderable_data.get("id")
+		match_data["display_order"] = int(orderable_data.get("order", 0))
 	if not tier_label_override.is_empty():
 		match_data["tier_label_override"] = tier_label_override
 
@@ -6091,6 +6170,11 @@ func _sort_tier_matches(matches: Array[Dictionary], apply_group_sorting: bool) -
 		var score_b := int(b.get("score", 0))
 		if score_a != score_b:
 			return score_a < score_b
+		if a.has("display_order") or b.has("display_order"):
+			var order_a := int(a.get("display_order", 0))
+			var order_b := int(b.get("display_order", 0))
+			if order_a != order_b:
+				return order_a < order_b
 
 		return str(a.get("tier", "")).nocasecmp_to(str(b.get("tier", ""))) < 0
 	)
@@ -6472,6 +6556,18 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 	var tier := str(match_data.get("tier", ""))
 	var disabled := bool(match_data.get("disabled", false))
 	var icon := _get_command_icon(tier)
+	var shortcut := int(match_data.get("keyboard_shortcut", KEY_NONE)) as Key
+	var shortcut_items: Array = []
+	if shortcut != KEY_NONE:
+		shortcut_items.append({
+			"text": "Cmd/Ctrl + %s" % OS.get_keycode_string(shortcut).to_upper(),
+			"color": Color(0.75, 0.78, 0.86, 0.45 if bool(match_data.get("shortcut_trumped", false)) else 1.0),
+		})
+	var orderable_fields := {
+		"draggable": bool(match_data.get("draggable", false)),
+		"orderable_group": match_data.get("orderable_group", ""),
+		"orderable_object_id": match_data.get("orderable_object_id"),
+	}
 	if match_data.get("is_text_input", false):
 		return {
 			"label": _get_autocomplete_tier_label(prefix, match_data),
@@ -6486,7 +6582,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		}
 
 	if match_data.get("is_option", false):
-		return {
+		var option_row := {
 			"label": str(match_data.get("option_label", "")),
 			"label_highlight_ranges": [],
 			"value_text": "",
@@ -6495,31 +6591,38 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"disabled": disabled,
 			"icon": icon,
 			"default_focus": bool(match_data.get("default_focus", false)),
+			"highlighted": bool(match_data.get("highlighted", false)),
+			"value_items": shortcut_items,
 		}
+		option_row.merge(orderable_fields)
+		return option_row
 	if match_data.get("suppress_value_text", false):
-		return {
+		var suppressed_row := {
 			"label": _get_autocomplete_tier_label(prefix, match_data),
 			"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
 			"truncate_label_from_start": true,
 			"value_text": "",
-			"value_items": [],
+			"value_items": shortcut_items,
 			"display_variable_address": "",
 			"value_loaded": true,
 			"has_children": match_data.get("has_children", false),
 			"can_submit": match_data.get("has_command", false),
 			"default_focus": bool(match_data.get("default_focus", false)),
+			"highlighted": bool(match_data.get("highlighted", false)),
 		}
+		suppressed_row.merge(orderable_fields)
+		return suppressed_row
 
 	var display_variable_address := ""
 	if match_data.get("has_display_variable", false):
 		display_variable_address = _resolve_alias_command_path(str(match_data.get("tier", "")))
-	return {
+	var row := {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
 		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
 		"truncate_label_from_start": true,
 		"value_text": "",
 		"value_text_color": null,
-		"value_items": [],
+		"value_items": shortcut_items,
 		"display_variable_address": display_variable_address,
 		"value_loaded": display_variable_address.is_empty(),
 		"has_children": match_data.get("has_children", false),
@@ -6527,7 +6630,10 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		"disabled": disabled,
 		"icon": icon,
 		"default_focus": bool(match_data.get("default_focus", false)),
+		"highlighted": bool(match_data.get("highlighted", false)),
 	}
+	row.merge(orderable_fields)
+	return row
 
 
 func _should_show_command_groups(_prefix: String, query: String, _is_preview: bool) -> bool:
@@ -6593,6 +6699,75 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 		"rows": rows,
 		"selected_row_index": selected_row_index,
 	}
+
+
+func _collapse_rows_between_highlights(rows: Array[Dictionary], capacity: int) -> Array[Dictionary]:
+	var highlighted: Array[int] = []
+	for row_index in range(rows.size()):
+		if bool(rows[row_index].get("highlighted", false)) or bool(rows[row_index].get("default_focus", false)):
+			highlighted.append(row_index)
+	if highlighted.size() < 2 or highlighted[-1] - highlighted[0] + 1 <= capacity:
+		return rows
+
+	var gaps: Array[Dictionary] = []
+	for highlight_index in range(highlighted.size() - 1):
+		var indices: Array[int] = []
+		for row_index in range(highlighted[highlight_index] + 1, highlighted[highlight_index + 1]):
+			if not bool(rows[row_index].get("is_group_header", false)):
+				indices.append(row_index)
+		gaps.append({"indices": indices, "hidden": []})
+
+	var projected_span := highlighted[-1] - highlighted[0] + 1
+	var gap_cursor := 0
+	while projected_span > capacity:
+		var changed := false
+		for step in range(gaps.size()):
+			var gap_index := (gap_cursor + step) % gaps.size()
+			var gap: Dictionary = gaps[gap_index]
+			var indices: Array = gap.get("indices", [])
+			if indices.is_empty():
+				continue
+			var hidden: Array = gap.get("hidden", [])
+			var hide_position := indices.size() / 2
+			hidden.append(indices.pop_at(hide_position))
+			gap["indices"] = indices
+			gap["hidden"] = hidden
+			gaps[gap_index] = gap
+			# The first hidden option becomes the placeholder; later ones reduce height.
+			if hidden.size() > 1:
+				projected_span -= 1
+			gap_cursor = (gap_index + 1) % gaps.size()
+			changed = true
+			break
+		if not changed:
+			break
+
+	var gap_by_row: Dictionary = {}
+	var hidden_rows: Dictionary = {}
+	for gap in gaps:
+		var hidden: Array = gap.get("hidden", [])
+		if hidden.is_empty():
+			continue
+		hidden.sort()
+		var anchor := int(hidden[0])
+		gap_by_row[anchor] = hidden.size()
+		for row_index in hidden:
+			hidden_rows[int(row_index)] = true
+
+	var result: Array[Dictionary] = []
+	for row_index in range(rows.size()):
+		if gap_by_row.has(row_index):
+			result.append({
+				"label": "+ %d hidden options" % int(gap_by_row[row_index]),
+				"disabled": true,
+				"has_children": false,
+				"can_submit": false,
+				"value_text": "",
+			})
+		if hidden_rows.has(row_index):
+			continue
+		result.append(rows[row_index])
+	return result
 
 
 func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn, column_state: Dictionary, rows: Array[Dictionary]) -> bool:
@@ -7782,6 +7957,8 @@ func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
 		action_count += 1
 	if row_data.get("can_submit", false):
 		action_count += 1
+	if row_data.get("draggable", false):
+		action_count += 1
 	if action_count <= 0:
 		return 0
 
@@ -7882,9 +8059,25 @@ func _create_command_autocomplete_column() -> AutocompleteCommandColumn:
 		list.configure_theme(_history_autocomplete_popup)
 	list.row_activated.connect(_on_command_autocomplete_column_row_activated.bind(list))
 	list.row_long_pressed.connect(_on_command_autocomplete_column_row_long_pressed.bind(list))
+	list.row_reordered.connect(_on_command_autocomplete_column_rows_reordered.bind(list))
 	list.header_navigation_pressed.connect(_on_command_autocomplete_header_navigation_pressed)
 	list.visible_rows_changed.connect(_on_command_autocomplete_column_visible_rows_changed.bind(list))
 	return list
+
+
+func _on_command_autocomplete_column_rows_reordered(from_row_index: int, to_row_index: int, list: AutocompleteCommandColumn) -> void:
+	if not _orderable_reorder_handler.is_valid():
+		return
+	var from_context := _get_command_autocomplete_row_context(from_row_index, list)
+	var to_context := _get_command_autocomplete_row_context(to_row_index, list)
+	if from_context.is_empty() or to_context.is_empty():
+		return
+	var from_match: Dictionary = from_context.get("match_data", {})
+	var to_match: Dictionary = to_context.get("match_data", {})
+	var group := str(from_match.get("orderable_group", ""))
+	if group.is_empty() or group != str(to_match.get("orderable_group", "")):
+		return
+	_orderable_reorder_handler.call(group, from_match.get("orderable_object_id"), to_match.get("orderable_object_id"))
 
 
 func _get_autocomplete_column_index_for_node(list: AutocompleteCommandColumn) -> int:
@@ -8295,6 +8488,9 @@ func _refresh_command_preview_option_state(column_state: Dictionary) -> Dictiona
 
 
 func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, column_state: Dictionary, column_index: int) -> Dictionary:
+	_resolve_visible_keyboard_shortcuts()
+	if column_index >= 0 and column_index < _autocomplete_column_states.size():
+		column_state = _autocomplete_column_states[column_index]
 	column_state = _refresh_command_preview_option_state(column_state)
 	var prefix: String = column_state.get("prefix", "")
 	var command_name := prefix.trim_suffix("/")
@@ -8336,6 +8532,17 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	var column_height := _get_command_autocomplete_column_viewport_height()
 	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
 		column_height = int(_get_touch_command_autocomplete_column_size().y)
+	if bool(column_state.get("preview", false)):
+		var estimated_header_height := 72
+		var row_capacity := maxi(1, int(floor(float(maxi(0, column_height - estimated_header_height)) / float(maxi(1, _get_scaled_autocomplete_item_height())))))
+		var fitted_rows := _collapse_rows_between_highlights(rows, row_capacity)
+		if fitted_rows.size() != rows.size():
+			rows = fitted_rows
+			layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
+			column_state["left_width"] = int(layout.get("name_width", 0))
+			column_state["value_width"] = int(layout.get("value_width", 0))
+			column_state["action_width"] = int(layout.get("action_width", 0))
+			column_state["width"] = int(layout.get("width", 0))
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
 	_configure_autocomplete_column_widget(list, widget_path)
@@ -8358,6 +8565,74 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	list.set_header_navigation(show_touch_navigation, navigation_label)
 
 	return column_state
+
+
+func _resolve_visible_keyboard_shortcuts() -> void:
+	var winners: Dictionary = {}
+	# The current column is considered first, then the preview replaces its winners.
+	for candidate_column_index in [_autocomplete_active_column_index, _autocomplete_active_column_index + 1]:
+		if candidate_column_index < 0 or candidate_column_index >= _autocomplete_column_states.size():
+			continue
+		var state: Dictionary = _autocomplete_column_states[candidate_column_index]
+		var matches: Array = state.get("matches", [])
+		for match_index in range(matches.size()):
+			var match_data: Dictionary = matches[match_index]
+			match_data.erase("shortcut_trumped")
+			match_data.erase("highlighted")
+			var shortcut := int(match_data.get("keyboard_shortcut", KEY_NONE)) as Key
+			if shortcut == KEY_NONE or bool(match_data.get("disabled", false)):
+				matches[match_index] = match_data
+				continue
+			var key := int(shortcut)
+			if winners.has(key):
+				var old: Dictionary = winners[key]
+				var old_column := int(old.get("column", -1))
+				if old_column == candidate_column_index:
+					match_data["shortcut_trumped"] = true
+				else:
+					var old_state: Dictionary = _autocomplete_column_states[old_column]
+					var old_matches: Array = old_state.get("matches", [])
+					var old_index := int(old.get("index", -1))
+					if old_index >= 0 and old_index < old_matches.size():
+						var old_match: Dictionary = old_matches[old_index]
+						old_match["shortcut_trumped"] = true
+						old_matches[old_index] = old_match
+						old_state["matches"] = old_matches
+						_autocomplete_column_states[old_column] = old_state
+					winners[key] = {"column": candidate_column_index, "index": match_index}
+			if not winners.has(key):
+				winners[key] = {"column": candidate_column_index, "index": match_index}
+			if candidate_column_index == _autocomplete_active_column_index + 1:
+				match_data["highlighted"] = true
+			matches[match_index] = match_data
+		state["matches"] = matches
+		_autocomplete_column_states[candidate_column_index] = state
+	_autocomplete_shortcut_winners = winners
+
+
+func handle_command_palette_shortcut(event: InputEventKey) -> bool:
+	if not event.pressed or event.echo or not event.is_command_or_control_pressed() or not _is_command_popup_visible():
+		return false
+	_resolve_visible_keyboard_shortcuts()
+	var key := int(event.keycode) | (KEY_MASK_SHIFT if event.shift_pressed else 0)
+	if not _autocomplete_shortcut_winners.has(key):
+		key = int(event.physical_keycode) | (KEY_MASK_SHIFT if event.shift_pressed else 0)
+	if not _autocomplete_shortcut_winners.has(key):
+		return false
+	var winner: Dictionary = _autocomplete_shortcut_winners[key]
+	var column_index := int(winner.get("column", -1))
+	if column_index < 0 or column_index >= _autocomplete_column_states.size():
+		return false
+	var state: Dictionary = _autocomplete_column_states[column_index]
+	var matches: Array = state.get("matches", [])
+	var match_index := int(winner.get("index", -1))
+	if match_index < 0 or match_index >= matches.size():
+		return false
+	var submission_text := _get_submission_text_for_autocomplete_match(state, matches[match_index])
+	if submission_text.is_empty():
+		return false
+	command_palette_submit_requested.emit(submission_text)
+	return true
 
 
 func _get_widget_path_for_autocomplete_column_state(column_state: Dictionary) -> String:
