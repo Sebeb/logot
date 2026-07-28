@@ -170,6 +170,21 @@ func capture_visual_checkpoint(name: String, path: String = ""):
 		return {"ok": false, "error": "No active test run."}
 
 	_active_visual_index += 1
+	if DisplayServer.get_name() == "headless":
+		var skipped_visual_result = LogotTestVisualResultScript.new()
+		skipped_visual_result.name = name
+		skipped_visual_result.passed = true
+		skipped_visual_result.details = "Skipped: screenshot capture is not available in headless mode."
+		skipped_visual_result.timestamp = _timestamp_now()
+		_active_result.visual_checks.append(skipped_visual_result)
+		return {
+			"ok": true,
+			"skipped": true,
+			"path": "",
+			"name": name,
+			"error": "",
+		}
+
 	var target_path := path.strip_edges()
 	if target_path.is_empty():
 		target_path = "%s/%02d_%s.png" % [
