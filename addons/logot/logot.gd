@@ -108,6 +108,7 @@ const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
 const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_interfacing/console_interfacing_commands.gd"
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
+const _GITHUB_AUTH_COMMAND_PATH := "dev/github_auth"
 const _UNKNOWN_GIT_BRANCH := "unknown"
 const _CURRENT_GIT_BRANCH_AHEAD_COLOR := Color(0.42, 0.9, 0.42, 1.0)
 const _CURRENT_GIT_BRANCH_BEHIND_COLOR := Color(0.88, 0.44, 0.44, 1.0)
@@ -289,6 +290,8 @@ var _current_git_branch_remote_status := ""
 var _current_git_branch_ahead := 0
 var _current_git_branch_behind := 0
 var _current_git_branch_uncommitted_files := 0
+var _github_auth_status := "unknown"
+var _github_auth_process_id := -1
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
 var _performance_frame_history_cpu: Array[float] = []
@@ -2223,6 +2226,7 @@ func _enter_tree() -> void:
 
 
 func _process(_delta: float) -> void:
+	_refresh_github_auth_after_login()
 	if Engine.is_editor_hint():
 		return
 	_update_performance_monitor(_delta)
@@ -4343,6 +4347,14 @@ func _register_dev_commands() -> void:
 		"Prints the current git branch name."
 	)
 	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch, Callable(), _get_current_git_branch_display_items)
+	add_command(
+		_GITHUB_AUTH_COMMAND_PATH,
+		_command_github_auth,
+		[],
+		0,
+		"Starts GitHub CLI web authentication. Remote branch comparison stays disabled until authenticated."
+	)
+	add_display_variable(_GITHUB_AUTH_COMMAND_PATH, _get_github_auth_status)
 	_register_performance_commands()
 
 
@@ -5067,6 +5079,73 @@ func _get_current_git_branch_display_items() -> Array[Dictionary]:
 	return items
 
 
+func _command_github_auth() -> void:
+	_refresh_github_auth_after_login()
+	if _github_auth_process_id > 0:
+		print_line("GitHub authentication is already in progress.")
+		return
+	if not _is_executable_available("gh"):
+		_github_auth_status = "gh unavailable"
+		notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
+		print_line("GitHub CLI (gh) is not installed, so authentication could not start.")
+		return
+	if _is_github_authenticated():
+		_github_auth_status = "authenticated"
+		notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
+		_refresh_current_git_branch_remote_status()
+		print_line("GitHub is already authenticated.")
+		return
+
+	_github_auth_process_id = OS.create_process(
+		"gh",
+		PackedStringArray(["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"]),
+		true
+	)
+	if _github_auth_process_id <= 0:
+		_github_auth_process_id = -1
+		_github_auth_status = "not authenticated"
+		print_line("GitHub authentication could not be started.")
+	else:
+		_github_auth_status = "authenticating"
+		print_line("GitHub authentication opened in a separate console. Complete the web flow there.")
+	notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
+
+
+func _get_github_auth_status() -> String:
+	_refresh_github_auth_after_login()
+	if _github_auth_process_id > 0:
+		return "authenticating"
+	if _github_auth_status == "unknown":
+		if not _is_executable_available("gh"):
+			_github_auth_status = "gh unavailable"
+		else:
+			_github_auth_status = "authenticated" if _is_github_authenticated() else "not authenticated"
+	return _github_auth_status
+
+
+func _refresh_github_auth_after_login() -> void:
+	if _github_auth_process_id <= 0 or OS.is_process_running(_github_auth_process_id):
+		return
+	_github_auth_process_id = -1
+	if _is_github_authenticated():
+		_github_auth_status = "authenticated"
+		OS.execute("gh", ["auth", "setup-git", "--hostname", "github.com"], [], true)
+		_refresh_current_git_branch_remote_status()
+		print_line("GitHub authentication completed. Remote branch comparison is enabled.")
+	else:
+		_github_auth_status = "not authenticated"
+		print_line("GitHub authentication did not complete. Remote branch comparison remains disabled.")
+	notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
+
+
+func _is_github_authenticated() -> bool:
+	return OS.execute("gh", ["auth", "status", "--hostname", "github.com"], [], true) == OK
+
+
+func _is_executable_available(executable: String) -> bool:
+	return OS.execute(executable, ["--version"], [], true) == OK
+
+
 func _refresh_current_git_branch_remote_status() -> void:
 	_current_git_branch_remote_status = ""
 	_current_git_branch_ahead = 0
@@ -5079,6 +5158,8 @@ func _refresh_current_git_branch_remote_status() -> void:
 	var status := OS.execute("git", ["status", "--porcelain"], command_output, true)
 	if status == OK and not command_output.is_empty():
 		_current_git_branch_uncommitted_files = str(command_output[0]).strip_edges().split("\n", false).size()
+	if _get_github_auth_status() != "authenticated":
+		return
 
 	command_output.clear()
 	status = OS.execute("git", ["fetch", "--quiet"], command_output, true)
