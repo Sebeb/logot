@@ -3951,17 +3951,21 @@ func _get_setting_truncate_multiline() -> bool:
 
 
 func _cycle_performance_pin_mode() -> void:
-	match _performance_pin_mode:
+	_set_performance_pin_mode(_next_performance_pin_mode(_performance_pin_mode))
+
+
+func _next_performance_pin_mode(mode: String) -> String:
+	match _normalize_performance_pin_mode(mode):
 		PERFORMANCE_MODE_HIDDEN:
-			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
+			return PERFORMANCE_MODE_FPS
 		PERFORMANCE_MODE_FPS:
-			_set_performance_pin_mode(PERFORMANCE_MODE_OVERVIEW)
+			return PERFORMANCE_MODE_OVERVIEW
 		PERFORMANCE_MODE_OVERVIEW:
-			_set_performance_pin_mode(PERFORMANCE_MODE_DETAILED)
-		PERFORMANCE_MODE_DETAILED:
-			_set_performance_pin_mode(PERFORMANCE_MODE_FPS)
-		_:
-			_set_performance_pin_mode(PERFORMANCE_MODE_HIDDEN)
+			# Detailed only adds allocation graphs; without either source it repeats overview.
+			if has_performance_allocation_data():
+				return PERFORMANCE_MODE_DETAILED
+			return PERFORMANCE_MODE_HIDDEN
+	return PERFORMANCE_MODE_HIDDEN
 
 
 func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
@@ -3989,7 +3993,7 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
 			set_display_variable_pinned(_PERFORMANCE_OVERVIEW_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
 			set_display_variable_pinned(_PERFORMANCE_GRAPHS_LEGACY_WIDGET_PATH, false)
-			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, true, PIN_CORNER_TOP_RIGHT)
+			set_display_variable_transiently_pinned(_PERFORMANCE_CPU_SOURCES_WIDGET_PATH, _should_pin_cpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 			set_display_variable_transiently_pinned(_PERFORMANCE_GPU_SOURCES_WIDGET_PATH, _should_pin_gpu_performance_sources(), PIN_CORNER_TOP_RIGHT)
 		PERFORMANCE_MODE_HIDDEN:
 			set_display_variable_pinned(_PERFORMANCE_FPS_PATH, false)
@@ -4009,7 +4013,10 @@ func _set_performance_pin_mode(mode: String, save: bool = true) -> void:
 
 
 func _apply_saved_performance_pin_mode() -> void:
-	_set_performance_pin_mode(_performance_pin_mode, false)
+	var mode := _performance_pin_mode
+	if mode == PERFORMANCE_MODE_DETAILED and not has_performance_allocation_data():
+		mode = PERFORMANCE_MODE_OVERVIEW
+	_set_performance_pin_mode(mode, false)
 
 
 func _normalize_performance_pin_mode(mode: String) -> String:
@@ -4593,6 +4600,20 @@ func can_collect_gpu_performance_sources() -> bool:
 	if bool(status.get("render_profile_seen", false)) and not bool(status.get("gpu_timestamps_available", false)):
 		return false
 	return true
+
+
+func has_performance_allocation_data() -> bool:
+	return _should_pin_cpu_performance_sources() or _should_pin_gpu_performance_sources()
+
+
+func _should_pin_cpu_performance_sources() -> bool:
+	_ensure_performance_monitor_initialized()
+	if _performance_source_monitor == null:
+		return false
+	if bool(_performance_source_monitor.call("is_test_mode")):
+		return not ((_performance_source_monitor.call("get_current", "render_cpu") as Dictionary).is_empty()
+			and (_performance_source_monitor.call("get_current", "whole_cpu") as Dictionary).is_empty())
+	return bool(_performance_source_monitor.call("is_available"))
 
 
 func _should_pin_gpu_performance_sources() -> bool:

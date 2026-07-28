@@ -111,12 +111,36 @@ func run(ctx) -> void:
 	Console._cycle_performance_pin_mode()
 	await ctx.wait_frames(1)
 	ctx.check(
+		"f3_cycle_hidden_mode_pins_nothing",
+		Console._performance_pin_mode == "hidden"
+			and not display.is_display_variable_pinned("dev/performance/fps")
+			and not display.is_display_variable_pinned(OVERVIEW_WIDGET_PATH)
+			and not display.is_display_variable_pinned(CPU_WIDGET_PATH)
+			and not display.is_display_variable_pinned(GPU_WIDGET_PATH)
+	)
+	Console._cycle_performance_pin_mode()
+	await ctx.wait_frames(1)
+	ctx.check(
 		"f3_cycle_returns_to_fps_mode",
 		Console._performance_pin_mode == "fps"
 			and display.is_display_variable_pinned("dev/performance/fps")
 			and not display.is_display_variable_pinned(OVERVIEW_WIDGET_PATH)
 			and not display.is_display_variable_pinned(CPU_WIDGET_PATH)
 			and not display.is_display_variable_pinned(GPU_WIDGET_PATH)
+	)
+	# Empty test histories keep test mode on while reporting no allocation data on any build.
+	Console.set_performance_source_test_histories([], [], [])
+	Console._set_performance_pin_mode("overview", false)
+	ctx.check(
+		"f3_skips_detailed_without_allocation_data",
+		Console._next_performance_pin_mode("overview") == "hidden",
+		Console._next_performance_pin_mode("overview")
+	)
+	Console.set_performance_source_test_histories(histories["render"], histories["gpu"], histories["whole"])
+	ctx.check(
+		"f3_includes_detailed_with_allocation_data",
+		Console._next_performance_pin_mode("overview") == "detailed",
+		Console._next_performance_pin_mode("overview")
 	)
 	Console._set_performance_pin_mode("overview", true)
 	Console._set_performance_source_update_rate_hz(12.0)
@@ -217,7 +241,22 @@ func run(ctx) -> void:
 		ctx.check("legend_source_titles_use_full_row_width", float(panel.get("legend_name_width", 0.0)) >= 145.0, str(panel))
 		ctx.check("source_list_is_below_graph", bool(panel.get("graph_above_legend", false)), str(panel))
 		ctx.check("history_columns_are_gapless", bool(panel.get("history_columns_gapless", false)), str(panel))
-		ctx.check("history_uses_pixel_resampled_renderer", str(panel.get("history_renderer", "")) == "pixel_resampled_nearest_available", str(panel))
+		ctx.check("history_uses_right_packed_slices", str(panel.get("history_renderer", "")) == "right_packed_fixed_width_slices", str(panel))
+		ctx.check(
+			"history_slices_are_never_stretched",
+			float(panel.get("history_slice_width", 0.0)) > 0.0 and float(panel.get("history_slice_width", 0.0)) <= 10.5,
+			str(panel)
+		)
+		ctx.check(
+			"short_history_leaves_blank_space_on_the_left",
+			float(panel.get("history_blank_left_width", -1.0)) > 0.0,
+			str(panel)
+		)
+		ctx.check(
+			"empty_samples_do_not_reserve_a_column",
+			int(panel.get("history_column_count", -1)) == 2 and int(panel.get("history_count", 0)) == 3,
+			str(panel)
+		)
 		var overview_snapshot: Dictionary = Console.get_performance_snapshot()
 		ctx.check(
 			"source_history_matches_overview_time_window",
@@ -324,7 +363,8 @@ func _build_histories() -> Dictionary:
 	var render := [
 		{"frame_number": 100, "available": true, "total_ms": 16.0, "sources": old_sources},
 		{"frame_number": 101, "available": false},
-		{"frame_number": 102, "available": true, "total_ms": total, "sources": current_sources},
+		{"frame_number": 102, "available": true, "total_ms": 0.0, "sources": [] as Array[Dictionary]},
+		{"frame_number": 103, "available": true, "total_ms": total, "sources": current_sources},
 	]
 	var gpu := [
 		{"frame_number": 100, "available": true, "total_ms": 12.0, "sources": old_sources},
