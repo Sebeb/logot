@@ -18,7 +18,7 @@ func run(ctx) -> void:
 	ctx.check("performance submenu has no inherited group", _match_has_no_group(display._build_tier_matches("dev/", ""), "dev/performance"))
 	ctx.check("performance commands have no redundant group", _match_has_no_group(display._build_tier_matches("dev/performance/", ""), "dev/performance/time_range"))
 
-	var option_matches := display._build_tier_matches("dev/performance/time_range/", "")
+	var option_matches: Array = display._build_tier_matches("dev/performance/time_range/", "")
 	ctx.check("time-range exposes options", not option_matches.is_empty())
 	for match_data in option_matches:
 		ctx.check("time-range option has no command group", str((match_data as Dictionary).get("group_name", "")).strip_edges().is_empty())

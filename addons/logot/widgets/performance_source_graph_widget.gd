@@ -19,6 +19,8 @@ const PALETTE_WIDGET_WIDTH := 220.0
 const PANEL_HEIGHT := 226.0
 const GRAPH_HEIGHT := 70.0
 const NOW_BAR_WIDTH := 10.5
+const HISTORY_SLICE_MAX_WIDTH := NOW_BAR_WIDTH
+const HISTORY_SLICE_MIN_WIDTH := 1.0
 const LEGEND_TIME_PILL_WIDTH := 31.0
 const LEGEND_TIME_PILL_HEIGHT := 9.0
 const LEGEND_NAME_FONT_SIZE := 10
@@ -217,8 +219,10 @@ class SourceBreakdownPanel:
 			"visible_sample_count": int(snapshot.get("visible_sample_count", 0)),
 			"overtake_elapsed": overtake_elapsed.duplicate(),
 			"history_columns_gapless": _history_columns_are_gapless(graph_rect),
-			"history_column_count": _drawable_history_count(),
-			"history_renderer": "pixel_resampled_nearest_available",
+			"history_column_count": _drawable_history_count(graph_rect),
+			"history_slice_width": float(_history_layout(graph_rect).get("slice_width", 0.0)),
+			"history_blank_left_width": maxf(0.0, float(_history_layout(graph_rect).get("start_x", graph_rect.end.x)) - graph_rect.position.x),
+			"history_renderer": "right_packed_fixed_width_slices",
 		}
 
 	func _draw_legend(font: Font, rect: Rect2, total_ms: float) -> void:
@@ -264,19 +268,31 @@ class SourceBreakdownPanel:
 
 	func _draw_history(rect: Rect2) -> void:
 		draw_rect(rect, Color(0.0, 0.0, 0.0, 0.28), true)
-		var history := _available_history_samples()
-		if history.is_empty():
-			return
-		var pixel_start := floori(rect.position.x)
-		var pixel_end := ceili(rect.end.x)
-		var pixel_count := maxi(1, pixel_end - pixel_start)
-		for pixel_offset in pixel_count:
-			var sample_index := mini(
-				history.size() - 1,
-				floori((float(pixel_offset) + 0.5) * float(history.size()) / float(pixel_count))
-			)
-			var sample: Dictionary = history[sample_index] as Dictionary
-			_draw_source_stack(Rect2(float(pixel_start + pixel_offset), rect.position.y, 1.0, rect.size.y), sample)
+		var layout := _history_layout(rect)
+		var samples: Array[Dictionary] = layout.get("samples", [] as Array[Dictionary])
+		var slice_width := float(layout.get("slice_width", 0.0))
+		var start_x := float(layout.get("start_x", rect.position.x))
+		for index in samples.size():
+			# Share edges between neighbours so packed slices never leave a background seam.
+			var left := start_x + slice_width * float(index)
+			var right := start_x + slice_width * float(index + 1)
+			_draw_source_stack(Rect2(left, rect.position.y, right - left, rect.size.y), samples[index])
+
+	# Time slices keep a fixed width and pack against the "now" bar, so a partly filled
+	# history leaves blank space on the left instead of stretching across the graph.
+	func _history_layout(rect: Rect2) -> Dictionary:
+		var samples := _drawable_history_samples()
+		if rect.size.x <= 0.0 or samples.is_empty():
+			return {"samples": [] as Array[Dictionary], "slice_width": 0.0, "start_x": rect.end.x}
+		var max_slices := maxi(1, floori(rect.size.x / HISTORY_SLICE_MIN_WIDTH))
+		if samples.size() > max_slices:
+			samples = samples.slice(samples.size() - max_slices)
+		var slice_width := minf(HISTORY_SLICE_MAX_WIDTH, rect.size.x / float(samples.size()))
+		return {
+			"samples": samples,
+			"slice_width": slice_width,
+			"start_x": rect.end.x - slice_width * float(samples.size()),
+		}
 
 	func _draw_now(rect: Rect2, current: Dictionary) -> void:
 		draw_rect(rect, Color(0.0, 0.0, 0.0, 0.36), true)
@@ -365,17 +381,31 @@ class SourceBreakdownPanel:
 					gray_paths.append(path)
 		return gray_paths
 
-	func _drawable_history_count() -> int:
-		return _available_history_samples().size()
+	func _drawable_history_count(rect: Rect2) -> int:
+		return (_history_layout(rect).get("samples", []) as Array).size()
 
 	func _history_columns_are_gapless(rect: Rect2) -> bool:
-		return rect.size.x <= 0.0 or _available_history_samples().is_empty() or ceili(rect.end.x) - floori(rect.position.x) >= 1
+		var layout := _history_layout(rect)
+		var samples: Array = layout.get("samples", []) as Array
+		if samples.is_empty():
+			return true
+		# Slices are laid out on shared edges and empty samples are packed out, so the
+		# only way a hole can appear is a zero-width slice.
+		return float(layout.get("slice_width", 0.0)) > 0.0
 
-	func _available_history_samples() -> Array[Dictionary]:
+	# Samples that would render nothing (unavailable, or captured with no measured time)
+	# are dropped rather than reserving an empty column between neighbouring slices.
+	func _drawable_history_samples() -> Array[Dictionary]:
 		var result: Array[Dictionary] = []
 		for sample_variant in snapshot.get("history", []) as Array:
-			if sample_variant is Dictionary and bool((sample_variant as Dictionary).get("available", false)):
-				result.append(sample_variant as Dictionary)
+			if not (sample_variant is Dictionary):
+				continue
+			var sample := sample_variant as Dictionary
+			if not bool(sample.get("available", false)):
+				continue
+			if float(sample.get("total_ms", 0.0)) <= 0.0:
+				continue
+			result.append(sample)
 		return result
 
 	func _color_for_path(path: String) -> Color:
