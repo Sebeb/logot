@@ -3993,8 +3993,11 @@ func _get_setting_truncate_multiline() -> bool:
 	return _get_console_setting_value("truncate_multiline", _truncate_multiline)
 
 
-func _cycle_performance_pin_mode() -> void:
-	_set_performance_pin_mode(_next_performance_pin_mode(_performance_pin_mode))
+func _cycle_performance_pin_mode(reverse: bool = false) -> void:
+	if reverse:
+		_set_performance_pin_mode(_previous_performance_pin_mode(_performance_pin_mode))
+	else:
+		_set_performance_pin_mode(_next_performance_pin_mode(_performance_pin_mode))
 
 
 func _next_performance_pin_mode(mode: String) -> String:
@@ -4008,6 +4011,24 @@ func _next_performance_pin_mode(mode: String) -> String:
 			if has_performance_allocation_data():
 				return PERFORMANCE_MODE_DETAILED
 			return PERFORMANCE_MODE_HIDDEN
+		PERFORMANCE_MODE_DETAILED:
+			return PERFORMANCE_MODE_HIDDEN
+	return PERFORMANCE_MODE_HIDDEN
+
+
+func _previous_performance_pin_mode(mode: String) -> String:
+	match _normalize_performance_pin_mode(mode):
+		PERFORMANCE_MODE_FPS:
+			return PERFORMANCE_MODE_HIDDEN
+		PERFORMANCE_MODE_OVERVIEW:
+			return PERFORMANCE_MODE_FPS
+		PERFORMANCE_MODE_DETAILED:
+			return PERFORMANCE_MODE_OVERVIEW
+		PERFORMANCE_MODE_HIDDEN:
+			# Mirrors _next_performance_pin_mode's overview/detailed skip in reverse.
+			if has_performance_allocation_data():
+				return PERFORMANCE_MODE_DETAILED
+			return PERFORMANCE_MODE_OVERVIEW
 	return PERFORMANCE_MODE_HIDDEN
 
 
@@ -5280,7 +5301,7 @@ func _input(event : InputEvent) -> void:
 					toggle_size()
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_F3 and event.pressed and not event.echo:
-			_cycle_performance_pin_mode()
+			_cycle_performance_pin_mode(event.shift_pressed)
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_F4 and event.pressed and not event.echo:
 			_toggle_all_pins_visibility()

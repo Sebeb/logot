@@ -149,6 +149,41 @@ func run(ctx) -> void:
 			and not display.is_display_variable_pinned(CPU_WIDGET_PATH)
 			and not display.is_display_variable_pinned(GPU_WIDGET_PATH)
 	)
+	Console._set_performance_pin_mode("detailed", false)
+	await ctx.wait_frames(1)
+	Console._cycle_performance_pin_mode(true)
+	await ctx.wait_frames(1)
+	ctx.check(
+		"shift_f3_reverse_cycle_steps_from_detailed_to_overview",
+		Console._performance_pin_mode == "overview"
+			and display.is_display_variable_pinned(OVERVIEW_WIDGET_PATH)
+			and not display.is_display_variable_pinned(CPU_WIDGET_PATH)
+			and not display.is_display_variable_pinned(GPU_WIDGET_PATH)
+	)
+	Console._cycle_performance_pin_mode(true)
+	await ctx.wait_frames(1)
+	ctx.check(
+		"shift_f3_reverse_cycle_steps_to_fps",
+		Console._performance_pin_mode == "fps"
+			and display.is_display_variable_pinned("dev/performance/fps")
+	)
+	Console._cycle_performance_pin_mode(true)
+	await ctx.wait_frames(1)
+	ctx.check(
+		"shift_f3_reverse_cycle_steps_to_hidden",
+		Console._performance_pin_mode == "hidden"
+			and not display.is_display_variable_pinned("dev/performance/fps")
+			and not display.is_display_variable_pinned(OVERVIEW_WIDGET_PATH)
+	)
+	Console._cycle_performance_pin_mode(true)
+	await ctx.wait_frames(1)
+	ctx.check(
+		"shift_f3_reverse_cycle_returns_to_detailed",
+		Console._performance_pin_mode == "detailed"
+			and display.is_display_variable_pinned(OVERVIEW_WIDGET_PATH)
+			and display.is_display_variable_pinned(CPU_WIDGET_PATH)
+			and display.is_display_variable_pinned(GPU_WIDGET_PATH)
+	)
 	# Empty test histories keep test mode on while reporting no allocation data on any build.
 	Console.set_performance_source_test_histories([], [], [])
 	Console._set_performance_pin_mode("overview", false)
@@ -157,11 +192,21 @@ func run(ctx) -> void:
 		Console._next_performance_pin_mode("overview") == "hidden",
 		Console._next_performance_pin_mode("overview")
 	)
+	ctx.check(
+		"shift_f3_skips_detailed_without_allocation_data",
+		Console._previous_performance_pin_mode("hidden") == "overview",
+		Console._previous_performance_pin_mode("hidden")
+	)
 	Console.set_performance_source_test_histories(histories["render"], histories["gpu"], histories["whole"])
 	ctx.check(
 		"f3_includes_detailed_with_allocation_data",
 		Console._next_performance_pin_mode("overview") == "detailed",
 		Console._next_performance_pin_mode("overview")
+	)
+	ctx.check(
+		"shift_f3_includes_detailed_with_allocation_data",
+		Console._previous_performance_pin_mode("hidden") == "detailed",
+		Console._previous_performance_pin_mode("hidden")
 	)
 	Console._set_performance_pin_mode("overview", true)
 	Console._set_performance_source_update_rate_hz(12.0)
