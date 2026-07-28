@@ -1073,7 +1073,7 @@ func _is_setget_command(command_name: String) -> bool:
 
 
 func _is_text_input_option_command(command_name: String) -> bool:
-	return command_name == "pins/save"
+	return command_name == "pins/save" or command_name == "state_overrides/save"
 
 
 func _get_pinned_display_variables_for_alias_resolution() -> Array[String]:
@@ -1165,7 +1165,8 @@ func _validate_command_option_segment(command_name: String, option_segment: Stri
 
 	if _is_text_input_option_command(command_name):
 		var validation := _validate_pin_overlay_name(option_segment)
-		return {"checked": true, "valid": bool(validation.get("ok", false))}
+		var clashes := _get_command_argument_option_values(command_name, 0).has(option_segment.strip_edges())
+		return {"checked": true, "valid": bool(validation.get("ok", false)) and not clashes}
 
 	return {"checked": false, "valid": false}
 
@@ -5668,6 +5669,12 @@ func _reset_console_for_escape() -> void:
 
 func is_visible():
 	return _is_console_control_visible()
+
+
+func reveal_command_path(command_path: String) -> void:
+	if not _display or not _display.has_method("_reveal_command_path"):
+		return
+	_display.call("_reveal_command_path", command_path)
 
 
 func is_capturing_keyboard_input() -> bool:

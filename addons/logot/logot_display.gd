@@ -6964,7 +6964,7 @@ func _is_display_variable_pin_action_subcommand_tier(tier: String) -> bool:
 
 func _is_text_input_command_path(command_name: String) -> bool:
 	var resolved_command := _resolve_alias_command_path(command_name)
-	if resolved_command == "pins/save":
+	if resolved_command == "pins/save" or resolved_command == "state_overrides/save":
 		return true
 	if not _is_setget_command_name(resolved_command):
 		return false
@@ -7059,11 +7059,12 @@ func _validate_pin_overlay_name_for_input(raw_name: String) -> Dictionary:
 
 func _validate_text_input_for_command_path(command_name: String, raw_input: String) -> Dictionary:
 	var resolved_command := _resolve_alias_command_path(command_name)
-	if resolved_command == "pins/save":
+	if resolved_command == "pins/save" or resolved_command == "state_overrides/save":
 		var save_valid := _validate_pin_overlay_name_for_input(raw_input)
+		var name_clashes := _get_command_argument_option_values(resolved_command, 0).has(raw_input.strip_edges())
 		return {
-			"valid": bool(save_valid.get("valid", false)),
-			"accepted_type": "overlay name",
+			"valid": bool(save_valid.get("valid", false)) and not name_clashes,
+			"accepted_type": "override set name" if resolved_command == "state_overrides/save" else "overlay name",
 		}
 
 	if not _is_setget_command_name(resolved_command):
