@@ -339,6 +339,7 @@ var _off_channel_counts: Dictionary = {}  # {channel: int}
 var _logot_ui: Control  # Root of the instantiated logot UI scene
 var _display: LogotDisplay  # Handles filtering, display, sidebar, autocomplete
 var _restore_full_console_after_command_entry := false
+var _hidden_command_palette_path := ""  # Palette path stashed by `, restored by ` or ~
 var _virtual_keyboard_safe_area_height := 0.0
 var _virtual_keyboard_baseline_viewport_height := 0.0
 
@@ -5261,7 +5262,13 @@ func _input(event : InputEvent) -> void:
 		if event.get_physical_keycode_with_modifiers() == KEY_QUOTELEFT:
 			if event.pressed:
 				_set_current_input_method_keyboard()
-				toggle_console(false)
+				_handle_console_toggle_shortcut()
+			get_tree().get_root().set_input_as_handled()
+		elif event.get_physical_keycode_with_modifiers() == (KEY_QUOTELEFT | KEY_MASK_SHIFT) and enabled and not console_visible:
+			# Only claim ~ while the console is hidden, so it stays typeable in the input line.
+			if event.pressed:
+				_set_current_input_method_keyboard()
+				_handle_command_palette_shortcut()
 			get_tree().get_root().set_input_as_handled()
 		elif event.physical_keycode == KEY_QUOTELEFT and event.is_command_or_control_pressed():
 			if event.pressed:
@@ -5894,7 +5901,7 @@ func on_line_edit_text_changed(new_text: String) -> void:
 		_display.on_text_changed_autocomplete(new_text)
 
 
-func _open_command_entry_view(focus_input: bool = true) -> void:
+func _open_command_entry_view(focus_input: bool = true, prefill_text: String = "/") -> void:
 	if not enabled or not control or not _display:
 		return
 	if _display.is_command_entry_mode():
@@ -5909,7 +5916,7 @@ func _open_command_entry_view(focus_input: bool = true) -> void:
 		_sync_pinned_overlay_suppression()
 		_update_touch_toggle_button()
 
-	_display.show_command_entry_mode("/", focus_input)
+	_display.show_command_entry_mode(prefill_text, focus_input)
 	_sync_pinned_overlay_suppression()
 
 
@@ -5933,6 +5940,58 @@ func _close_command_entry_view() -> void:
 		_update_touch_toggle_button()
 
 	_restore_full_console_after_command_entry = false
+
+
+func _is_command_palette_open() -> bool:
+	return _is_console_control_visible() and _display != null and _display.is_command_entry_mode()
+
+
+func _get_command_palette_path() -> String:
+	if line_edit == null or not is_instance_valid(line_edit):
+		return "/"
+	var path := line_edit.text.strip_edges()
+	return path if path.begins_with("/") else "/"
+
+
+# ` hides an open palette while remembering its path, restores that path when the console is
+# closed, and otherwise toggles the console.
+func _handle_console_toggle_shortcut() -> void:
+	if _is_command_palette_open():
+		var path := _get_command_palette_path()
+		if path == "/":
+			# A root palette carries nothing worth remembering, so fall back to the console.
+			_restore_full_console_after_command_entry = true
+			_close_command_entry_view()
+			_sync_pinned_overlay_suppression()
+			_update_touch_toggle_button()
+			return
+		_hidden_command_palette_path = path
+		_restore_full_console_after_command_entry = false
+		_close_command_entry_view()
+		return
+
+	if not _is_console_control_visible() and _restore_hidden_command_palette():
+		return
+
+	toggle_console(false)
+
+
+# ~ shows the command palette, at the remembered path when there is one.
+func _handle_command_palette_shortcut() -> void:
+	if _is_command_palette_open():
+		return
+	if _restore_hidden_command_palette():
+		return
+	_open_command_entry_view()
+
+
+func _restore_hidden_command_palette() -> bool:
+	if _hidden_command_palette_path.is_empty():
+		return false
+	var path := _hidden_command_palette_path
+	_hidden_command_palette_path = ""
+	_open_command_entry_view(true, path)
+	return true
 
 
 # =============================================================================
