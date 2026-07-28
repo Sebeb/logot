@@ -254,6 +254,7 @@ var rich_label: RichTextLabel
 var line_edit: LineEdit
 
 var console_commands := {}
+var _orderable_groups: Dictionary = {}
 var _disabled_command_paths: Dictionary = {}
 var display_variables := {}
 var widgets := {}
@@ -696,21 +697,21 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable()) -> void:
+func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
 	if arguments is int:
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut)
 	_notify_command_catalog_changed()
 
 
-func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable()) -> void:
+func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
 	var str_args: PackedStringArray = PackedStringArray()
 	for argument in arguments:
 		str_args.append(str(argument))
@@ -731,9 +732,129 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		group_tint,
 		option_group_tint,
 		default_child_path,
-		default_child_provider
+		default_child_provider,
+		keyboard_shortcut
 	)
 	_notify_command_catalog_changed()
+
+
+## Registers a dynamic group of `{id, label}` objects which can be reordered.
+## `get_order` receives one descriptor. `set_order` receives a descriptor and its new zero-based order.
+func add_orderable_group(group_path: String, fetch_objects: Callable, get_order: Callable, set_order: Callable) -> void:
+	var normalized_path := group_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty() or not fetch_objects.is_valid() or not get_order.is_valid() or not set_order.is_valid():
+		push_warning("Cannot add orderable group: path and fetch/get/set callables are required.")
+		return
+	_orderable_groups[normalized_path] = {
+		"fetch": fetch_objects,
+		"get_order": get_order,
+		"set_order": set_order,
+		"commands": [],
+	}
+	_rebuild_orderable_group_commands(normalized_path)
+
+
+func refresh_orderable_group(group_path: String) -> void:
+	var normalized_path := group_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if _orderable_groups.has(normalized_path):
+		_rebuild_orderable_group_commands(normalized_path)
+
+
+func _rebuild_orderable_group_commands(group_path: String) -> void:
+	var config: Dictionary = _orderable_groups[group_path]
+	for old_path in config.get("commands", []):
+		console_commands.erase(str(old_path))
+	var descriptors: Array = []
+	var fetched = (config.get("fetch") as Callable).call()
+	if fetched is Array:
+		for value in fetched:
+			if value is Dictionary and (value as Dictionary).has("id") and not str((value as Dictionary).get("label", "")).strip_edges().is_empty():
+				descriptors.append((value as Dictionary).duplicate())
+	var get_order: Callable = config.get("get_order")
+	descriptors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(get_order.call(a)) < int(get_order.call(b)))
+	var generated: Array[String] = []
+	for descriptor_index in range(descriptors.size()):
+		var descriptor: Dictionary = descriptors[descriptor_index]
+		var object_path := "%s/%s" % [group_path, str(descriptor.get("id")).uri_encode()]
+		var object_command := LogotCommand.new(Callable(), PackedStringArray(), 0, "", [], Callable(), Callable(), "", 0, "", 0, str(descriptor.get("label")))
+		object_command.orderable_group = group_path
+		object_command.orderable_object_id = descriptor.get("id")
+		object_command.orderable_order = descriptor_index
+		console_commands[object_path] = object_command
+		generated.append(object_path)
+		var actions := [
+			["move_up", -1, false, KEY_UP],
+			["move_down", 1, false, KEY_DOWN],
+			["move_to_top", -1, true, (KEY_UP | KEY_MASK_SHIFT) as Key],
+			["move_to_bottom", 1, true, (KEY_DOWN | KEY_MASK_SHIFT) as Key],
+		]
+		for action in actions:
+			var action_path := "%s/%s" % [object_path, str(action[0])]
+			var callback := _move_orderable_object.bind(group_path, descriptor.get("id"), int(action[1]), bool(action[2]))
+			var action_command := LogotCommand.new(callback, PackedStringArray(), 0, "", [], Callable(), Callable(), "move", 0, "", 0, str(action[0]), null, Color.TRANSPARENT, Color.TRANSPARENT, "", Callable(), action[3] as Key)
+			action_command.orderable_group = group_path
+			console_commands[action_path] = action_command
+			generated.append(action_path)
+	config["commands"] = generated
+	_orderable_groups[group_path] = config
+	_notify_command_catalog_changed()
+
+
+func _move_orderable_object(group_path: String, object_id: Variant, direction: int, absolute: bool) -> void:
+	if not _orderable_groups.has(group_path):
+		return
+	var config: Dictionary = _orderable_groups[group_path]
+	var fetched = (config.get("fetch") as Callable).call()
+	if not (fetched is Array):
+		return
+	var objects: Array = (fetched as Array).duplicate()
+	var get_order: Callable = config.get("get_order")
+	objects.sort_custom(func(a, b) -> bool: return int(get_order.call(a)) < int(get_order.call(b)))
+	var from_index := -1
+	for index in range(objects.size()):
+		if objects[index] is Dictionary and (objects[index] as Dictionary).get("id") == object_id:
+			from_index = index
+			break
+	if from_index < 0:
+		return
+	var to_index := (0 if direction < 0 else objects.size() - 1) if absolute else clampi(from_index + direction, 0, objects.size() - 1)
+	if to_index == from_index:
+		return
+	var moved = objects.pop_at(from_index)
+	objects.insert(to_index, moved)
+	var set_order: Callable = config.get("set_order")
+	for index in range(objects.size()):
+		set_order.call(objects[index], index)
+	_rebuild_orderable_group_commands(group_path)
+
+
+func _drag_orderable_object(group_path: String, object_id: Variant, target_id: Variant) -> void:
+	if not _orderable_groups.has(group_path):
+		return
+	var config: Dictionary = _orderable_groups[group_path]
+	var fetched = (config.get("fetch") as Callable).call()
+	if not (fetched is Array):
+		return
+	var objects: Array = (fetched as Array).duplicate()
+	var get_order: Callable = config.get("get_order")
+	objects.sort_custom(func(a, b) -> bool: return int(get_order.call(a)) < int(get_order.call(b)))
+	var from_index := -1
+	var to_index := -1
+	for index in range(objects.size()):
+		if objects[index] is Dictionary:
+			var id = (objects[index] as Dictionary).get("id")
+			if id == object_id:
+				from_index = index
+			if id == target_id:
+				to_index = index
+	if from_index < 0 or to_index < 0 or from_index == to_index:
+		return
+	var moved = objects.pop_at(from_index)
+	objects.insert(to_index, moved)
+	var set_order: Callable = config.get("set_order")
+	for index in range(objects.size()):
+		set_order.call(objects[index], index)
+	_rebuild_orderable_group_commands(group_path)
 
 
 func add_setget_command(command_name: String, setter: Callable, getter: Callable, description: String = "", options_provider: Callable = Callable(), inline_color_provider: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
@@ -2677,6 +2798,7 @@ func _setup_game_ui() -> void:
 	_display.set_commands_provider(func(): return console_commands)
 	_display.set_command_path_disabled_provider(is_command_path_disabled)
 	_display.set_default_child_resolver(resolve_default_child_chain)
+	_display.set_orderable_reorder_handler(_drag_orderable_object)
 	_display.set_display_variables_provider(func(): return display_variables)
 	_display.set_widgets_provider(func(): return widgets)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))

@@ -51,6 +51,8 @@ static func handle_autocomplete_navigation(event: InputEventKey, display, line_e
 		return false
 	if not display or not line_edit or not line_edit.has_focus():
 		return false
+	if event.is_command_or_control_pressed() and display.handle_command_palette_shortcut(event):
+		return true
 
 	if display.is_autocomplete_visible():
 		match event.keycode:
