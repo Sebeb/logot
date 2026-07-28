@@ -108,7 +108,6 @@ const TEST_COMMANDS_SETTING := "addons/logot/enable_test_commands"
 const CONSOLE_INTERFACING_TEST_COMMANDS_SCRIPT_PATH := "res://tests/console_interfacing/console_interfacing_commands.gd"
 const DEFAULT_BRIDGE_SCREENSHOT_DIR := "user://artifacts/screenshots"
 const _CURRENT_GIT_BRANCH_COMMAND_PATH := "dev/current_git_branch"
-const _GITHUB_AUTH_COMMAND_PATH := "dev/github_auth"
 const _UNKNOWN_GIT_BRANCH := "unknown"
 const _CURRENT_GIT_BRANCH_AHEAD_COLOR := Color(0.42, 0.9, 0.42, 1.0)
 const _CURRENT_GIT_BRANCH_BEHIND_COLOR := Color(0.88, 0.44, 0.44, 1.0)
@@ -290,8 +289,6 @@ var _current_git_branch_remote_status := ""
 var _current_git_branch_ahead := 0
 var _current_git_branch_behind := 0
 var _current_git_branch_uncommitted_files := 0
-var _github_auth_status := "unknown"
-var _github_auth_process_id := -1
 var _performance_last_tick_usec := 0
 var _performance_frame_history_total: Array[float] = []
 var _performance_frame_history_cpu: Array[float] = []
@@ -699,21 +696,21 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null) -> void:
+func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable()) -> void:
 	if arguments is int:
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon)
+		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider)
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon)
+		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider)
 	_notify_command_catalog_changed()
 
 
-func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0) -> void:
+func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable()) -> void:
 	var str_args: PackedStringArray = PackedStringArray()
 	for argument in arguments:
 		str_args.append(str(argument))
@@ -728,7 +725,13 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		group_name,
 		group_priority,
 		option_group_name,
-		option_group_priority
+		option_group_priority,
+		"",
+		null,
+		group_tint,
+		option_group_tint,
+		default_child_path,
+		default_child_provider
 	)
 	_notify_command_catalog_changed()
 
@@ -1076,7 +1079,7 @@ func _is_setget_command(command_name: String) -> bool:
 
 
 func _is_text_input_option_command(command_name: String) -> bool:
-	return command_name == "pins/save" or command_name == "state_overrides/save"
+	return command_name == "pins/save"
 
 
 func _get_pinned_display_variables_for_alias_resolution() -> Array[String]:
@@ -1168,8 +1171,7 @@ func _validate_command_option_segment(command_name: String, option_segment: Stri
 
 	if _is_text_input_option_command(command_name):
 		var validation := _validate_pin_overlay_name(option_segment)
-		var clashes := _get_command_argument_option_values(command_name, 0).has(option_segment.strip_edges())
-		return {"checked": true, "valid": bool(validation.get("ok", false)) and not clashes}
+		return {"checked": true, "valid": bool(validation.get("ok", false))}
 
 	return {"checked": false, "valid": false}
 
@@ -1328,6 +1330,165 @@ func _resolve_console_command_path_internal(command_path: String, allow_alias_re
 
 func _resolve_console_command_path(command_path: String) -> Dictionary:
 	return _resolve_console_command_path_internal(command_path, true)
+
+
+## Resolves the optional default child declared by a command.  The returned focus paths
+## include every intermediate tier so the palette can preview multi-tier defaults.
+func resolve_default_child_chain(command_name: String) -> Dictionary:
+	var origin := command_name.strip_edges().trim_prefix("/").trim_suffix("/")
+	if origin.is_empty() or not console_commands.has(origin):
+		return {"valid": false, "has_default": false, "error": "Command is not registered."}
+
+	var focus_paths: Array[String] = []
+	var visited_commands: Dictionary = {}
+	var current_command := origin
+	for depth in range(32):
+		var default_spec := _get_command_default_child_spec(current_command)
+		if not bool(default_spec.get("has_default", false)):
+			if current_command == origin:
+				return {"valid": true, "has_default": false, "focus_paths": focus_paths}
+			return _build_default_child_terminal_result(origin, current_command, [], focus_paths)
+		if not bool(default_spec.get("valid", true)):
+			return _build_default_child_error(origin, str(default_spec.get("error", "Invalid default child.")), focus_paths)
+		if visited_commands.has(current_command):
+			return _build_default_child_error(origin, "cycle detected at '%s'." % current_command, focus_paths)
+		visited_commands[current_command] = true
+
+		var supplied_path := str(default_spec.get("path", "")).strip_edges().trim_prefix("/").trim_suffix("/")
+		if supplied_path.is_empty():
+			return _build_default_child_error(origin, "default child path is empty.", focus_paths)
+		var normalized_target := _normalize_default_child_target(current_command, supplied_path)
+		if not bool(normalized_target.get("valid", false)):
+			return _build_default_child_error(origin, str(normalized_target.get("error", "invalid relative path.")), focus_paths)
+		var target_path := str(normalized_target.get("path", ""))
+		var target_segments := target_path.split("/", false)
+		var current_segments := current_command.split("/", false).size()
+		for segment_index in range(current_segments, target_segments.size()):
+			var focus_path := "/".join(target_segments.slice(0, segment_index + 1))
+			if not focus_paths.has(focus_path):
+				focus_paths.append(focus_path)
+		if is_command_path_disabled(target_path):
+			return _build_default_child_error(origin, "target '%s' is disabled." % target_path, focus_paths)
+
+		var target_resolution := _resolve_console_command_path(target_path)
+		if not bool(target_resolution.get("valid", false)):
+			return _build_default_child_error(origin, "target '%s' is missing or stale." % target_path, focus_paths)
+		var target_command := str(target_resolution.get("command_name", ""))
+		if target_command.is_empty() or not console_commands.has(target_command):
+			return _build_default_child_error(origin, "target '%s' does not resolve to a command." % target_path, focus_paths)
+		if is_command_path_disabled(target_command):
+			return _build_default_child_error(origin, "target command '%s' is disabled." % target_command, focus_paths)
+		if bool(target_resolution.get("is_option_subcommand", false)):
+			return _build_default_child_terminal_result(origin, target_command, target_resolution.get("injected_arguments", []), focus_paths)
+		current_command = target_command
+
+	return _build_default_child_error(origin, "maximum recursive depth (32) exceeded.", focus_paths)
+
+
+func _normalize_default_child_target(current_command: String, supplied_path: String) -> Dictionary:
+	var segments: Array[String] = []
+	for existing_segment in current_command.split("/", false):
+		segments.append(existing_segment)
+	for raw_segment in supplied_path.split("/", false):
+		var segment := raw_segment.strip_edges()
+		if segment.is_empty() or segment == ".":
+			continue
+		if segment == "..":
+			if segments.is_empty():
+				return {"valid": false, "error": "path escapes the command root."}
+			segments.remove_at(segments.size() - 1)
+			continue
+		segments.append(segment)
+	if segments.is_empty():
+		return {"valid": false, "error": "path resolves to an empty command."}
+	return {"valid": true, "path": "/".join(segments)}
+
+
+func _get_command_default_child_spec(command_name: String) -> Dictionary:
+	var command_data = console_commands.get(command_name)
+	var static_path := ""
+	var provider := Callable()
+	if command_data is LogotCommand:
+		var command := command_data as LogotCommand
+		static_path = command.default_child_path
+		provider = command.default_child_provider
+	elif command_data is Dictionary:
+		var command_dict := command_data as Dictionary
+		static_path = str(command_dict.get("default_child_path", command_dict.get("default_child", "")))
+		var nested_default = command_dict.get("default_child", null)
+		if nested_default is Dictionary:
+			var nested_default_dict := nested_default as Dictionary
+			static_path = str(nested_default_dict.get("path", nested_default_dict.get("value", static_path)))
+			provider = nested_default_dict.get("provider", Callable()) as Callable
+		else:
+			provider = command_dict.get("default_child_provider", Callable()) as Callable
+	if provider.is_valid():
+		var provided_path: Variant = provider.call()
+		if not (provided_path is String):
+			return {"has_default": true, "valid": false, "error": "default-child provider for '%s' did not return a String." % command_name}
+		static_path = str(provided_path)
+	if static_path.strip_edges().is_empty():
+		return {"has_default": false, "valid": true}
+	return {"has_default": true, "valid": true, "path": static_path}
+
+
+func _build_default_child_terminal_result(origin: String, command_name: String, injected_arguments: Array, focus_paths: Array[String]) -> Dictionary:
+	var command_data = console_commands.get(command_name)
+	var command_callable := _get_command_callable(command_data)
+	if not command_callable.is_valid() and not _is_text_input_option_command(command_name):
+		return _build_default_child_error(origin, "terminal '%s' is not executable." % command_name, focus_paths)
+	return {
+		"valid": true,
+		"has_default": true,
+		"origin": origin,
+		"terminal_command": command_name,
+		"injected_arguments": injected_arguments.duplicate(),
+		"focus_paths": focus_paths.duplicate(),
+	}
+
+
+func _build_default_child_error(origin: String, reason: String, focus_paths: Array[String]) -> Dictionary:
+	return {
+		"valid": false,
+		"has_default": true,
+		"origin": origin,
+		"error": "Invalid default child for '/%s': %s" % [origin, reason],
+		"focus_paths": focus_paths.duplicate(),
+	}
+
+
+func _get_command_callable(command_data: Variant) -> Callable:
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).function
+	if command_data is Dictionary:
+		var command_function = (command_data as Dictionary).get("function", Callable())
+		return command_function as Callable if command_function is Callable else Callable()
+	return Callable()
+
+
+func _get_command_required_count(command_data: Variant) -> int:
+	if command_data is LogotCommand:
+		return (command_data as LogotCommand).required
+	if command_data is Dictionary:
+		return int((command_data as Dictionary).get("required", 0))
+	return 0
+
+
+func _get_command_argument_names(command_data: Variant) -> Array:
+	if command_data is LogotCommand:
+		return Array((command_data as LogotCommand).arguments)
+	if command_data is Dictionary:
+		var arguments = (command_data as Dictionary).get("arguments", [])
+		return Array(arguments) if arguments is Array or arguments is PackedStringArray else []
+	return []
+
+
+func _validate_default_child_commands() -> void:
+	for command_name_variant in console_commands:
+		var command_name := str(command_name_variant)
+		var result := resolve_default_child_chain(command_name)
+		if bool(result.get("has_default", false)) and not bool(result.get("valid", false)):
+			print_error(str(result.get("error", "Invalid default child for '/%s'." % command_name)))
 
 
 func can_execute_console_command(command_path: String) -> bool:
@@ -2139,6 +2300,7 @@ func _on_display_variable_signal_emitted(address: String) -> void:
 
 
 func _notify_command_catalog_changed() -> void:
+	_validate_default_child_commands()
 	for display in _get_live_displays():
 		display.invalidate_command_catalog()
 
@@ -2226,7 +2388,6 @@ func _enter_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	_refresh_github_auth_after_login()
 	if Engine.is_editor_hint():
 		return
 	_update_performance_monitor(_delta)
@@ -2515,6 +2676,7 @@ func _setup_game_ui() -> void:
 	_display.set_entry_text_provider(func(entry, truncate): return get_collapsed_display_text(entry, truncate))
 	_display.set_commands_provider(func(): return console_commands)
 	_display.set_command_path_disabled_provider(is_command_path_disabled)
+	_display.set_default_child_resolver(resolve_default_child_chain)
 	_display.set_display_variables_provider(func(): return display_variables)
 	_display.set_widgets_provider(func(): return widgets)
 	_display.set_rejected_level_count_provider(func(level): return get_rejected_level_count(level))
@@ -4347,14 +4509,6 @@ func _register_dev_commands() -> void:
 		"Prints the current git branch name."
 	)
 	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch, Callable(), _get_current_git_branch_display_items)
-	add_command(
-		_GITHUB_AUTH_COMMAND_PATH,
-		_command_github_auth,
-		[],
-		0,
-		"Starts GitHub CLI web authentication. Remote branch comparison stays disabled until authenticated."
-	)
-	add_display_variable(_GITHUB_AUTH_COMMAND_PATH, _get_github_auth_status)
 	_register_performance_commands()
 
 
@@ -5079,73 +5233,6 @@ func _get_current_git_branch_display_items() -> Array[Dictionary]:
 	return items
 
 
-func _command_github_auth() -> void:
-	_refresh_github_auth_after_login()
-	if _github_auth_process_id > 0:
-		print_line("GitHub authentication is already in progress.")
-		return
-	if not _is_executable_available("gh"):
-		_github_auth_status = "gh unavailable"
-		notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
-		print_line("GitHub CLI (gh) is not installed, so authentication could not start.")
-		return
-	if _is_github_authenticated():
-		_github_auth_status = "authenticated"
-		notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
-		_refresh_current_git_branch_remote_status()
-		print_line("GitHub is already authenticated.")
-		return
-
-	_github_auth_process_id = OS.create_process(
-		"gh",
-		PackedStringArray(["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"]),
-		true
-	)
-	if _github_auth_process_id <= 0:
-		_github_auth_process_id = -1
-		_github_auth_status = "not authenticated"
-		print_line("GitHub authentication could not be started.")
-	else:
-		_github_auth_status = "authenticating"
-		print_line("GitHub authentication opened in a separate console. Complete the web flow there.")
-	notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
-
-
-func _get_github_auth_status() -> String:
-	_refresh_github_auth_after_login()
-	if _github_auth_process_id > 0:
-		return "authenticating"
-	if _github_auth_status == "unknown":
-		if not _is_executable_available("gh"):
-			_github_auth_status = "gh unavailable"
-		else:
-			_github_auth_status = "authenticated" if _is_github_authenticated() else "not authenticated"
-	return _github_auth_status
-
-
-func _refresh_github_auth_after_login() -> void:
-	if _github_auth_process_id <= 0 or OS.is_process_running(_github_auth_process_id):
-		return
-	_github_auth_process_id = -1
-	if _is_github_authenticated():
-		_github_auth_status = "authenticated"
-		OS.execute("gh", ["auth", "setup-git", "--hostname", "github.com"], [], true)
-		_refresh_current_git_branch_remote_status()
-		print_line("GitHub authentication completed. Remote branch comparison is enabled.")
-	else:
-		_github_auth_status = "not authenticated"
-		print_line("GitHub authentication did not complete. Remote branch comparison remains disabled.")
-	notify_display_variable_changed(_GITHUB_AUTH_COMMAND_PATH)
-
-
-func _is_github_authenticated() -> bool:
-	return OS.execute("gh", ["auth", "status", "--hostname", "github.com"], [], true) == OK
-
-
-func _is_executable_available(executable: String) -> bool:
-	return OS.execute(executable, ["--version"], [], true) == OK
-
-
 func _refresh_current_git_branch_remote_status() -> void:
 	_current_git_branch_remote_status = ""
 	_current_git_branch_ahead = 0
@@ -5158,8 +5245,6 @@ func _refresh_current_git_branch_remote_status() -> void:
 	var status := OS.execute("git", ["status", "--porcelain"], command_output, true)
 	if status == OK and not command_output.is_empty():
 		_current_git_branch_uncommitted_files = str(command_output[0]).strip_edges().split("\n", false).size()
-	if _get_github_auth_status() != "authenticated":
-		return
 
 	command_output.clear()
 	status = OS.execute("git", ["fetch", "--quiet"], command_output, true)
@@ -5752,12 +5837,6 @@ func is_visible():
 	return _is_console_control_visible()
 
 
-func reveal_command_path(command_path: String) -> void:
-	if not _display or not _display.has_method("_reveal_command_path"):
-		return
-	_display.call("_reveal_command_path", command_path)
-
-
 func is_capturing_keyboard_input() -> bool:
 	return (
 		enabled
@@ -5955,28 +6034,47 @@ func _execute_command(command_input: String) -> Dictionary:
 	var arguments: Array = text_split.slice(1)
 	for injected_argument in command_resolution.get("injected_arguments", []):
 		arguments.insert(0, str(injected_argument))
+	if not bool(command_resolution.get("is_option_subcommand", false)) and arguments.is_empty():
+		var default_result := resolve_default_child_chain(text_command)
+		if bool(default_result.get("has_default", false)):
+			if not bool(default_result.get("valid", false)):
+				var default_error := str(default_result.get("error", "Invalid default child."))
+				print_error(default_error)
+				return {"ok": false, "error": default_error}
+			text_command = str(default_result.get("terminal_command", text_command))
+			for default_argument in default_result.get("injected_arguments", []):
+				arguments.append(str(default_argument))
+
+	var command_data = console_commands.get(text_command)
+	var command_callable := _get_command_callable(command_data)
+	var command_argument_names := _get_command_argument_names(command_data)
+	var required_argument_count := _get_command_required_count(command_data)
+	if not command_callable.is_valid():
+		var unavailable_error := "Command is not executable: /%s" % text_command
+		print_error(unavailable_error)
+		return {"ok": false, "error": unavailable_error}
 
 	if text_command == "console/calc":
 		var expression := ""
 		for word in arguments:
 			expression += word
-		console_commands[text_command].function.callv([expression])
+		command_callable.callv([expression])
 		return {"ok": true}
 
-	if arguments.size() < console_commands[text_command].required:
-		print_error("Too few arguments! Required < %d >" % console_commands[text_command].required)
+	if arguments.size() < required_argument_count:
+		print_error("Too few arguments! Required < %d >" % required_argument_count)
 		return {"ok": false, "error": "Too few arguments."}
-	elif arguments.size() > console_commands[text_command].arguments.size():
+	elif arguments.size() > command_argument_names.size():
 		var labelled_option_result := _execute_labelled_option_command(command_text)
 		if not labelled_option_result.is_empty():
 			return labelled_option_result
-		print_error("Too many arguments! < %d > Max" % console_commands[text_command].arguments.size())
+		print_error("Too many arguments! < %d > Max" % command_argument_names.size())
 		return {"ok": false, "error": "Too many arguments."}
 
-	while arguments.size() < console_commands[text_command].arguments.size():
+	while arguments.size() < command_argument_names.size():
 		arguments.append("")
 
-	console_commands[text_command].function.callv(arguments)
+	command_callable.callv(arguments)
 	return {"ok": true}
 
 

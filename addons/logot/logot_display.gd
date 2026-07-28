@@ -84,8 +84,12 @@ class LogotCommand:
 	var group_priority: int
 	var option_group_name: String
 	var option_group_priority: int
+	var group_tint: Color
+	var option_group_tint: Color
 	var display_label: String
 	var icon: Texture2D
+	var default_child_path: String
+	var default_child_provider: Callable
 
 	func _init(
 		in_function: Callable,
@@ -100,7 +104,11 @@ class LogotCommand:
 		in_option_group_name: String = "",
 		in_option_group_priority: int = 0,
 		in_display_label: String = "",
-		in_icon: Texture2D = null
+		in_icon: Texture2D = null,
+		in_group_tint: Color = Color.TRANSPARENT,
+		in_option_group_tint: Color = Color.TRANSPARENT,
+		in_default_child_path: String = "",
+		in_default_child_provider: Callable = Callable()
 	):
 		function = in_function
 		arguments = in_arguments
@@ -113,8 +121,12 @@ class LogotCommand:
 		group_priority = in_group_priority if not group_name.is_empty() else 0
 		option_group_name = in_option_group_name.strip_edges()
 		option_group_priority = in_option_group_priority if not option_group_name.is_empty() else 0
+		group_tint = in_group_tint
+		option_group_tint = in_option_group_tint
 		display_label = in_display_label.strip_edges()
 		icon = in_icon
+		default_child_path = in_default_child_path.strip_edges()
+		default_child_provider = in_default_child_provider
 
 
 class LogotDisplayVariable:
@@ -1055,6 +1067,8 @@ class AutocompleteCommandColumn:
 		return float(maxi(1, font_size))
 
 	func _get_row_selection_state(row_index: int) -> int:
+		if row_index >= 0 and row_index < _rows.size() and bool((_rows[row_index] as Dictionary).get("default_focus", false)):
+			return 0
 		if _touch_mode:
 			if row_index == _flash_row and _flash_visible:
 				return 2
@@ -1080,7 +1094,9 @@ class AutocompleteCommandColumn:
 
 	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
 		if bool(row_data.get("is_group_header", false)):
-			draw_rect(row_rect, _group_box_fill_color, true)
+			draw_rect(row_rect, _get_group_fill_color(row_data), true)
+		elif bool(row_data.get("group_box", false)) and selection_state == 0:
+			draw_rect(row_rect, _get_group_fill_color(row_data), true)
 		if bool(row_data.get("group_box", false)):
 			_draw_group_box(row_rect, row_data)
 		if selection_state != 0:
@@ -1090,12 +1106,16 @@ class AutocompleteCommandColumn:
 		var row_tint = row_data.get("row_background_tint")
 		if row_tint is Color:
 			draw_rect(row_rect, row_tint as Color, true)
+		if bool(row_data.get("default_focus", false)):
+			var outline_rect := row_rect.grow(-2.0)
+			if outline_rect.size.x > 0.0 and outline_rect.size.y > 0.0:
+				draw_rect(outline_rect, _selected_font_color, false, 2.0)
 
 	func _draw_row_content(row_rect: Rect2, row_data: Dictionary, selection_state: int, baseline_offset: float) -> void:
 		if _font == null:
 			return
 		if bool(row_data.get("is_group_header", false)):
-			_draw_group_header_label(row_rect, str(row_data.get("label", "")))
+			_draw_group_header_label(row_rect, str(row_data.get("label", "")), row_data)
 			return
 
 		var value_width := float(row_data.get("measured_value_width", 0))
@@ -1209,13 +1229,43 @@ class AutocompleteCommandColumn:
 				text_color
 			)
 
-	func _draw_group_header_label(row_rect: Rect2, label_text: String) -> void:
+	func _get_group_tint(row_data: Dictionary) -> Color:
+		var tint = row_data.get("group_tint", Color.TRANSPARENT)
+		return tint as Color if tint is Color else Color.TRANSPARENT
+
+	func _get_group_fill_color(row_data: Dictionary) -> Color:
+		var tint := _get_group_tint(row_data)
+		if tint.a <= 0.0:
+			return _group_box_fill_color
+		var fill := _group_box_fill_color.lerp(tint, 0.62)
+		fill.a = maxf(_group_box_fill_color.a, minf(0.18, tint.a * 0.18))
+		return fill
+
+	func _get_group_border_color(row_data: Dictionary) -> Color:
+		var tint := _get_group_tint(row_data)
+		if tint.a <= 0.0:
+			return _group_box_border_color
+		var border := _group_box_border_color.lerp(tint, 0.72)
+		border.a = maxf(_group_box_border_color.a, minf(0.84, tint.a * 0.84))
+		return border
+
+	func _get_group_header_color(row_data: Dictionary) -> Color:
+		var tint := _get_group_tint(row_data)
+		if tint.a <= 0.0:
+			return _group_header_color
+		var header := _group_header_color.lerp(tint, 0.68)
+		if header.get_luminance() < 0.38:
+			header = header.lightened(0.42)
+		header.a = 1.0
+		return header
+
+	func _draw_group_header_label(row_rect: Rect2, label_text: String, row_data: Dictionary) -> void:
 		var header_text := label_text.strip_edges().to_upper()
 		if header_text.is_empty():
 			return
 		var font_size: int = maxi(10, _font_size - GROUP_HEADER_FONT_SIZE_REDUCTION)
 		var baseline: float = row_rect.position.y + floor((row_rect.size.y - float(_font.get_height(font_size))) * 0.5) + float(_font.get_ascent(font_size))
-		draw_string(_font, Vector2(row_rect.position.x + CONTENT_PADDING_X, baseline), header_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _group_header_color)
+		draw_string(_font, Vector2(row_rect.position.x + CONTENT_PADDING_X, baseline), header_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _get_group_header_color(row_data))
 
 	func _draw_group_box(row_rect: Rect2, row_data: Dictionary) -> void:
 		var box_rect := Rect2(
@@ -1231,12 +1281,13 @@ class AutocompleteCommandColumn:
 		var right := box_rect.position.x + box_rect.size.x
 		var top := box_rect.position.y
 		var bottom := box_rect.position.y + box_rect.size.y
-		draw_line(Vector2(left, top), Vector2(left, bottom), _group_box_border_color, 1.0)
-		draw_line(Vector2(right, top), Vector2(right, bottom), _group_box_border_color, 1.0)
+		var border_color := _get_group_border_color(row_data)
+		draw_line(Vector2(left, top), Vector2(left, bottom), border_color, 1.0)
+		draw_line(Vector2(right, top), Vector2(right, bottom), border_color, 1.0)
 		if bool(row_data.get("group_box_start", false)):
-			draw_line(Vector2(left, top), Vector2(right, top), _group_box_border_color, 1.0)
+			draw_line(Vector2(left, top), Vector2(right, top), border_color, 1.0)
 		if bool(row_data.get("group_box_end", false)):
-			draw_line(Vector2(left, bottom), Vector2(right, bottom), _group_box_border_color, 1.0)
+			draw_line(Vector2(left, bottom), Vector2(right, bottom), border_color, 1.0)
 
 	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, selection_state: int, icon_color: Color) -> void:
 		if action_rect.size.x <= 0.0:
@@ -1754,6 +1805,7 @@ var _log_entries_provider: Callable
 var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
 var _command_path_disabled_provider: Callable  # Returns whether a command path is disabled
+var _default_child_resolver: Callable  # Resolves recursive default-child command paths
 var _display_variables_provider: Callable  # Returns Dictionary of address -> display_variable
 var _widgets_provider: Callable  # Returns Dictionary of address -> widget_data
 var _rejected_level_count_provider: Callable  # Returns int for a given level
@@ -1913,6 +1965,12 @@ func set_commands_provider(provider: Callable) -> void:
 
 func set_command_path_disabled_provider(provider: Callable) -> void:
 	_command_path_disabled_provider = provider
+	invalidate_command_catalog(false)
+
+
+## Supplies the shared catalog resolver used by recursive predictive previews.
+func set_default_child_resolver(provider: Callable) -> void:
+	_default_child_resolver = provider
 	invalidate_command_catalog(false)
 
 
@@ -5796,12 +5854,13 @@ func _get_registered_addresses() -> Array[String]:
 	return _get_menu_hierarchy_addresses("")
 
 
-func _normalize_command_group_data(raw_name: Variant, raw_priority: Variant) -> Dictionary:
+func _normalize_command_group_data(raw_name: Variant, raw_priority: Variant, raw_tint: Variant = Color.TRANSPARENT) -> Dictionary:
 	var group_name := str(raw_name).strip_edges()
 	var group_priority := int(raw_priority)
 	if group_name.is_empty():
 		group_priority = 0
-	return {"name": group_name, "priority": group_priority}
+	var group_tint := _resolve_display_variable_inline_color(raw_tint)
+	return {"name": group_name, "priority": group_priority, "tint": group_tint}
 
 
 func _normalize_display_variable_items(raw_items: Variant) -> Array[Dictionary]:
@@ -5837,14 +5896,14 @@ func _get_command_group_data(command_name: String) -> Dictionary:
 		return {"name": "", "priority": 0}
 	if command_data is LogotCommand:
 		var logot_command := command_data as LogotCommand
-		return _normalize_command_group_data(logot_command.group_name, logot_command.group_priority)
+		return _normalize_command_group_data(logot_command.group_name, logot_command.group_priority, logot_command.group_tint)
 	if command_data is Dictionary:
 		var command_dict := command_data as Dictionary
 		var nested_group = command_dict.get("group", null)
 		if nested_group is Dictionary:
 			var group_dict := nested_group as Dictionary
-			return _normalize_command_group_data(group_dict.get("name", ""), group_dict.get("priority", 0))
-		return _normalize_command_group_data(command_dict.get("group_name", ""), command_dict.get("group_priority", 0))
+			return _normalize_command_group_data(group_dict.get("name", ""), group_dict.get("priority", 0), group_dict.get("tint", Color.TRANSPARENT))
+		return _normalize_command_group_data(command_dict.get("group_name", ""), command_dict.get("group_priority", 0), command_dict.get("group_tint", Color.TRANSPARENT))
 	return {"name": "", "priority": 0}
 
 
@@ -5854,14 +5913,14 @@ func _get_command_option_group_data(command_name: String) -> Dictionary:
 		return {"name": "", "priority": 0}
 	if command_data is LogotCommand:
 		var logot_command := command_data as LogotCommand
-		return _normalize_command_group_data(logot_command.option_group_name, logot_command.option_group_priority)
+		return _normalize_command_group_data(logot_command.option_group_name, logot_command.option_group_priority, logot_command.option_group_tint)
 	if command_data is Dictionary:
 		var command_dict := command_data as Dictionary
 		var nested_group = command_dict.get("option_group", null)
 		if nested_group is Dictionary:
 			var group_dict := nested_group as Dictionary
-			return _normalize_command_group_data(group_dict.get("name", ""), group_dict.get("priority", 0))
-		return _normalize_command_group_data(command_dict.get("option_group_name", ""), command_dict.get("option_group_priority", 0))
+			return _normalize_command_group_data(group_dict.get("name", ""), group_dict.get("priority", 0), group_dict.get("tint", Color.TRANSPARENT))
+		return _normalize_command_group_data(command_dict.get("option_group_name", ""), command_dict.get("option_group_priority", 0), command_dict.get("option_group_tint", Color.TRANSPARENT))
 	return {"name": "", "priority": 0}
 
 
@@ -5908,11 +5967,11 @@ func _calculate_tier_command_group_data(tier: String) -> Dictionary:
 	if _is_command_option_subcommand_tier(resolved_tier):
 		var option_command_name := resolved_tier.substr(0, resolved_tier.rfind("/"))
 		var option_group := _get_command_option_group_data(option_command_name)
-		if not str(option_group.get("name", "")).strip_edges().is_empty():
+		if not str(option_group.get("name", "")).strip_edges().is_empty() or (option_group.get("tint", Color.TRANSPARENT) as Color).a > 0.0:
 			return option_group
 	var direct_group := _get_command_group_data(resolved_tier)
 	var direct_group_name := str(direct_group.get("name", "")).strip_edges()
-	if not direct_group_name.is_empty():
+	if not direct_group_name.is_empty() or (direct_group.get("tint", Color.TRANSPARENT) as Color).a > 0.0:
 		return direct_group
 	var display_variable_group := _get_display_variable_group_data(resolved_tier)
 	var display_variable_group_name := str(display_variable_group.get("name", "")).strip_edges()
@@ -5966,9 +6025,12 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 
 	var command_group := _get_tier_command_group_data(tier_text)
 	var group_name := str(command_group.get("name", "")).strip_edges()
+	var group_tint = command_group.get("tint", Color.TRANSPARENT)
 	if not group_name.is_empty():
 		match_data["group_name"] = group_name
 		match_data["group_priority"] = int(command_group.get("priority", 0))
+	if group_tint is Color and (group_tint as Color).a > 0.0:
+		match_data["group_tint"] = group_tint
 	if (tier_text == "pins" and not prefix.is_empty()) or not tier_label_override.is_empty():
 		match_data["group_name"] = PINNED_COMMAND_GROUP_NAME
 		match_data["group_priority"] = PINNED_COMMAND_GROUP_PRIORITY
@@ -6000,6 +6062,8 @@ func _merge_tier_match(matches: Array[Dictionary], candidate: Dictionary) -> voi
 			if existing_group_name.is_empty() or candidate_group_priority < existing_group_priority:
 				existing_match["group_name"] = candidate_group_name
 				existing_match["group_priority"] = candidate_group_priority
+				if candidate.get("group_tint", null) is Color:
+					existing_match["group_tint"] = candidate.get("group_tint")
 
 		var candidate_label_override := str(candidate.get("tier_label_override", "")).strip_edges()
 		if not candidate_label_override.is_empty():
@@ -6418,6 +6482,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"disabled": disabled,
 			"icon": icon,
 			"row_background_tint": match_data.get("row_background_tint", null),
+			"default_focus": bool(match_data.get("default_focus", false)),
 		}
 
 	if match_data.get("is_option", false):
@@ -6429,6 +6494,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"can_submit": false,
 			"disabled": disabled,
 			"icon": icon,
+			"default_focus": bool(match_data.get("default_focus", false)),
 		}
 	if match_data.get("suppress_value_text", false):
 		return {
@@ -6441,6 +6507,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 			"value_loaded": true,
 			"has_children": match_data.get("has_children", false),
 			"can_submit": match_data.get("has_command", false),
+			"default_focus": bool(match_data.get("default_focus", false)),
 		}
 
 	var display_variable_address := ""
@@ -6459,6 +6526,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		"can_submit": match_data.get("has_command", false),
 		"disabled": disabled,
 		"icon": icon,
+		"default_focus": bool(match_data.get("default_focus", false)),
 	}
 
 
@@ -6473,17 +6541,25 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 	var selected_row_index := -1
 	var open_group_last_row := -1
 	var active_group := ""
+	var active_group_key := ""
+	var active_group_tint: Variant = Color.TRANSPARENT
 
 	for match_index in range(matches.size()):
 		var match_data: Dictionary = matches[match_index]
 		var group_name := str(match_data.get("group_name", "")).strip_edges() if show_groups else ""
+		var group_tint: Variant = match_data.get("group_tint", Color.TRANSPARENT) if show_groups else Color.TRANSPARENT
+		var group_key := group_name
+		if group_key.is_empty() and group_tint is Color and (group_tint as Color).a > 0.0:
+			group_key = "__untitled_tint_%s" % str(group_tint)
 
-		if group_name != active_group:
+		if group_key != active_group_key:
 			if open_group_last_row >= 0:
 				var closing_row: Dictionary = rows[open_group_last_row]
 				closing_row["group_box_end"] = true
 				rows[open_group_last_row] = closing_row
 			active_group = group_name
+			active_group_key = group_key
+			active_group_tint = group_tint
 			open_group_last_row = -1
 			if not active_group.is_empty():
 				rows.append({
@@ -6492,12 +6568,14 @@ func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_m
 					"has_children": false,
 					"can_submit": false,
 					"value_text": "",
+					"group_tint": active_group_tint,
 				})
 
 		var row := _build_command_autocomplete_row_data(prefix, match_data)
 		row["match_index"] = match_index
-		if not active_group.is_empty():
+		if not active_group_key.is_empty():
 			row["group_box"] = true
+			row["group_tint"] = active_group_tint
 			if open_group_last_row == -1:
 				row["group_box_start"] = true
 			open_group_last_row = rows.size()
@@ -6798,6 +6876,9 @@ func _build_command_option_matches(command_name: String, argument_index: int = 0
 		if not option_group_name.is_empty():
 			match_data["group_name"] = option_group_name
 			match_data["group_priority"] = option_group_priority
+		var option_group_tint = option_group.get("tint", Color.TRANSPARENT)
+		if option_group_tint is Color and (option_group_tint as Color).a > 0.0:
+			match_data["group_tint"] = option_group_tint
 		option_matches.append(match_data)
 	return option_matches
 
@@ -6964,7 +7045,7 @@ func _is_display_variable_pin_action_subcommand_tier(tier: String) -> bool:
 
 func _is_text_input_command_path(command_name: String) -> bool:
 	var resolved_command := _resolve_alias_command_path(command_name)
-	if resolved_command == "pins/save" or resolved_command == "state_overrides/save":
+	if resolved_command == "pins/save":
 		return true
 	if not _is_setget_command_name(resolved_command):
 		return false
@@ -7059,12 +7140,11 @@ func _validate_pin_overlay_name_for_input(raw_name: String) -> Dictionary:
 
 func _validate_text_input_for_command_path(command_name: String, raw_input: String) -> Dictionary:
 	var resolved_command := _resolve_alias_command_path(command_name)
-	if resolved_command == "pins/save" or resolved_command == "state_overrides/save":
+	if resolved_command == "pins/save":
 		var save_valid := _validate_pin_overlay_name_for_input(raw_input)
-		var name_clashes := _get_command_argument_option_values(resolved_command, 0).has(raw_input.strip_edges())
 		return {
-			"valid": bool(save_valid.get("valid", false)) and not name_clashes,
-			"accepted_type": "override set name" if resolved_command == "state_overrides/save" else "overlay name",
+			"valid": bool(save_valid.get("valid", false)),
+			"accepted_type": "overlay name",
 		}
 
 	if not _is_setget_command_name(resolved_command):
@@ -7526,6 +7606,12 @@ func _refresh_active_preview_column_state() -> bool:
 	var selected_tier := str(selected_match.get("tier", ""))
 	if selected_tier.is_empty():
 		return previous_preview_snapshot != _get_preview_column_state_snapshot()
+	if _default_child_resolver.is_valid():
+		var default_result = _default_child_resolver.call(selected_tier)
+		if bool(default_result.get("has_default", false)) and bool(default_result.get("valid", false)):
+			var default_focus_paths: Array = default_result.get("focus_paths", [])
+			if _append_default_child_preview_columns(selected_tier, default_focus_paths):
+				return previous_preview_snapshot != _get_preview_column_state_snapshot()
 
 	if selected_match.get("has_widget", false):
 		var preview_prefix := selected_tier + "/"
@@ -7602,6 +7688,37 @@ func _refresh_active_preview_column_state() -> bool:
 		})
 
 	return previous_preview_snapshot != _get_preview_column_state_snapshot()
+
+
+func _append_default_child_preview_columns(parent_tier: String, focus_paths: Array) -> bool:
+	var current_parent := parent_tier
+	var appended := false
+	for focus_path_variant in focus_paths:
+		var focus_path := str(focus_path_variant).strip_edges()
+		var preview_prefix := current_parent + "/"
+		if focus_path.is_empty() or not focus_path.begins_with(preview_prefix):
+			return appended
+		var preview_matches := _build_tier_matches(preview_prefix, "")
+		var preview_selected_index := _find_autocomplete_match_index(preview_matches, focus_path)
+		if preview_selected_index < 0:
+			return appended
+		var focused_match: Dictionary = preview_matches[preview_selected_index]
+		focused_match["default_focus"] = true
+		preview_matches[preview_selected_index] = focused_match
+		_autocomplete_column_states.append({
+			"prefix": preview_prefix,
+			"query": "",
+			"matches": preview_matches,
+			"selected_index": preview_selected_index,
+			"preview": true,
+			"preview_parent_tier": current_parent,
+			"default_focus_tier": focus_path,
+			"left_width": 0,
+			"width": 0,
+		})
+		current_parent = focus_path
+		appended = true
+	return appended
 
 
 func _measure_autocomplete_text_width(control: Control, text: String) -> int:
@@ -8143,6 +8260,18 @@ func _update_touch_command_autocomplete_column_visibility() -> void:
 
 func _refresh_command_preview_option_state(column_state: Dictionary) -> Dictionary:
 	if not column_state.get("preview", false):
+		return column_state
+	var default_focus_tier := str(column_state.get("default_focus_tier", ""))
+	if not default_focus_tier.is_empty():
+		var default_preview_prefix := str(column_state.get("prefix", ""))
+		var default_preview_matches := _build_tier_matches(default_preview_prefix, "")
+		var default_selected_index := _find_autocomplete_match_index(default_preview_matches, default_focus_tier)
+		if default_selected_index >= 0:
+			var default_match: Dictionary = default_preview_matches[default_selected_index]
+			default_match["default_focus"] = true
+			default_preview_matches[default_selected_index] = default_match
+		column_state["matches"] = default_preview_matches
+		column_state["selected_index"] = default_selected_index
 		return column_state
 
 	var preview_parent_tier := str(column_state.get("preview_parent_tier", column_state.get("preview_parent_command", "")))

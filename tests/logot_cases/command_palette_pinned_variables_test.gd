@@ -59,6 +59,28 @@ func run(ctx) -> void:
 		"rows=%s" % [display._pinned_overlay_rows.keys()]
 	)
 
+	# Both overlays share one canvas layer, so z_index alone decides who occludes whom.
+	var popup = display._command_autocomplete_popup
+	var handle = display._command_palette_resize_handle
+	ctx.check(
+		"command palette draws above the pinned variables",
+		popup != null and popup.z_index > display._pinned_overlay_root.z_index,
+		"palette_z=%s pinned_z=%s" % [popup.z_index if popup != null else null, display._pinned_overlay_root.z_index]
+	)
+	ctx.check(
+		"resize handle draws above the pinned variables",
+		handle != null and handle.z_index > display._pinned_overlay_root.z_index,
+		"handle_z=%s pinned_z=%s" % [handle.z_index if handle != null else null, display._pinned_overlay_root.z_index]
+	)
+	ctx.check(
+		"palette overlays share the pinned variables canvas",
+		popup != null and popup.get_canvas() == display._pinned_overlay_root.get_canvas(),
+		"palette_canvas=%s pinned_canvas=%s" % [
+			popup.get_canvas() if popup != null else null,
+			display._pinned_overlay_root.get_canvas(),
+		]
+	)
+
 	console._set_touch_mode_enabled(true, false)
 	await ctx.wait_frames(1)
 	ctx.check(
