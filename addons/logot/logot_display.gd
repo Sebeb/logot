@@ -3119,7 +3119,7 @@ func _append_pinned_display_variable_value(row: RichTextLabel, value_text: Strin
 	if value_items.is_empty():
 		if value_color.a > 0.0:
 			row.push_color(value_color)
-		row.add_text(value_text)
+		row.append_text(value_text)
 		if value_color.a > 0.0:
 			row.pop()
 		return
@@ -3132,7 +3132,7 @@ func _append_pinned_display_variable_value(row: RichTextLabel, value_text: Strin
 		var item_color := item.get("color", Color.TRANSPARENT) as Color
 		if item_color.a > 0.0:
 			row.push_color(item_color)
-		row.add_text(item_text)
+		row.append_text(item_text)
 		if item_color.a > 0.0:
 			row.pop()
 

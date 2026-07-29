@@ -29,6 +29,8 @@ func run(ctx) -> void:
 	var multiline_value_address := "tests/command_palette_multiline_value"
 	console.add_display_variable(multiline_value_address, func(): return "first line\nsecond line")
 	console.pin_display_variable(multiline_value_address)
+	var rich_text_value_address := "tests/command_palette_rich_text_value"
+	console.pin(rich_text_value_address, "[color=#ff2e2ef2]Generation Cells[/color]")
 	var root_matches: Array = display._build_tier_matches("", "")
 	var pins_matches: Array = display._build_tier_matches("pins/", "")
 	var encoded_address := address.uri_encode()
@@ -83,6 +85,12 @@ func run(ctx) -> void:
 			and "first line\nsecond line" in display._pinned_overlay_rows[multiline_value_address].get_parsed_text(),
 		"row=%s" % [display._pinned_overlay_rows[multiline_value_address].get_parsed_text()]
 	)
+	ctx.check(
+		"pinned custom values parse BBCode",
+		"Generation Cells" in display._pinned_overlay_rows[rich_text_value_address].get_parsed_text()
+			and not "[color=" in display._pinned_overlay_rows[rich_text_value_address].get_parsed_text(),
+		"row=%s" % [display._pinned_overlay_rows[rich_text_value_address].get_parsed_text()]
+	)
 
 	# Both overlays share one canvas layer, so z_index alone decides who occludes whom.
 	var popup = display._command_autocomplete_popup
@@ -128,4 +136,5 @@ func run(ctx) -> void:
 	console.remove_display_variable(long_label_address)
 	console.unpin_display_variable(multiline_value_address)
 	console.remove_display_variable(multiline_value_address)
+	console.unpin(rich_text_value_address)
 	console._close_command_entry_view()
