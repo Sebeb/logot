@@ -26,6 +26,9 @@ func run(ctx) -> void:
 	var long_label_address := "tests/command_palette_long_label"
 	console.add_display_variable(long_label_address, func(): return "visible", Callable(), Callable(), true, "", 0, null, &"", func(): return "long pinned label ".repeat(30))
 	console.pin_display_variable(long_label_address)
+	var multiline_value_address := "tests/command_palette_multiline_value"
+	console.add_display_variable(multiline_value_address, func(): return "first line\nsecond line")
+	console.pin_display_variable(multiline_value_address)
 	var root_matches: Array = display._build_tier_matches("", "")
 	var pins_matches: Array = display._build_tier_matches("pins/", "")
 	var encoded_address := address.uri_encode()
@@ -74,6 +77,12 @@ func run(ctx) -> void:
 		bool(display._pinned_overlay_rows[long_label_address].get_meta("logot_pin_stacked_value", false)),
 		"row=%s" % [display._pinned_overlay_rows[long_label_address].get_parsed_text()]
 	)
+	ctx.check(
+		"multiline pinned values retain their line breaks beneath the title",
+		bool(display._pinned_overlay_rows[multiline_value_address].get_meta("logot_pin_stacked_value", false))
+			and "first line\nsecond line" in display._pinned_overlay_rows[multiline_value_address].get_parsed_text(),
+		"row=%s" % [display._pinned_overlay_rows[multiline_value_address].get_parsed_text()]
+	)
 
 	# Both overlays share one canvas layer, so z_index alone decides who occludes whom.
 	var popup = display._command_autocomplete_popup
@@ -117,4 +126,6 @@ func run(ctx) -> void:
 	console.remove_display_variable(long_value_address)
 	console.unpin_display_variable(long_label_address)
 	console.remove_display_variable(long_label_address)
+	console.unpin_display_variable(multiline_value_address)
+	console.remove_display_variable(multiline_value_address)
 	console._close_command_entry_view()

@@ -3146,9 +3146,21 @@ func _get_pinned_display_variable_value_plain_text(value_text: String, value_ite
 	return " ".join(item_texts)
 
 
+func _pinned_display_variable_value_has_line_break(value_text: String, value_items: Array = []) -> bool:
+	if value_text.contains("\n") or value_text.contains("\r"):
+		return true
+	for value_item in value_items:
+		var item_text := str((value_item as Dictionary).get("text", ""))
+		if item_text.contains("\n") or item_text.contains("\r"):
+			return true
+	return false
+
+
 func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_address: String, value_text: String, value_items: Array = []) -> bool:
 	if row == null:
 		return false
+	if _pinned_display_variable_value_has_line_break(value_text, value_items):
+		return true
 	var usable_width := PINNED_OVERLAY_MAX_VARIABLE_WIDTH - PINNED_OVERLAY_VARIABLE_WIDTH_PADDING
 	var title_width := _measure_pinned_variable_text_width(row, "%s:" % display_address)
 	if title_width > usable_width:
@@ -4947,7 +4959,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 	if items.is_empty():
 		var item_text := _get_command_option_label_for_value(resolved_address, current_value, 0)
 		if item_text.is_empty():
-			item_text = str(current_value).replace("\n", " ").replace("\r", " ")
+			item_text = str(current_value)
 		if not item_text.is_empty():
 			var item_color := inline_color
 			if item_color.a <= 0.0:
