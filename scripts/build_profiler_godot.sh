@@ -5,6 +5,7 @@ readonly GODOT_COMMIT="5b4e0cb0fd279832bbdd69fed5354d4e5ad26f88"
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly LOGOT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly GODOT_SOURCE_DIR="${LOGOT_GODOT_SOURCE_DIR:-${LOGOT_ROOT}/.build/godot}"
+readonly GODOT_PATCH_DIR="${LOGOT_ROOT}/native/godot_patches"
 readonly BUILD_PLATFORM="${1:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
 readonly BUILD_TARGET="${2:-editor}"
 readonly BUILD_ARCH="${3:-}"
@@ -25,6 +26,17 @@ fi
 
 git -C "${GODOT_SOURCE_DIR}" fetch --depth=1 origin "${GODOT_COMMIT}"
 git -C "${GODOT_SOURCE_DIR}" checkout --detach "${GODOT_COMMIT}"
+git -C "${GODOT_SOURCE_DIR}" reset --hard "${GODOT_COMMIT}"
+# Patch-added Metal files are untracked after a hard reset. Remove only this
+# generated engine subtree so patches that add files remain idempotent.
+git -C "${GODOT_SOURCE_DIR}" clean -fd -- drivers/metal
+
+for patch_file in "${GODOT_PATCH_DIR}"/*.patch; do
+  [[ -e "${patch_file}" ]] || continue
+  echo "Applying Godot patch: $(basename "${patch_file}")"
+  git -C "${GODOT_SOURCE_DIR}" apply --check "${patch_file}"
+  git -C "${GODOT_SOURCE_DIR}" apply "${patch_file}"
+done
 
 readonly MODULE_DEST="${GODOT_SOURCE_DIR}/modules/logot_profiler"
 mkdir -p "${MODULE_DEST}"
