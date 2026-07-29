@@ -1068,6 +1068,10 @@ class AutocompleteCommandColumn:
 			return _header_height
 		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
 
+	## Width the row scrollbar takes away from the drawable area, or 0 while it is hidden.
+	func get_row_scrollbar_reserve_width() -> float:
+		return _get_row_scrollbar_width()
+
 	func _get_column_content_width() -> float:
 		return maxf(0.0, size.x - _get_row_scrollbar_width())
 
@@ -1380,10 +1384,14 @@ class AutocompleteCommandColumn:
 		var levels_variant = row_data.get("group_levels", [])
 		return levels_variant as Array if levels_variant is Array else []
 
-	# Nested rows are pushed in on both sides so their text clears the enclosing borders.
+	# Boxed rows are pushed in on both sides so their text clears the enclosing borders. This
+	# matches the innermost box's inset, so a boxed row keeps the same padding inside its
+	# border that a loose row gets from the column edge instead of crowding the outline.
 	static func get_group_content_indent(row_data: Dictionary) -> float:
 		var depth := get_group_levels(row_data).size()
-		return maxf(0.0, float(depth - 1)) * GROUP_BOX_NEST_INSET_X
+		if depth <= 0:
+			return 0.0
+		return GROUP_BOX_INSET_X + float(depth - 1) * GROUP_BOX_NEST_INSET_X
 
 	# A row only carries the box edges that start or end on it, so a level's side lines run
 	# from row edge to row edge and meet the neighbouring row without a seam.
@@ -1807,6 +1815,7 @@ const AUTOCOMPLETE_ITEM_HEIGHT := 28
 const AUTOCOMPLETE_MAX_VISIBLE_ITEMS := 10
 const AUTOCOMPLETE_FIXED_VISIBLE_ITEMS := 15
 const AUTOCOMPLETE_COLUMN_PADDING := 24
+const AUTOCOMPLETE_ROW_ICON_WIDTH := 20
 const AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH := 20
 const AUTOCOMPLETE_ACTION_ICON_DIAMETER := 18
 const AUTOCOMPLETE_ACTION_ICON_GAP := 6
@@ -7081,7 +7090,10 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 		return false
 	var visible_range := list.get_visible_row_range()
 	var matches: Array = column_state.get("matches", [])
-	var column_width := maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, int(column_state.get("width", list.size.x)))
+	# Rows draw into the column minus whatever the scrollbar overlays, so compare against that.
+	var column_width := int(column_state.get("content_width", 0))
+	if column_width <= 0:
+		column_width = maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, int(column_state.get("width", list.size.x)) - int(ceil(list.get_row_scrollbar_reserve_width())))
 	var changed := false
 	for row_index in range(visible_range.x, mini(visible_range.y, rows.size())):
 		var row_data: Dictionary = rows[row_index]
@@ -7101,8 +7113,13 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 		var row_action_width := _get_command_autocomplete_row_action_width(row_data)
 		row_data["measured_value_width"] = row_value_width
 		row_data["measured_action_width"] = row_action_width
-		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + _measure_autocomplete_text_width(list, str(row_data.get("label", "")))
-		single_line_width += int(ceil(AutocompleteCommandColumn.get_group_content_indent(row_data) * 2.0))
+		var row_name_width := int(row_data.get("measured_name_width", 0))
+		if row_name_width <= 0:
+			row_name_width = _measure_autocomplete_text_width(list, str(row_data.get("label", "")))
+			row_name_width += int(ceil(AutocompleteCommandColumn.get_group_content_indent(row_data) * 2.0))
+			if bool(row_data.get("column_has_icons", false)):
+				row_name_width += AUTOCOMPLETE_ROW_ICON_WIDTH + int(AutocompleteCommandColumn.CELL_GAP)
+		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + row_name_width
 		if row_value_width > 0:
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
 		if row_action_width > 0:
@@ -7121,7 +7138,11 @@ func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Di
 	if not match_data.get("has_display_variable", false):
 		return {"text": "", "color": null, "items": [], "address": ""}
 
-	var tier := _resolve_alias_command_path(str(match_data.get("tier", "")))
+	return _get_autocomplete_display_variable_value_data_for_address(str(match_data.get("tier", "")))
+
+
+func _get_autocomplete_display_variable_value_data_for_address(address: String) -> Dictionary:
+	var tier := _resolve_alias_command_path(address.strip_edges())
 	if tier.is_empty():
 		return {"text": "", "color": null, "items": [], "address": ""}
 
@@ -7133,6 +7154,27 @@ func _get_autocomplete_display_variable_value_data(match_data: Dictionary) -> Di
 		"items": snapshot.get("items", []),
 		"address": tier,
 	}
+
+
+# A row's pinned value is resolved lazily once it scrolls into view, but the column has to
+# be measured before any row is visible. Measuring an unresolved row would size the column
+# for its label alone, so pull the value in eagerly when the layout pass needs its width.
+func _resolve_autocomplete_row_display_value(row_data: Dictionary, snapshot_cache: Dictionary) -> void:
+	if bool(row_data.get("value_loaded", false)):
+		return
+	var address := _resolve_alias_command_path(str(row_data.get("display_variable_address", "")).strip_edges())
+	if address.is_empty():
+		row_data["value_loaded"] = true
+		return
+	var value_data: Dictionary = snapshot_cache.get(address, {})
+	if value_data.is_empty():
+		value_data = _get_autocomplete_display_variable_value_data_for_address(address)
+		snapshot_cache[address] = value_data
+	row_data["value_text"] = str(value_data.get("text", ""))
+	row_data["value_text_color"] = value_data.get("color", null)
+	row_data["value_items"] = value_data.get("items", [])
+	row_data["display_variable_address"] = str(value_data.get("address", address))
+	row_data["value_loaded"] = true
 
 
 func _get_command_autocomplete_column_name(prefix: String) -> String:
@@ -8275,7 +8317,7 @@ func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
 	return current_action_width
 
 
-func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String) -> Dictionary:
+func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String, reserved_width: int = 0) -> Dictionary:
 	var column_has_icons := false
 	for candidate_row in rows:
 		if (candidate_row as Dictionary).get("icon") is Texture2D:
@@ -8285,14 +8327,16 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	var value_width := 0
 	var action_width := 0
 	var total_width := 0
+	var value_snapshot_cache: Dictionary = {}
 	for row_index in range(rows.size()):
 		var row_data: Dictionary = rows[row_index]
 		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
-		# Nested rows are pushed in on both sides to clear their enclosing boxes.
+		# Boxed rows are pushed in on both sides to clear their enclosing group borders.
 		row_name_width += int(ceil(AutocompleteCommandColumn.get_group_content_indent(row_data) * 2.0))
 		if column_has_icons and not bool(row_data.get("is_group_header", false)):
-			row_name_width += 20 + int(AutocompleteCommandColumn.CELL_GAP)
+			row_name_width += AUTOCOMPLETE_ROW_ICON_WIDTH + int(AutocompleteCommandColumn.CELL_GAP)
 			row_data["column_has_icons"] = true
+		row_data["measured_name_width"] = row_name_width
 		var row_value_width := 0
 		var row_action_width := 0
 		if bool(row_data.get("is_group_header", false)):
@@ -8303,6 +8347,7 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 			rows[row_index] = row_data
 			continue
 		name_width = maxi(name_width, row_name_width)
+		_resolve_autocomplete_row_display_value(row_data, value_snapshot_cache)
 		row_value_width = _get_command_autocomplete_row_value_width(control, row_data)
 		row_action_width = _get_command_autocomplete_row_action_width(row_data)
 		if row_value_width > 0:
@@ -8330,18 +8375,20 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	# Keep a small safety margin because title text is rendered bold via BBCode and can
 	# be a few pixels wider than plain font metrics (which otherwise causes wrap artifacts).
 	var header_total_width := int(ceil(AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + header_content_width + AUTOCOMPLETE_HEADER_WIDTH_BUFFER
-	var preferred_width := maxi(total_width, header_total_width)
+	# The row scrollbar overlays the right-hand edge, so the rows never get to draw into it.
+	var preferred_width := maxi(total_width, header_total_width) + reserved_width
 	if prefix == AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX:
 		total_width = maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, preferred_width)
 	else:
 		var max_width := _get_command_autocomplete_max_column_width()
 		total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+	var content_width := maxi(0, total_width - reserved_width)
 
 	for row_index in range(rows.size()):
 		var row_data: Dictionary = rows[row_index]
 		if bool(row_data.get("is_group_header", false)):
 			continue
-		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
+		var row_name_width := int(row_data.get("measured_name_width", 0))
 		var row_value_width := int(row_data.get("measured_value_width", 0))
 		var row_action_width := int(row_data.get("measured_action_width", 0))
 		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + row_name_width
@@ -8349,7 +8396,7 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
 		if row_action_width > 0:
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_action_width
-		var needs_two_line := row_value_width > 0 and single_line_width > total_width
+		var needs_two_line := row_value_width > 0 and single_line_width > content_width
 		row_data["two_line"] = needs_two_line
 		row_data["row_height_multiplier"] = 2.0 if needs_two_line else 1.0
 		rows[row_index] = row_data
@@ -8359,6 +8406,8 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 		"value_width": value_width,
 		"action_width": action_width,
 		"width": total_width,
+		"content_width": content_width,
+		"scrollbar_reserve": reserved_width,
 	}
 
 
@@ -8861,19 +8910,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	column_state["tracked_display_variable_addresses"] = tracked_display_variable_addresses
 
 	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
-	if not widget_path.is_empty():
-		var widget_min := _get_widget_default_minimum_size(_get_widget_data(widget_path))
-		if widget_min.x <= 0.0 or widget_min.y <= 0.0:
-			var embedded_widget_for_measure := list.get_node_or_null("LogotEmbeddedWidget") as Control
-			if embedded_widget_for_measure != null:
-				widget_min = embedded_widget_for_measure.get_combined_minimum_size()
-		layout["width"] = maxi(int(layout.get("width", 0)), int(ceil(widget_min.x + AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)))
-	column_state["left_width"] = int(layout.get("name_width", 0))
-	column_state["value_width"] = int(layout.get("value_width", 0))
-	column_state["action_width"] = int(layout.get("action_width", 0))
-	column_state["width"] = int(layout.get("width", 0))
-	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
-		column_state["width"] = int(_get_touch_command_autocomplete_column_size().x)
+	_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, 0)
 
 	var column_height := _get_command_autocomplete_column_viewport_height()
 	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
@@ -8885,10 +8922,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		if fitted_rows.size() != rows.size():
 			rows = fitted_rows
 			layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
-			column_state["left_width"] = int(layout.get("name_width", 0))
-			column_state["value_width"] = int(layout.get("value_width", 0))
-			column_state["action_width"] = int(layout.get("action_width", 0))
-			column_state["width"] = int(layout.get("width", 0))
+			_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, 0)
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
 	_configure_autocomplete_column_widget(list, widget_path)
@@ -8905,12 +8939,52 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		column_name,
 		column_description
 	)
+	# The row scrollbar overlays the column's right-hand edge, but only settles once the rows
+	# have been applied, so measure it back in afterwards. Reserving the space can only make
+	# rows taller (never shorter), so the scrollbar cannot vanish and one pass suffices.
+	var scrollbar_reserve := int(ceil(list.get_row_scrollbar_reserve_width()))
+	if scrollbar_reserve > 0:
+		layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve)
+		_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, scrollbar_reserve)
+		list.custom_minimum_size = Vector2(column_state["width"], column_height)
+		list.size = list.custom_minimum_size
+		list.set_column_data(
+			rows,
+			layout,
+			selected_row_index,
+			column_state.get("preview", false),
+			_get_scaled_autocomplete_item_height(),
+			is_active_column,
+			column_name,
+			column_description
+		)
+
 	_hydrate_visible_command_autocomplete_rows(list, column_state, rows)
 	var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
 	var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
 	list.set_header_navigation(show_touch_navigation, navigation_label)
 
 	return column_state
+
+
+## Folds the embedded widget's minimum width and the row scrollbar's reserve into a measured
+## layout, then writes the resolved widths onto column_state.
+func _resolve_autocomplete_column_width(list: AutocompleteCommandColumn, column_state: Dictionary, column_index: int, layout: Dictionary, widget_path: String, reserved_width: int) -> void:
+	if not widget_path.is_empty():
+		var widget_min := _get_widget_default_minimum_size(_get_widget_data(widget_path))
+		if widget_min.x <= 0.0 or widget_min.y <= 0.0:
+			var embedded_widget_for_measure := list.get_node_or_null("LogotEmbeddedWidget") as Control
+			if embedded_widget_for_measure != null:
+				widget_min = embedded_widget_for_measure.get_combined_minimum_size()
+		layout["width"] = maxi(int(layout.get("width", 0)), int(ceil(widget_min.x + AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + reserved_width)
+	column_state["left_width"] = int(layout.get("name_width", 0))
+	column_state["value_width"] = int(layout.get("value_width", 0))
+	column_state["action_width"] = int(layout.get("action_width", 0))
+	column_state["width"] = int(layout.get("width", 0))
+	if _is_touch_command_palette_layout() and _is_command_autocomplete_column_displayed(column_index, column_state):
+		column_state["width"] = int(_get_touch_command_autocomplete_column_size().x)
+	column_state["content_width"] = maxi(0, int(column_state["width"]) - reserved_width)
+	layout["content_width"] = int(column_state["content_width"])
 
 
 func _resolve_visible_keyboard_shortcuts() -> void:
