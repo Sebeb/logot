@@ -133,6 +133,8 @@ const INGAME_POPUP_SWIPE_DISMISS_TIMEOUT_MSEC := 450
 const INGAME_POPUP_SWIPE_WHEEL_STEP := 36.0
 const INGAME_POPUP_SWIPE_EXIT_DISTANCE := 72.0
 const INGAME_POPUP_SWIPE_EXIT_DURATION := 0.18
+const INGAME_POPUP_ACTION_SIZE := 28.0
+const INGAME_POPUP_ACTION_GAP := 4.0
 const INGAME_POPUP_SETTINGS_SECTION := "ingame_popups"
 const INGAME_POPUP_COMMAND_PATH := "console/settings/ingame_popups"
 const INGAME_POPUP_LEVELS_COMMAND_PATH := "console/settings/ingame_popups/levels"
@@ -3020,15 +3022,36 @@ func _show_ingame_popup(entry: LogEntry) -> void:
 	close_button.anchor_top = 0.0
 	close_button.anchor_right = 1.0
 	close_button.anchor_bottom = 0.0
-	close_button.offset_left = 1.0
-	close_button.offset_top = -9.0
-	close_button.offset_right = 19.0
-	close_button.offset_bottom = 9.0
-	close_button.custom_minimum_size = Vector2(18.0, 18.0)
+	close_button.offset_left = 0.0
+	close_button.offset_top = -INGAME_POPUP_ACTION_SIZE / 2.0
+	close_button.offset_right = INGAME_POPUP_ACTION_SIZE
+	close_button.offset_bottom = INGAME_POPUP_ACTION_SIZE / 2.0
+	close_button.custom_minimum_size = Vector2(INGAME_POPUP_ACTION_SIZE, INGAME_POPUP_ACTION_SIZE)
 	close_button.z_index = 2
 	_style_ingame_popup_close_button(close_button)
 	close_button.pressed.connect(func() -> void:
 		_free_ingame_popup(popup_panel)
+	)
+
+	var copy_button := Button.new()
+	copy_button.text = "⧉"
+	copy_button.tooltip_text = "Copy popup message"
+	copy_button.visible = false
+	copy_button.focus_mode = Control.FOCUS_NONE
+	copy_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	copy_button.anchor_left = 1.0
+	copy_button.anchor_top = 0.0
+	copy_button.anchor_right = 1.0
+	copy_button.anchor_bottom = 0.0
+	copy_button.offset_left = -INGAME_POPUP_ACTION_SIZE - INGAME_POPUP_ACTION_GAP
+	copy_button.offset_top = -INGAME_POPUP_ACTION_SIZE / 2.0
+	copy_button.offset_right = -INGAME_POPUP_ACTION_GAP
+	copy_button.offset_bottom = INGAME_POPUP_ACTION_SIZE / 2.0
+	copy_button.custom_minimum_size = Vector2(INGAME_POPUP_ACTION_SIZE, INGAME_POPUP_ACTION_SIZE)
+	copy_button.z_index = 2
+	_style_ingame_popup_close_button(copy_button)
+	copy_button.pressed.connect(func() -> void:
+		DisplayServer.clipboard_set(str(popup_panel.get_meta("message_text", "")))
 	)
 
 	var count_badge := PanelContainer.new()
@@ -3038,11 +3061,11 @@ func _show_ingame_popup(entry: LogEntry) -> void:
 	count_badge.anchor_top = 0.0
 	count_badge.anchor_right = 1.0
 	count_badge.anchor_bottom = 0.0
-	count_badge.offset_left = 1.0
-	count_badge.offset_top = -9.0
-	count_badge.offset_right = 19.0
-	count_badge.offset_bottom = 9.0
-	count_badge.custom_minimum_size = Vector2(18.0, 18.0)
+	count_badge.offset_left = 0.0
+	count_badge.offset_top = -INGAME_POPUP_ACTION_SIZE / 2.0
+	count_badge.offset_right = INGAME_POPUP_ACTION_SIZE
+	count_badge.offset_bottom = INGAME_POPUP_ACTION_SIZE / 2.0
+	count_badge.custom_minimum_size = Vector2(INGAME_POPUP_ACTION_SIZE, INGAME_POPUP_ACTION_SIZE)
 	count_badge.z_index = 2
 	_style_ingame_popup_count_badge(count_badge, entry.level)
 
@@ -3053,15 +3076,17 @@ func _show_ingame_popup(entry: LogEntry) -> void:
 	count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	count_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	count_label.add_theme_color_override("font_color", Color(0.08, 0.09, 0.11, 1.0))
-	count_label.add_theme_font_size_override("font_size", 10)
+	count_label.add_theme_font_size_override("font_size", 14)
 	count_badge.add_child(count_label)
 
 	popup_panel.add_child(popup_label)
+	popup_label.add_child(copy_button)
 	popup_label.add_child(close_button)
 	popup_label.add_child(count_badge)
 	_ingame_popup_container.add_child(popup_panel)
 	popup_panel.set_meta("popup_label", popup_label)
 	popup_panel.set_meta("close_button", close_button)
+	popup_panel.set_meta("copy_button", copy_button)
 	popup_panel.set_meta("count_badge", count_badge)
 	popup_panel.set_meta("count_label", count_label)
 	_register_ingame_popup(popup_signature, popup_panel)
@@ -3081,6 +3106,12 @@ func _show_ingame_popup(entry: LogEntry) -> void:
 		_set_ingame_popup_hover_state(popup_panel, true)
 	)
 	close_button.mouse_exited.connect(func() -> void:
+		call_deferred("_refresh_ingame_popup_hover_state_by_signature", popup_signature)
+	)
+	copy_button.mouse_entered.connect(func() -> void:
+		_set_ingame_popup_hover_state(popup_panel, true)
+	)
+	copy_button.mouse_exited.connect(func() -> void:
 		call_deferred("_refresh_ingame_popup_hover_state_by_signature", popup_signature)
 	)
 	_schedule_ingame_popup_fade(popup_panel, true)
@@ -3121,17 +3152,18 @@ func _style_ingame_popup_count_badge(badge: PanelContainer, level: int) -> void:
 	badge_style.border_width_top = 1
 	badge_style.border_width_right = 1
 	badge_style.border_width_bottom = 1
-	badge_style.corner_radius_top_left = 9
-	badge_style.corner_radius_top_right = 9
-	badge_style.corner_radius_bottom_right = 9
-	badge_style.corner_radius_bottom_left = 9
+	var radius := int(INGAME_POPUP_ACTION_SIZE / 2.0)
+	badge_style.corner_radius_top_left = radius
+	badge_style.corner_radius_top_right = radius
+	badge_style.corner_radius_bottom_right = radius
+	badge_style.corner_radius_bottom_left = radius
 	badge_style.content_margin_left = 0.0
 	badge_style.content_margin_top = 0.0
 	badge_style.content_margin_right = 0.0
 	badge_style.content_margin_bottom = 0.0
 	badge.add_theme_stylebox_override("panel", badge_style)
 	badge.add_theme_color_override("font_color", Color(0.08, 0.09, 0.11, 1.0))
-	badge.add_theme_font_size_override("font_size", 10)
+	badge.add_theme_font_size_override("font_size", 14)
 
 
 func _get_ingame_popup_signature(entry: LogEntry) -> String:
@@ -3197,6 +3229,7 @@ func _render_ingame_popup(popup_panel: Control) -> void:
 	var count_badge = popup_panel.get_meta("count_badge", null) as PanelContainer
 	var count_label = popup_panel.get_meta("count_label", null) as Label
 	var close_button = popup_panel.get_meta("close_button", null) as Button
+	var copy_button = popup_panel.get_meta("copy_button", null) as Button
 	if popup_label:
 		popup_label.clear()
 		popup_label.append_text(_format_ingame_popup_text(
@@ -3208,10 +3241,11 @@ func _render_ingame_popup(popup_panel: Control) -> void:
 		))
 	if count_label:
 		count_label.text = str(int(popup_panel.get_meta("duplicate_count", 0)))
-	if count_badge and close_button:
+	if count_badge and close_button and copy_button:
 		var duplicate_count := int(popup_panel.get_meta("duplicate_count", 0))
 		count_badge.visible = duplicate_count > 0 and not bool(popup_panel.get_meta("hovered", false))
 		close_button.visible = bool(popup_panel.get_meta("hovered", false))
+		copy_button.visible = bool(popup_panel.get_meta("hovered", false))
 
 
 func _set_ingame_popup_hover_state(popup_panel: Control, hovered: bool) -> void:
@@ -3247,10 +3281,15 @@ func _refresh_ingame_popup_hover_state(popup_panel) -> void:
 	if not is_instance_valid(popup_control):
 		return
 	var close_button = popup_control.get_meta("close_button", null) as Button
-	if close_button == null or not is_instance_valid(close_button):
+	var copy_button = popup_control.get_meta("copy_button", null) as Button
+	if close_button == null or not is_instance_valid(close_button) or copy_button == null or not is_instance_valid(copy_button):
 		return
 	var mouse_position := popup_control.get_global_mouse_position()
-	var hovered := popup_control.get_global_rect().has_point(mouse_position) or close_button.get_global_rect().has_point(mouse_position)
+	var hovered := (
+		popup_control.get_global_rect().has_point(mouse_position)
+		or close_button.get_global_rect().has_point(mouse_position)
+		or copy_button.get_global_rect().has_point(mouse_position)
+	)
 	_set_ingame_popup_hover_state(popup_control, hovered)
 
 
@@ -3358,7 +3397,7 @@ func _dismiss_ingame_popup_with_swipe(popup_panel: Control) -> void:
 
 
 func _style_ingame_popup_close_button(button: Button) -> void:
-	var radius := 9
+	var radius := int(INGAME_POPUP_ACTION_SIZE / 2.0)
 	var normal := StyleBoxFlat.new()
 	normal.bg_color = Color(0.12, 0.14, 0.18, 0.98)
 	normal.border_color = Color(0.5, 0.54, 0.64, 0.98)
@@ -3386,7 +3425,7 @@ func _style_ingame_popup_close_button(button: Button) -> void:
 	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 1.0))
 	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
 	button.add_theme_color_override("font_pressed_color", Color(1.0, 1.0, 1.0, 1.0))
-	button.add_theme_font_size_override("font_size", 10)
+	button.add_theme_font_size_override("font_size", 16)
 
 
 func _stop_ingame_popup_fade_internal(popup_panel: Control) -> void:
