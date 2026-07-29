@@ -31,6 +31,16 @@ func run(ctx) -> void:
 		"text=%s" % _console.line_edit.text
 	)
 
+	_console.line_edit.text = "/path_recovery/rem"
+	_console.line_edit.caret_column = _console.line_edit.text.length()
+	display.on_text_changed_autocomplete(_console.line_edit.text)
+	display.reconcile_retained_command_path()
+	ctx.check(
+		"filter paths with results remain unchanged",
+		_console.line_edit.text == "/path_recovery/rem",
+		"text=%s" % _console.line_edit.text
+	)
+
 	_console.remove_command("path_recovery/remaining")
 	display.reconcile_retained_command_path()
 	ctx.check(

@@ -6151,6 +6151,12 @@ func reconcile_retained_command_path() -> void:
 	var input_text := line_edit.text.strip_edges()
 	if not input_text.begins_with("/") or input_text.begins_with("//"):
 		return
+	var input_state := _get_autocomplete_input_state()
+	if not _build_tier_matches(
+		str(input_state.get("prefix", "")),
+		str(input_state.get("query", ""))
+	).is_empty():
+		return
 
 	var command_path := input_text.substr(1).trim_suffix("/")
 	var argument_separator := command_path.find(" ")
