@@ -331,6 +331,7 @@ class AutocompleteCommandColumn:
 	const CUSTOM_VALUE_PILL_MIN_CONTRAST := 4.5
 	const GROUP_BOX_INSET_X := 6.0
 	const GROUP_BOX_INSET_Y := 2.0
+	const GROUP_BOX_NEST_INSET_X := 6.0
 	const GROUP_HEADER_FONT_SIZE_REDUCTION := 3
 	const TOUCH_SCROLL_DRAG_THRESHOLD := 8.0
 	const TOUCH_LONG_PRESS_SECONDS := 0.48
@@ -858,18 +859,30 @@ class AutocompleteCommandColumn:
 		_row_height_prefix.resize(_rows.size() + 1)
 		_row_height_prefix[0] = 0.0
 		_sticky_group_header_indices.resize(_rows.size())
-		var active_group_header := -1
+		# One slot per open nesting level, holding that level's header row (-1 when the
+		# level is headerless).  A row pins the innermost header enclosing it.
+		var header_stack := PackedInt32Array()
 		for row_index in range(_rows.size()):
 			_row_height_prefix[row_index + 1] = _row_height_prefix[row_index] + _get_row_height(row_index)
 			var row_data: Dictionary = _rows[row_index]
-			if bool(row_data.get("is_group_header", false)):
-				active_group_header = row_index
-				_sticky_group_header_indices[row_index] = -1
-			elif bool(row_data.get("group_box", false)) and active_group_header >= 0:
-				_sticky_group_header_indices[row_index] = active_group_header
-			else:
-				active_group_header = -1
-				_sticky_group_header_indices[row_index] = -1
+			var levels := get_group_levels(row_data)
+			var depth := levels.size()
+			var is_header := bool(row_data.get("is_group_header", false))
+			while header_stack.size() > depth:
+				header_stack.remove_at(header_stack.size() - 1)
+			while header_stack.size() < depth:
+				header_stack.append(-1)
+			for level_index in range(depth):
+				if bool((levels[level_index] as Dictionary).get("start", false)):
+					header_stack[level_index] = -1
+			var enclosing_depth := depth - 1 if is_header else depth
+			if is_header and depth > 0:
+				header_stack[depth - 1] = row_index
+			var sticky_index := -1
+			for level_index in range(enclosing_depth):
+				if header_stack[level_index] >= 0:
+					sticky_index = header_stack[level_index]
+			_sticky_group_header_indices[row_index] = sticky_index
 
 	func _get_visible_content_height_for_scroll(scroll_row: int) -> float:
 		var rows_top := _get_rows_top_for_scroll(scroll_row)
@@ -1179,24 +1192,26 @@ class AutocompleteCommandColumn:
 		var header_index := _sticky_group_header_indices[clamped_scroll_row]
 		return _rows[header_index] if header_index >= 0 else {}
 
+	# Group borders are drawn last so a selected row cannot punch a hole through the box
+	# outline: the box has to read as one continuous frame around its options.
 	func _draw_row_background(row_rect: Rect2, row_data: Dictionary, selection_state: int) -> void:
-		if bool(row_data.get("is_group_header", false)):
-			draw_rect(row_rect, _get_group_fill_color(row_data), true)
-		elif bool(row_data.get("group_box", false)) and selection_state == 0:
-			draw_rect(row_rect, _get_group_fill_color(row_data), true)
-		if bool(row_data.get("group_box", false)):
-			_draw_group_box(row_rect, row_data)
+		var levels := get_group_levels(row_data)
+		var interior_rect := _get_group_interior_rect(row_rect, levels)
+		if not levels.is_empty() and (bool(row_data.get("is_group_header", false)) or selection_state == 0):
+			draw_rect(interior_rect, _get_group_fill_color(row_data), true)
 		if selection_state != 0:
 			var stylebox: StyleBox = _inactive_selected_stylebox if selection_state == 1 else (_selected_focus_stylebox if _selected_focus_stylebox != null else _selected_stylebox)
 			if stylebox != null:
-				stylebox.draw(get_canvas_item(), row_rect)
+				stylebox.draw(get_canvas_item(), interior_rect)
 		var row_tint = row_data.get("row_background_tint")
 		if row_tint is Color:
-			draw_rect(row_rect, row_tint as Color, true)
+			draw_rect(interior_rect, row_tint as Color, true)
 		if bool(row_data.get("default_focus", false)):
-			var outline_rect := row_rect.grow(-2.0)
+			var outline_rect := interior_rect.grow(-2.0)
 			if outline_rect.size.x > 0.0 and outline_rect.size.y > 0.0:
 				draw_rect(outline_rect, _selected_font_color, false, 2.0)
+		if not levels.is_empty():
+			_draw_group_boxes(row_rect, levels)
 
 	func _draw_row_content(row_rect: Rect2, row_data: Dictionary, selection_state: int, baseline_offset: float) -> void:
 		if _font == null:
@@ -1210,8 +1225,9 @@ class AutocompleteCommandColumn:
 		var text_color := _resolve_row_text_color(selection_state)
 		if bool(row_data.get("disabled", false)):
 			text_color.a *= 0.45
+		var group_indent := get_group_content_indent(row_data)
 		var text_baseline := row_rect.position.y + baseline_offset
-		var content_left := row_rect.position.x + CONTENT_PADDING_X
+		var content_left := row_rect.position.x + CONTENT_PADDING_X + group_indent
 		var icon_texture := row_data.get("icon") as Texture2D
 		var reserve_icon_space := bool(row_data.get("column_has_icons", false))
 		if reserve_icon_space:
@@ -1221,7 +1237,7 @@ class AutocompleteCommandColumn:
 				draw_rect(icon_rect.grow(2.0), Color(0.0, 0.0, 0.0, 0.35), true)
 				draw_texture_rect(icon_texture, icon_rect, false, text_color)
 			content_left += icon_size + CELL_GAP
-		var content_right := row_rect.position.x + row_rect.size.x - CONTENT_PADDING_X
+		var content_right := row_rect.position.x + row_rect.size.x - CONTENT_PADDING_X - group_indent
 		var info_cursor_x := content_right
 
 		var action_rect := Rect2()
@@ -1331,7 +1347,9 @@ class AutocompleteCommandColumn:
 		return fill
 
 	func _get_group_border_color(row_data: Dictionary) -> Color:
-		var tint := _get_group_tint(row_data)
+		return _resolve_group_border_color(_get_group_tint(row_data))
+
+	func _resolve_group_border_color(tint: Color) -> Color:
 		if tint.a <= 0.0:
 			return _group_box_border_color
 		var border := _group_box_border_color.lerp(tint, 0.72)
@@ -1354,29 +1372,56 @@ class AutocompleteCommandColumn:
 			return
 		var font_size: int = maxi(10, _font_size - GROUP_HEADER_FONT_SIZE_REDUCTION)
 		var baseline: float = row_rect.position.y + floor((row_rect.size.y - float(_font.get_height(font_size))) * 0.5) + float(_font.get_ascent(font_size))
-		draw_string(_font, Vector2(row_rect.position.x + CONTENT_PADDING_X, baseline), header_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _get_group_header_color(row_data))
+		var label_left := row_rect.position.x + CONTENT_PADDING_X + get_group_content_indent(row_data)
+		draw_string(_font, Vector2(label_left, baseline), header_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _get_group_header_color(row_data))
 
-	func _draw_group_box(row_rect: Rect2, row_data: Dictionary) -> void:
-		var box_rect := Rect2(
-			row_rect.position.x + GROUP_BOX_INSET_X,
-			row_rect.position.y + GROUP_BOX_INSET_Y,
-			maxf(0.0, row_rect.size.x - GROUP_BOX_INSET_X * 2.0),
-			maxf(0.0, row_rect.size.y - GROUP_BOX_INSET_Y * 2.0)
-		)
-		if box_rect.size.x <= 0.0 or box_rect.size.y <= 0.0:
-			return
+	# One entry per group box the row sits inside, outermost first.
+	static func get_group_levels(row_data: Dictionary) -> Array:
+		var levels_variant = row_data.get("group_levels", [])
+		return levels_variant as Array if levels_variant is Array else []
 
-		var left := box_rect.position.x
-		var right := box_rect.position.x + box_rect.size.x
-		var top := box_rect.position.y
-		var bottom := box_rect.position.y + box_rect.size.y
-		var border_color := _get_group_border_color(row_data)
-		draw_line(Vector2(left, top), Vector2(left, bottom), border_color, 1.0)
-		draw_line(Vector2(right, top), Vector2(right, bottom), border_color, 1.0)
-		if bool(row_data.get("group_box_start", false)):
-			draw_line(Vector2(left, top), Vector2(right, top), border_color, 1.0)
-		if bool(row_data.get("group_box_end", false)):
-			draw_line(Vector2(left, bottom), Vector2(right, bottom), border_color, 1.0)
+	# Nested rows are pushed in on both sides so their text clears the enclosing borders.
+	static func get_group_content_indent(row_data: Dictionary) -> float:
+		var depth := get_group_levels(row_data).size()
+		return maxf(0.0, float(depth - 1)) * GROUP_BOX_NEST_INSET_X
+
+	# A row only carries the box edges that start or end on it, so a level's side lines run
+	# from row edge to row edge and meet the neighbouring row without a seam.
+	func _get_group_level_rect(row_rect: Rect2, levels: Array, level_index: int) -> Rect2:
+		var level_data: Dictionary = levels[level_index]
+		var inset_x := GROUP_BOX_INSET_X + float(level_index) * GROUP_BOX_NEST_INSET_X
+		var left := row_rect.position.x + inset_x
+		var right := row_rect.position.x + row_rect.size.x - inset_x
+		var top := row_rect.position.y + (GROUP_BOX_INSET_Y if bool(level_data.get("start", false)) else 0.0)
+		var bottom := row_rect.position.y + row_rect.size.y - (GROUP_BOX_INSET_Y if bool(level_data.get("end", false)) else 0.0)
+		return Rect2(left, top, maxf(0.0, right - left), maxf(0.0, bottom - top))
+
+	# The area a row may paint into: inside the innermost box, so headers, fills and
+	# selection stop at the border instead of spilling across it.
+	func _get_group_interior_rect(row_rect: Rect2, levels: Array) -> Rect2:
+		if levels.is_empty():
+			return row_rect
+		var box_rect := _get_group_level_rect(row_rect, levels, levels.size() - 1)
+		return box_rect.grow_individual(-1.0, 0.0, -1.0, 0.0)
+
+	func _draw_group_boxes(row_rect: Rect2, levels: Array) -> void:
+		for level_index in range(levels.size()):
+			var box_rect := _get_group_level_rect(row_rect, levels, level_index)
+			if box_rect.size.x <= 0.0 or box_rect.size.y <= 0.0:
+				continue
+			var level_data: Dictionary = levels[level_index]
+			var level_tint = level_data.get("tint", Color.TRANSPARENT)
+			var border_color := _resolve_group_border_color(level_tint as Color if level_tint is Color else Color.TRANSPARENT)
+			var left := box_rect.position.x
+			var right := box_rect.position.x + box_rect.size.x
+			var top := box_rect.position.y
+			var bottom := box_rect.position.y + box_rect.size.y
+			draw_line(Vector2(left, top), Vector2(left, bottom), border_color, 1.0)
+			draw_line(Vector2(right, top), Vector2(right, bottom), border_color, 1.0)
+			if bool(level_data.get("start", false)):
+				draw_line(Vector2(left, top), Vector2(right, top), border_color, 1.0)
+			if bool(level_data.get("end", false)):
+				draw_line(Vector2(left, bottom), Vector2(right, bottom), border_color, 1.0)
 
 	func _draw_action_icons(action_rect: Rect2, has_children: bool, can_submit: bool, draggable: bool, selection_state: int, icon_color: Color) -> void:
 		if action_rect.size.x <= 0.0:
@@ -1834,6 +1879,8 @@ const PINNED_OVERLAY_OPPOSITE_CORNER := {
 	PINNED_OVERLAY_CORNER_BOTTOM_RIGHT: PINNED_OVERLAY_CORNER_BOTTOM_LEFT,
 }
 const PINS_ALIAS_PREFIX := "pins/"
+const COMMAND_GROUP_PATH_SEPARATOR := "/"
+const HEADERLESS_COMMAND_GROUP_PREFIX := "."
 const PINNED_COMMAND_GROUP_NAME := "pinned variables"
 const PINNED_COMMAND_GROUP_PRIORITY := -100
 const INVALID_INPUT_ROW_BG_COLOR := Color(0.5, 0.12, 0.12, 0.5)
@@ -6828,58 +6875,121 @@ func _should_show_command_groups(_prefix: String, query: String, _is_preview: bo
 	return query.strip_edges().is_empty()
 
 
+# A group name is a path: "state/limits" nests a box inside a box.  A segment is headerless
+# when it is empty ("state/") or prefixed with a dot (".core"), which draws a plain box
+# around its options; the dotted form keeps a name so sibling boxes stay distinct.
+func _split_command_group_path(group_name: String) -> Array:
+	var trimmed := group_name.strip_edges()
+	if trimmed.is_empty():
+		return []
+	var path: Array = []
+	for raw_segment in trimmed.split(COMMAND_GROUP_PATH_SEPARATOR, true):
+		path.append(str(raw_segment).strip_edges())
+	return path
+
+
+func _get_command_group_segment_label(segment: String) -> String:
+	if segment.begins_with(HEADERLESS_COMMAND_GROUP_PREFIX):
+		return ""
+	return segment
+
+
+# Rows carry the path of boxes they sit inside; which edges those boxes draw follows from
+# comparing neighbours, so rewriting the row list (collapsing, filtering) cannot strand a
+# box open. Re-run this whenever rows are added or removed.
+func _assign_group_levels(rows: Array[Dictionary]) -> void:
+	for row_index in range(rows.size()):
+		var row_data: Dictionary = rows[row_index]
+		var path: Array = row_data.get("group_path", []) if row_data.get("group_path", []) is Array else []
+		if path.is_empty():
+			row_data["group_levels"] = []
+			continue
+		var tints: Array = row_data.get("group_level_tints", []) if row_data.get("group_level_tints", []) is Array else []
+		var previous_path: Array = _get_row_group_path(rows, row_index - 1)
+		var next_path: Array = _get_row_group_path(rows, row_index + 1)
+		var levels: Array[Dictionary] = []
+		var started := false
+		var ended := false
+		for level_index in range(path.size()):
+			# Once a level differs from the neighbouring row every deeper level differs too,
+			# even when two unrelated boxes happen to share a key at that depth.
+			if not started and (level_index >= previous_path.size() or str(previous_path[level_index]) != str(path[level_index])):
+				started = true
+			if not ended and (level_index >= next_path.size() or str(next_path[level_index]) != str(path[level_index])):
+				ended = true
+			var level_tint: Variant = tints[level_index] if level_index < tints.size() else Color.TRANSPARENT
+			levels.append({
+				"start": started,
+				"end": ended,
+				"tint": level_tint if level_tint is Color else Color.TRANSPARENT,
+			})
+		row_data["group_levels"] = levels
+
+
+func _get_row_group_path(rows: Array[Dictionary], row_index: int) -> Array:
+	if row_index < 0 or row_index >= rows.size():
+		return []
+	var path: Variant = rows[row_index].get("group_path", [])
+	return path as Array if path is Array else []
+
+
 func _build_command_autocomplete_rows(prefix: String, matches: Array, selected_match_index: int, show_groups: bool) -> Dictionary:
 	var rows: Array[Dictionary] = []
 	var selected_row_index := -1
-	var open_group_last_row := -1
-	var active_group := ""
-	var active_group_key := ""
-	var active_group_tint: Variant = Color.TRANSPARENT
+	var open_path: Array = []
+	var open_tints: Array = []
 
 	for match_index in range(matches.size()):
 		var match_data: Dictionary = matches[match_index]
 		var group_name := str(match_data.get("group_name", "")).strip_edges() if show_groups else ""
 		var group_tint: Variant = match_data.get("group_tint", Color.TRANSPARENT) if show_groups else Color.TRANSPARENT
-		var group_key := group_name
-		if group_key.is_empty() and group_tint is Color and (group_tint as Color).a > 0.0:
-			group_key = "__untitled_tint_%s" % str(group_tint)
+		var group_path := _split_command_group_path(group_name)
+		# An unnamed but tinted group still earns a box; key it by the tint so neighbouring
+		# tinted runs do not merge into one another.
+		if group_path.is_empty() and group_tint is Color and (group_tint as Color).a > 0.0:
+			group_path = ["%s%s" % [HEADERLESS_COMMAND_GROUP_PREFIX, str(group_tint)]]
 
-		if group_key != active_group_key:
-			if open_group_last_row >= 0:
-				var closing_row: Dictionary = rows[open_group_last_row]
-				closing_row["group_box_end"] = true
-				rows[open_group_last_row] = closing_row
-			active_group = group_name
-			active_group_key = group_key
-			active_group_tint = group_tint
-			open_group_last_row = -1
-			if not active_group.is_empty():
+		var shared_depth := 0
+		while (
+			shared_depth < open_path.size()
+			and shared_depth < group_path.size()
+			and str(open_path[shared_depth]) == str(group_path[shared_depth])
+		):
+			shared_depth += 1
+		open_path.resize(shared_depth)
+		open_tints.resize(shared_depth)
+
+		for level_index in range(shared_depth, group_path.size()):
+			var segment := str(group_path[level_index])
+			open_path.append(segment)
+			# A box keeps the tint of whichever option opened it, so its border colour does
+			# not shift part-way down when nested options are tinted differently.
+			open_tints.append(group_tint if group_tint is Color else Color.TRANSPARENT)
+			var segment_label := _get_command_group_segment_label(segment)
+			if not segment_label.is_empty():
 				rows.append({
 					"is_group_header": true,
-					"label": active_group,
+					"label": segment_label,
 					"has_children": false,
 					"can_submit": false,
 					"value_text": "",
-					"group_tint": active_group_tint,
+					"group_tint": open_tints[level_index],
+					"group_path": open_path.duplicate(),
+					"group_level_tints": open_tints.duplicate(),
 				})
 
 		var row := _build_command_autocomplete_row_data(prefix, match_data)
 		row["match_index"] = match_index
-		if not active_group_key.is_empty():
-			row["group_box"] = true
-			row["group_tint"] = active_group_tint
-			if open_group_last_row == -1:
-				row["group_box_start"] = true
-			open_group_last_row = rows.size()
+		if not open_path.is_empty():
+			row["group_tint"] = open_tints[open_tints.size() - 1]
+			row["group_path"] = open_path.duplicate()
+			row["group_level_tints"] = open_tints.duplicate()
 		rows.append(row)
 
 		if match_index == selected_match_index:
 			selected_row_index = rows.size() - 1
 
-	if open_group_last_row >= 0:
-		var final_row: Dictionary = rows[open_group_last_row]
-		final_row["group_box_end"] = true
-		rows[open_group_last_row] = final_row
+	_assign_group_levels(rows)
 
 	return {
 		"rows": rows,
@@ -6943,16 +7053,26 @@ func _collapse_rows_between_highlights(rows: Array[Dictionary], capacity: int) -
 	var result: Array[Dictionary] = []
 	for row_index in range(rows.size()):
 		if gap_by_row.has(row_index):
-			result.append({
+			# The placeholder stands in for options inside a box, so it has to sit inside
+			# that same box or the outline would break around it.
+			var placeholder := {
 				"label": "+ %d hidden options" % int(gap_by_row[row_index]),
 				"disabled": true,
 				"has_children": false,
 				"can_submit": false,
 				"value_text": "",
-			})
+			}
+			var hidden_row: Dictionary = rows[row_index]
+			if hidden_row.get("group_path", []) is Array and not (hidden_row.get("group_path", []) as Array).is_empty():
+				placeholder["group_path"] = (hidden_row.get("group_path") as Array).duplicate()
+				placeholder["group_level_tints"] = (hidden_row.get("group_level_tints", []) as Array).duplicate()
+				placeholder["group_tint"] = hidden_row.get("group_tint", Color.TRANSPARENT)
+			result.append(placeholder)
 		if hidden_rows.has(row_index):
 			continue
 		result.append(rows[row_index])
+	# Hiding rows moves where each box starts and ends, so the edges have to be redrawn.
+	_assign_group_levels(result)
 	return result
 
 
@@ -6982,6 +7102,7 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 		row_data["measured_value_width"] = row_value_width
 		row_data["measured_action_width"] = row_action_width
 		var single_line_width := AUTOCOMPLETE_COLUMN_PADDING + _measure_autocomplete_text_width(list, str(row_data.get("label", "")))
+		single_line_width += int(ceil(AutocompleteCommandColumn.get_group_content_indent(row_data) * 2.0))
 		if row_value_width > 0:
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
 		if row_action_width > 0:
@@ -8167,6 +8288,8 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	for row_index in range(rows.size()):
 		var row_data: Dictionary = rows[row_index]
 		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
+		# Nested rows are pushed in on both sides to clear their enclosing boxes.
+		row_name_width += int(ceil(AutocompleteCommandColumn.get_group_content_indent(row_data) * 2.0))
 		if column_has_icons and not bool(row_data.get("is_group_header", false)):
 			row_name_width += 20 + int(AutocompleteCommandColumn.CELL_GAP)
 			row_data["column_has_icons"] = true
