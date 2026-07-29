@@ -25,6 +25,27 @@ func run(ctx) -> void:
 	console.add_render_texture_widget(widget_address, func() -> Texture2D:
 		return texture
 	)
+	var preview_widget = display._create_widget_instance(widget_address, "preview")
+	ctx.check("render texture preview can be created", preview_widget != null)
+	if preview_widget != null:
+		ctx.check(
+			"render texture preview shows its resolution",
+			preview_widget._resolution_label != null and preview_widget._resolution_label.text == "4 × 4",
+			preview_widget._resolution_label.text if preview_widget._resolution_label != null else "missing label"
+		)
+		ctx.check(
+			"resolution bar is attached beneath the texture",
+			preview_widget._resolution_label.get_parent() is VBoxContainer
+				and preview_widget._resolution_label.get_index() > preview_widget._texture_rect.get_parent().get_index()
+		)
+		var square_preview_size: Vector2 = preview_widget.get_logot_embedded_size(500.0)
+		ctx.check(
+			"square texture preview frame preserves its aspect ratio",
+			is_equal_approx(square_preview_size.x, square_preview_size.y - 18.0),
+			str(square_preview_size)
+		)
+		ctx.check("aspect-correct preview does not exceed its height cap", square_preview_size.y <= 160.0)
+		preview_widget.queue_free()
 
 	var viewport_size: Vector2 = display.get_viewport_rect().size
 	var simulated_safe_area := Rect2(

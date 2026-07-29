@@ -203,10 +203,14 @@ class RenderTextureWidget:
 	var _texture_getter: Callable = Callable()
 	var _texture_rect: TextureRect = null
 	var _empty_label: Label = null
+	var _resolution_label: Label = null
 	var _last_texture: Texture2D = null
+	var _last_resolution := Vector2i(-1, -1)
+	var _preview_size_cap := Vector2.ZERO
 
 	func setup(widget_data: Dictionary, minimum_size: Vector2) -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_preview_size_cap = minimum_size
 		if minimum_size.x > 0.0 or minimum_size.y > 0.0:
 			custom_minimum_size = minimum_size
 
@@ -217,11 +221,18 @@ class RenderTextureWidget:
 		panel_style.set_content_margin_all(2.0)
 		add_theme_stylebox_override("panel", panel_style)
 
+		var content := VBoxContainer.new()
+		content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		content.add_theme_constant_override("separation", 0)
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		add_child(content)
+
 		var stack := Control.new()
 		stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		stack.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		add_child(stack)
+		content.add_child(stack)
 
 		_texture_rect = TextureRect.new()
 		_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -238,6 +249,20 @@ class RenderTextureWidget:
 		_empty_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 		stack.add_child(_empty_label)
 
+		_resolution_label = Label.new()
+		_resolution_label.custom_minimum_size.y = 18.0
+		_resolution_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_resolution_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_resolution_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_resolution_label.add_theme_font_size_override("font_size", 11)
+		_resolution_label.add_theme_color_override("font_color", Color(0.78, 0.82, 0.9, 1.0))
+		var resolution_style := StyleBoxFlat.new()
+		resolution_style.bg_color = Color(0.07, 0.085, 0.115, 0.96)
+		resolution_style.border_color = Color(0.55, 0.65, 0.82, 0.22)
+		resolution_style.border_width_top = 1
+		_resolution_label.add_theme_stylebox_override("normal", resolution_style)
+		content.add_child(_resolution_label)
+
 		var getter_variant: Variant = widget_data.get("texture_getter", Callable())
 		if getter_variant is Callable:
 			_texture_getter = getter_variant as Callable
@@ -252,8 +277,32 @@ class RenderTextureWidget:
 		if next_texture != _last_texture and _texture_rect != null:
 			_last_texture = next_texture
 			_texture_rect.texture = next_texture
+		var next_resolution := next_texture.get_size() if next_texture != null else Vector2.ZERO
+		var rounded_resolution := Vector2i(roundi(next_resolution.x), roundi(next_resolution.y))
+		if rounded_resolution != _last_resolution and _resolution_label != null:
+			_last_resolution = rounded_resolution
+			_resolution_label.text = "%d × %d" % [rounded_resolution.x, rounded_resolution.y]
 		if _empty_label != null:
 			_empty_label.visible = next_texture == null
+		if _resolution_label != null:
+			_resolution_label.visible = next_texture != null
+
+	func get_logot_embedded_size(maximum_width: float) -> Vector2:
+		var maximum_height := _preview_size_cap.y
+		if maximum_height <= 0.0:
+			maximum_height = get_combined_minimum_size().y
+		if _last_resolution.x <= 0 or _last_resolution.y <= 0:
+			return Vector2(minf(maximum_width, _preview_size_cap.x), maximum_height)
+
+		var frame_padding := 4.0
+		var footer_height := 18.0
+		var available_image_width := maxf(0.0, maximum_width - frame_padding)
+		var available_image_height := maxf(0.0, maximum_height - footer_height - frame_padding)
+		var texture_aspect := float(_last_resolution.x) / float(_last_resolution.y)
+		var image_height := minf(available_image_height, available_image_width / texture_aspect)
+		var desired_size := Vector2(image_height * texture_aspect + frame_padding, image_height + footer_height + frame_padding)
+		custom_minimum_size = desired_size
+		return desired_size
 
 
 class AutocompleteCommandColumn:
@@ -984,11 +1033,14 @@ class AutocompleteCommandColumn:
 			return
 		var content_width := _get_column_content_width()
 		var widget_width := maxf(0.0, content_width - CONTENT_PADDING_X * 2.0)
-		var widget_min := _embedded_widget.get_combined_minimum_size()
-		_embedded_widget_height = ceil(maxf(0.0, widget_min.y))
+		var widget_size := Vector2(widget_width, _embedded_widget.get_combined_minimum_size().y)
+		if _embedded_widget.has_method("get_logot_embedded_size"):
+			widget_size = _embedded_widget.call("get_logot_embedded_size", widget_width) as Vector2
+		_embedded_widget_height = ceil(maxf(0.0, widget_size.y))
 		_embedded_widget.visible = _is_embedded_widget_visible_for_scroll(_scroll_row)
-		_embedded_widget.position = Vector2(CONTENT_PADDING_X, _header_height + WIDGET_TOP_GAP)
-		_embedded_widget.size = Vector2(widget_width, _embedded_widget_height)
+		var widget_left := CONTENT_PADDING_X + maxf(0.0, (widget_width - widget_size.x) * 0.5)
+		_embedded_widget.position = Vector2(widget_left, _header_height + WIDGET_TOP_GAP)
+		_embedded_widget.size = Vector2(widget_size.x, _embedded_widget_height)
 
 	func _get_rows_top() -> float:
 		return _get_rows_top_for_scroll(_scroll_row)
