@@ -20,6 +20,12 @@ func run(ctx) -> void:
 	var address := "tests/command_palette_pin"
 	console.add_display_variable(address, func(): return "visible")
 	console.pin_display_variable(address)
+	var long_value_address := "tests/command_palette_long_value"
+	console.add_display_variable(long_value_address, func(): return "value ".repeat(80), Callable(), Callable(), true, "", 0, null, &"", func(): return "short label")
+	console.pin_display_variable(long_value_address)
+	var long_label_address := "tests/command_palette_long_label"
+	console.add_display_variable(long_label_address, func(): return "visible", Callable(), Callable(), true, "", 0, null, &"", func(): return "long pinned label ".repeat(30))
+	console.pin_display_variable(long_label_address)
 	var root_matches: Array = display._build_tier_matches("", "")
 	var pins_matches: Array = display._build_tier_matches("pins/", "")
 	var encoded_address := address.uri_encode()
@@ -57,6 +63,16 @@ func run(ctx) -> void:
 		"pinned variable row is visible",
 		display._pinned_overlay_rows.has(address) and display._pinned_overlay_rows[address].visible,
 		"rows=%s" % [display._pinned_overlay_rows.keys()]
+	)
+	ctx.check(
+		"long pinned values move beneath their title",
+		bool(display._pinned_overlay_rows[long_value_address].get_meta("logot_pin_stacked_value", false)),
+		"row=%s" % [display._pinned_overlay_rows[long_value_address].get_parsed_text()]
+	)
+	ctx.check(
+		"wrapping pinned titles move their value beneath them",
+		bool(display._pinned_overlay_rows[long_label_address].get_meta("logot_pin_stacked_value", false)),
+		"row=%s" % [display._pinned_overlay_rows[long_label_address].get_parsed_text()]
 	)
 
 	# Both overlays share one canvas layer, so z_index alone decides who occludes whom.
@@ -97,4 +113,8 @@ func run(ctx) -> void:
 
 	console.unpin_display_variable(address)
 	console.remove_display_variable(address)
+	console.unpin_display_variable(long_value_address)
+	console.remove_display_variable(long_value_address)
+	console.unpin_display_variable(long_label_address)
+	console.remove_display_variable(long_label_address)
 	console._close_command_entry_view()

@@ -3137,11 +3137,46 @@ func _append_pinned_display_variable_value(row: RichTextLabel, value_text: Strin
 			row.pop()
 
 
+func _get_pinned_display_variable_value_plain_text(value_text: String, value_items: Array = []) -> String:
+	if value_items.is_empty():
+		return value_text
+	var item_texts: Array[String] = []
+	for value_item in value_items:
+		item_texts.append(str((value_item as Dictionary).get("text", "")))
+	return " ".join(item_texts)
+
+
+func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_address: String, value_text: String, value_items: Array = []) -> bool:
+	if row == null:
+		return false
+	var usable_width := PINNED_OVERLAY_MAX_VARIABLE_WIDTH - PINNED_OVERLAY_VARIABLE_WIDTH_PADDING
+	var title_width := _measure_pinned_variable_text_width(row, "%s:" % display_address)
+	if title_width > usable_width:
+		return true
+	var value_width := _measure_pinned_variable_text_width(row, _get_pinned_display_variable_value_plain_text(value_text, value_items))
+	var inline_value_width := maxf(1.0, usable_width - title_width)
+	return ceili(value_width / inline_value_width) > 2
+
+
 func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool, value_items: Array = []) -> void:
 	if row == null:
 		return
 	row.push_bgcolor(PINNED_OVERLAY_ROW_BG_COLOR)
-	row.push_table(2)
+	var stack_value := _should_stack_pinned_display_variable_value(row, display_address, value_text, value_items)
+	row.set_meta("logot_pin_stacked_value", stack_value)
+	row.push_table(1 if stack_value else 2)
+	if stack_value:
+		row.set_table_column_expand(0, true)
+		row.push_cell()
+		row.add_text("%s:" % display_address)
+		row.newline()
+		row.push_indent(1)
+		_append_pinned_display_variable_value(row, value_text, value_color, value_items)
+		row.pop()
+		row.pop()
+		row.pop()
+		row.pop()
+		return
 	if align_right:
 		row.set_table_column_expand(0, true)
 		row.set_table_column_expand(1, false)
@@ -4318,6 +4353,9 @@ func _resolve_pinned_corner_pair_swap_conflict(corner_a: String, corner_b: Strin
 
 func _update_pinned_corner_redirects() -> void:
 	if _current_input_method == INPUT_METHOD_TOUCH:
+		_pinned_corner_redirects.clear()
+		return
+	if not get_setting("pinned_auto_swap_on_hover", false):
 		_pinned_corner_redirects.clear()
 		return
 	var viewport := get_viewport()
