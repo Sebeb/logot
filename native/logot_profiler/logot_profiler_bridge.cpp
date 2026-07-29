@@ -8,6 +8,10 @@
 #include "scene/main/scene_tree.h"
 #include "servers/rendering/rendering_server.h"
 
+#ifdef METAL_ENABLED
+#include "drivers/metal/metal_timestamp_capture.h"
+#endif
+
 namespace {
 struct SourceTimes {
 	double cpu_msec = 0.0;
@@ -55,9 +59,28 @@ String source_display_name(const String &p_path) {
 void LogotProfilerBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_api_version"), &LogotProfilerBridge::get_api_version);
 	ClassDB::bind_method(D_METHOD("set_capture_enabled", "render_sources", "script_sources"), &LogotProfilerBridge::set_capture_enabled);
+	ClassDB::bind_method(D_METHOD("set_gpu_capture_enabled", "enabled"), &LogotProfilerBridge::set_gpu_capture_enabled);
 	ClassDB::bind_method(D_METHOD("poll_frame"), &LogotProfilerBridge::poll_frame);
 	ClassDB::bind_method(D_METHOD("drain_frames"), &LogotProfilerBridge::drain_frames);
 	ClassDB::bind_method(D_METHOD("get_status"), &LogotProfilerBridge::get_status);
+}
+
+void LogotProfilerBridge::set_gpu_capture_enabled(bool p_enabled) {
+	const int64_t current_frame = int64_t(Engine::get_singleton()->get_process_frames());
+	if (p_enabled) {
+		last_gpu_request_frame = current_frame;
+		if (gpu_capture_requested) {
+			return;
+		}
+	} else {
+		if (!gpu_capture_requested || current_frame <= last_gpu_request_frame + 2) {
+			return;
+		}
+	}
+	gpu_capture_requested = p_enabled;
+#ifdef METAL_ENABLED
+	metal_set_timestamp_capture_enabled(p_enabled);
+#endif
 }
 
 int LogotProfilerBridge::get_api_version() const {
@@ -181,6 +204,9 @@ Dictionary LogotProfilerBridge::_capture_render_frame() {
 	for (const RenderingServerTypes::FrameProfileArea &area : areas) {
 		gpu_timestamps_seen = gpu_timestamps_seen || area.gpu_msec > 0.0;
 	}
+	for (int i = 1; i < areas.size() - 1; i++) {
+		gpu_breakdown_seen = gpu_breakdown_seen || areas[i].gpu_msec > 0.0;
+	}
 	return parse_render_areas(areas, last_render_profile_frame);
 }
 
@@ -191,6 +217,13 @@ Dictionary LogotProfilerBridge::parse_render_areas(const Vector<RenderingServerT
 	}
 
 	HashMap<String, SourceTimes> source_map;
+	bool gpu_breakdown_available = false;
+	for (int i = 1; i < areas.size() - 1; i++) {
+		if (areas[i].gpu_msec > 0.0) {
+			gpu_breakdown_available = true;
+			break;
+		}
+	}
 	if (areas[0].cpu_msec > 0.0 || areas[0].gpu_msec > 0.0) {
 		SourceTimes &initial = source_map["Render frame overhead"];
 		initial.cpu_msec = MAX(0.0, areas[0].cpu_msec);
@@ -251,7 +284,7 @@ Dictionary LogotProfilerBridge::parse_render_areas(const Vector<RenderingServerT
 		source["path"] = ranked[i].path;
 		source["name"] = ranked[i].times.display_name;
 		source["cpu_ms"] = ranked[i].times.cpu_msec;
-		source["gpu_ms"] = ranked[i].times.gpu_msec;
+		source["gpu_ms"] = gpu_breakdown_available ? ranked[i].times.gpu_msec : 0.0;
 		serialized_sources.push_back(source);
 	}
 	if (other_cpu > 0.0 || other_gpu > 0.0) {
@@ -259,7 +292,7 @@ Dictionary LogotProfilerBridge::parse_render_areas(const Vector<RenderingServerT
 		other["path"] = "__other__";
 		other["name"] = "Other";
 		other["cpu_ms"] = other_cpu;
-		other["gpu_ms"] = other_gpu;
+		other["gpu_ms"] = gpu_breakdown_available ? other_gpu : 0.0;
 		serialized_sources.push_back(other);
 	}
 
@@ -268,6 +301,7 @@ Dictionary LogotProfilerBridge::parse_render_areas(const Vector<RenderingServerT
 	result["render_cpu_total_ms"] = MAX(0.0, areas[areas.size() - 1].cpu_msec);
 	result["gpu_total_ms"] = MAX(0.0, areas[areas.size() - 1].gpu_msec);
 	result["gpu_available"] = areas[areas.size() - 1].gpu_msec > 0.0;
+	result["gpu_breakdown_available"] = gpu_breakdown_available;
 	result["render_sources"] = serialized_sources;
 	return result;
 }
@@ -393,6 +427,7 @@ Dictionary LogotProfilerBridge::get_status() const {
 	status["api_version"] = API_VERSION;
 	status["render_requested"] = render_requested;
 	status["scripts_requested"] = scripts_requested;
+	status["gpu_capture_requested"] = gpu_capture_requested;
 	status["owns_render_profiling"] = owns_render_profiling;
 	status["owns_script_profiling"] = owns_script_profiling;
 	status["builtin_visual_active"] = EngineDebugger::is_profiling(SNAME("visual"));
@@ -404,6 +439,8 @@ Dictionary LogotProfilerBridge::get_status() const {
 	status["last_render_profile_size"] = last_render_profile_size;
 	status["render_profile_seen"] = render_profile_seen;
 	status["gpu_timestamps_available"] = gpu_timestamps_seen;
+	status["gpu_breakdown_available"] = gpu_breakdown_seen;
+	status["gpu_timing_mode"] = gpu_breakdown_seen ? "breakdown" : (gpu_timestamps_seen ? "total_only" : (render_profile_seen ? "none" : "unknown"));
 	status["script_profile_seen"] = script_profile_seen;
 	status["script_signatures_available"] = script_signatures_seen;
 	status["pending_frame_count"] = pending_frames.size();
@@ -412,9 +449,16 @@ Dictionary LogotProfilerBridge::get_status() const {
 
 LogotProfilerBridge::LogotProfilerBridge() {
 	script_info.resize(1024);
+#ifdef METAL_ENABLED
+	metal_set_timestamp_capture_enabled(false);
+#endif
 }
 
 LogotProfilerBridge::~LogotProfilerBridge() {
+	gpu_capture_requested = false;
+#ifdef METAL_ENABLED
+	metal_set_timestamp_capture_enabled(false);
+#endif
 	if (render_requested) {
 		_stop_render_profiling();
 		render_requested = false;

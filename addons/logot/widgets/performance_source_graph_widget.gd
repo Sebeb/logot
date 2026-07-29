@@ -198,6 +198,13 @@ class SourceBreakdownPanel:
 				draw_string(font, Vector2(8.0, 48.0 + float(line_index) * 16.0), message_lines[line_index], HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0, 11, Color(0.72, 0.75, 0.82))
 			debug_state = {"available": false, "message": message, "title": title}
 			return
+		var note := str(current.get("note", ""))
+		if not note.is_empty():
+			var note_lines := note.split("\n", false)
+			for line_index in note_lines.size():
+				draw_string(font, Vector2(8.0, 48.0 + float(line_index) * 16.0), note_lines[line_index], HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0, 10, Color(0.72, 0.75, 0.82))
+			debug_state = {"available": true, "title": title, "total_ms": total_ms, "note": note, "timing_mode": str(current.get("timing_mode", "total_only"))}
+			return
 
 		var now_width := NOW_BAR_WIDTH
 		var now_rect := Rect2(size.x - now_width - 8.0, 30.0, now_width, GRAPH_HEIGHT)
@@ -222,6 +229,7 @@ class SourceBreakdownPanel:
 			"legend_name_width": maxf(0.0, legend_rect.size.x - LEGEND_TIME_PILL_WIDTH - 6.0),
 			"stack_top_to_bottom_paths": _get_stack_top_to_bottom_paths(current),
 			"time_precision_digits": 2,
+			"note": note,
 			"history_count": (snapshot.get("history", []) as Array).size(),
 			"current_accounted_ms": _sum_current_sources(current),
 			"gray_history_paths": _get_gray_history_paths(),

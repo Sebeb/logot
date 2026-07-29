@@ -315,6 +315,8 @@ var _performance_cpu_source_mode := PERFORMANCE_CPU_SOURCE_MODE_RENDER
 var _performance_source_update_rate_hz := PERFORMANCE_SOURCE_UPDATE_RATE_DEFAULT_HZ
 var _performance_source_render_lease_frame := -1
 var _performance_source_script_lease_frame := -1
+var _performance_source_gpu_lease_frame := -1
+var _performance_gpu_measurement_enabled := false
 var _performance_source_snapshot_pending := false
 var _performance_source_snapshot_name := ""
 var _performance_source_snapshot_deadline_msec := 0
@@ -3904,6 +3906,7 @@ func _exit_tree() -> void:
 		_engine_logger = null
 	if _performance_source_monitor != null:
 		_performance_source_monitor.call("set_capture_enabled", false, false)
+	_set_performance_gpu_measurement_enabled(false)
 
 	# Only save history when running as game
 	if Engine.is_editor_hint():
@@ -4879,10 +4882,6 @@ func _ensure_performance_monitor_initialized() -> void:
 	_performance_frame_time_gradient.add_point(0.6667, Color8(128, 226, 95))
 	_update_performance_fps_display_cache(false)
 
-	if not Engine.is_editor_hint() and get_viewport() != null:
-		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
-
-
 func _update_performance_monitor(delta: float) -> void:
 	_ensure_performance_monitor_initialized()
 
@@ -4907,8 +4906,8 @@ func _update_performance_monitor(delta: float) -> void:
 	if _performance_frame_history_cpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_frame_history_cpu.pop_front()
 
-	var measured_gpu_msec := RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid)
-	_performance_frametime_gpu_msec = float(source_totals.get("gpu_ms", measured_gpu_msec))
+	var measured_gpu_msec := RenderingServer.viewport_get_measured_render_time_gpu(viewport_rid) if _performance_gpu_measurement_enabled else 0.0
+	_performance_frametime_gpu_msec = float(source_totals.get("gpu_ms", measured_gpu_msec)) if _performance_gpu_measurement_enabled else 0.0
 	_performance_frame_history_gpu.push_back(_performance_frametime_gpu_msec)
 	if _performance_frame_history_gpu.size() > PERFORMANCE_HISTORY_NUM_FRAMES:
 		_performance_frame_history_gpu.pop_front()
@@ -4945,6 +4944,7 @@ func request_performance_source_collection(widget_kind: String, cpu_mode: String
 	if widget_kind == "gpu":
 		if can_collect_gpu_performance_sources():
 			_performance_source_render_lease_frame = maxi(_performance_source_render_lease_frame, lease_until)
+			_performance_source_gpu_lease_frame = maxi(_performance_source_gpu_lease_frame, lease_until)
 	else:
 		var normalized_mode := _normalize_performance_source_cpu_mode(cpu_mode if not cpu_mode.is_empty() else _performance_cpu_source_mode)
 		if normalized_mode in [PERFORMANCE_CPU_SOURCE_MODE_RENDER, PERFORMANCE_CPU_SOURCE_MODE_BOTH]:
@@ -4969,7 +4969,18 @@ func _update_performance_source_capture_requests() -> void:
 	if _performance_source_snapshot_pending:
 		render_requested = true
 		scripts_requested = true
+	var gpu_requested := current_frame <= _performance_source_gpu_lease_frame or _performance_source_snapshot_pending
+	_performance_source_monitor.call("set_gpu_capture_enabled", gpu_requested)
 	_performance_source_monitor.call("set_capture_enabled", render_requested, scripts_requested)
+	_set_performance_gpu_measurement_enabled(gpu_requested)
+
+
+func _set_performance_gpu_measurement_enabled(enabled: bool) -> void:
+	if _performance_gpu_measurement_enabled == enabled:
+		return
+	_performance_gpu_measurement_enabled = enabled
+	if not Engine.is_editor_hint() and get_viewport() != null:
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), enabled)
 
 
 func is_performance_source_test_mode() -> bool:
@@ -4977,11 +4988,14 @@ func is_performance_source_test_mode() -> bool:
 
 
 func can_collect_gpu_performance_sources() -> bool:
-	if RenderingServer.get_current_rendering_driver_name() == "metal":
-		return false
 	if _performance_source_monitor == null:
 		return true
 	var status: Dictionary = _performance_source_monitor.call("refresh_status") as Dictionary
+	if RenderingServer.get_current_rendering_driver_name() == "metal":
+		# Patched Metal always provides at least the command-buffer fallback. Keep
+		# the lease renewable while delayed readback changes the runtime mode from
+		# unknown/none to total_only or breakdown.
+		return true
 	if bool(status.get("render_profile_seen", false)) and not bool(status.get("gpu_timestamps_available", false)):
 		return false
 	return true
@@ -5052,7 +5066,7 @@ func _get_gpu_timestamp_unavailable_message() -> String:
 	var driver := RenderingServer.get_current_rendering_driver_name()
 	var method := RenderingServer.get_current_rendering_method()
 	if driver == "metal":
-		return "No per-pass GPU timestamps\nGodot 4.7 Metal limitation\nUse Vulkan on Windows/Linux"
+		return "GPU timestamps unavailable\nMetal counter and whole-frame timing did not produce a sample"
 	return "GPU timestamps unavailable for %s/%s" % [method, driver]
 
 

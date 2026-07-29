@@ -21,6 +21,7 @@ public:
 private:
 	bool render_requested = false;
 	bool scripts_requested = false;
+	bool gpu_capture_requested = false;
 	bool owns_render_profiling = false;
 	bool owns_script_profiling = false;
 	bool previous_builtin_visual_active = false;
@@ -31,10 +32,12 @@ private:
 	uint64_t render_stop_count = 0;
 	int64_t last_render_request_frame = -100;
 	int64_t last_script_request_frame = -100;
+	int64_t last_gpu_request_frame = -100;
 	uint64_t last_render_profile_frame = 0;
 	int last_render_profile_size = 0;
 	bool render_profile_seen = false;
 	bool gpu_timestamps_seen = false;
+	bool gpu_breakdown_seen = false;
 	bool script_profile_seen = false;
 	bool script_signatures_seen = false;
 	int64_t last_captured_render_frame = -1;
@@ -59,6 +62,7 @@ protected:
 public:
 	int get_api_version() const;
 	void set_capture_enabled(bool p_render_sources, bool p_script_sources);
+	void set_gpu_capture_enabled(bool p_enabled);
 	void poll_frame();
 	Array drain_frames();
 	Dictionary get_status() const;

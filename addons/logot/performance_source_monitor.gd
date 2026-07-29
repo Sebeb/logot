@@ -59,6 +59,11 @@ func set_capture_enabled(render_sources: bool, script_sources: bool) -> void:
 		_bridge.call("set_capture_enabled", render_sources, script_sources)
 
 
+func set_gpu_capture_enabled(enabled: bool) -> void:
+	if _bridge != null and _bridge.has_method("set_gpu_capture_enabled"):
+		_bridge.call("set_gpu_capture_enabled", enabled)
+
+
 func is_capture_enabled() -> bool:
 	return _render_requested or _scripts_requested
 
@@ -96,6 +101,7 @@ func ingest_render_frame(frame: Dictionary) -> Dictionary:
 	var cpu_total := maxf(0.0, float(frame.get("render_cpu_total_ms", 0.0)))
 	var gpu_total := maxf(0.0, float(frame.get("gpu_total_ms", 0.0)))
 	var gpu_available := bool(frame.get("gpu_available", gpu_total > 0.0))
+	var gpu_breakdown_available := bool(frame.get("gpu_breakdown_available", false))
 	var raw_sources: Variant = frame.get("render_sources", [])
 	var cpu_sources: Array[Dictionary] = []
 	var gpu_sources: Array[Dictionary] = []
@@ -110,13 +116,17 @@ func ingest_render_frame(frame: Dictionary) -> Dictionary:
 			var gpu_ms := maxf(0.0, float(source.get("gpu_ms", 0.0)))
 			if cpu_ms > 0.0:
 				cpu_sources.append(_make_source(path, name, cpu_ms))
-			if gpu_ms > 0.0:
+			if gpu_breakdown_available and gpu_ms > 0.0:
 				gpu_sources.append(_make_source(path, name, gpu_ms))
 
 	var cpu_sample := _make_sample(frame_number, cpu_total, cpu_sources)
 	_upsert_history(render_cpu_history, cpu_sample)
 	if gpu_available:
-		_upsert_history(gpu_history, _make_sample(frame_number, gpu_total, gpu_sources))
+		var gpu_sample := _make_sample(frame_number, gpu_total, gpu_sources)
+		gpu_sample["timing_mode"] = "breakdown" if gpu_breakdown_available else "total_only"
+		if not gpu_breakdown_available:
+			gpu_sample["note"] = "Whole-frame GPU time only\nPer-pass Metal counters unavailable"
+		_upsert_history(gpu_history, gpu_sample)
 	else:
 		_upsert_history(gpu_history, {
 			"frame_number": frame_number,
@@ -236,12 +246,12 @@ func _get_availability_warnings() -> Dictionary:
 	var warnings := {}
 	if not _bridge_error.is_empty():
 		warnings["bridge"] = _bridge_error
-	if bool(_bridge_status.get("render_profile_seen", false)) and not bool(_bridge_status.get("gpu_timestamps_available", false)):
+	var gpu_timing_mode := str(_bridge_status.get("gpu_timing_mode", "unknown"))
+	if gpu_timing_mode == "total_only":
+		warnings["gpu"] = "Whole-frame GPU timing is available, but this device does not expose Metal stage-boundary timestamp counters; per-pass GPU allocation is unavailable"
+	elif bool(_bridge_status.get("render_profile_seen", false)) and not bool(_bridge_status.get("gpu_timestamps_available", false)):
 		var driver := RenderingServer.get_current_rendering_driver_name()
-		if driver == "metal":
-			warnings["gpu"] = "Godot 4.7 Metal does not implement GPU timestamp queries; use a Vulkan profiling run on Windows or Linux for real per-pass GPU timings"
-		else:
-			warnings["gpu"] = "GPU timestamps unavailable for %s/%s" % [RenderingServer.get_current_rendering_method(), driver]
+		warnings["gpu"] = "GPU timestamps unavailable for %s/%s" % [RenderingServer.get_current_rendering_method(), driver]
 	if bool(_bridge_status.get("script_profile_seen", false)) and not bool(_bridge_status.get("script_signatures_available", false)):
 		warnings["script_signatures"] = "GDScript timings are available, but function names require scripts compiled with an active engine debugger"
 	return warnings
