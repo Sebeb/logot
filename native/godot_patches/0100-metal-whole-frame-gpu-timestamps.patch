@@ -1,0 +1,156 @@
+diff --git a/drivers/metal/metal3_objects.cpp b/drivers/metal/metal3_objects.cpp
+index d0c1f21b74..e87e30d528 100644
+--- a/drivers/metal/metal3_objects.cpp
++++ b/drivers/metal/metal3_objects.cpp
+@@ -93,6 +93,7 @@ void MDCommandBuffer::begin() {
+ 	binding_cache.clear();
+ 	_scratch.reset();
+ 	release_resources();
++	reset_timestamp_writes();
+ }
+ 
+ MDCommandBuffer::Alloc MDCommandBuffer::allocate_arg_buffer(uint32_t p_size) {
+@@ -122,6 +123,12 @@ void MDCommandBuffer::commit() {
+ 			_frame_state.rs->commit();
+ 		}
+ 	}
++	if (void *pool = get_timestamp_query_pool(); pool != nullptr) {
++		::RenderingDeviceDriverMetal *driver = device_driver;
++		commandBuffer->addCompletedHandler([driver, pool](MTL::CommandBuffer *p_command_buffer) {
++			driver->_timestamp_command_buffer_completed(pool, p_command_buffer);
++		});
++	}
+ 	commandBuffer->commit();
+ 	commandBuffer.reset();
+ 	state_begin = false;
+diff --git a/drivers/metal/metal_objects_shared.h b/drivers/metal/metal_objects_shared.h
+index e5d01d9041..34be9740c7 100644
+--- a/drivers/metal/metal_objects_shared.h
++++ b/drivers/metal/metal_objects_shared.h
+@@ -638,6 +638,9 @@ struct RenderStateBase {
+ /// Abstract base class for Metal command buffers, shared between MTL3 and MTL4 implementations.
+ class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDCommandBufferBase {
+ 	LocalVector<CFTypeRef> _retained_resources;
++	void *timestamp_query_pool = nullptr;
++	uint32_t first_timestamp_query = UINT32_MAX;
++	uint32_t last_timestamp_query = 0;
+ 
+ protected:
+ 	// From RenderingDevice
+@@ -682,6 +685,21 @@ public:
+ 	virtual void commit() = 0;
+ 	virtual void end() = 0;
+ 
++	_FORCE_INLINE_ void timestamp_write(void *p_pool, uint32_t p_index) {
++		DEV_ASSERT(timestamp_query_pool == nullptr || timestamp_query_pool == p_pool);
++		timestamp_query_pool = p_pool;
++		first_timestamp_query = MIN(first_timestamp_query, p_index);
++		last_timestamp_query = MAX(last_timestamp_query, p_index);
++	}
++
++	_FORCE_INLINE_ void reset_timestamp_writes() {
++		timestamp_query_pool = nullptr;
++		first_timestamp_query = UINT32_MAX;
++		last_timestamp_query = 0;
++	}
++
++	_FORCE_INLINE_ void *get_timestamp_query_pool() const { return timestamp_query_pool; }
++
+ 	virtual void bind_pipeline(RDD::PipelineID p_pipeline) = 0;
+ 	void encode_push_constant_data(RDD::ShaderID p_shader, VectorView<uint32_t> p_data);
+ 
+diff --git a/drivers/metal/rendering_device_driver_metal.cpp b/drivers/metal/rendering_device_driver_metal.cpp
+index 90dae10222..2602799645 100644
+--- a/drivers/metal/rendering_device_driver_metal.cpp
++++ b/drivers/metal/rendering_device_driver_metal.cpp
+@@ -2333,15 +2333,25 @@ void RenderingDeviceDriverMetal::command_trace_rays(CommandBufferID p_cmd_buffer
+ // ----- TIMESTAMP -----
+ 
+ RDD::QueryPoolID RenderingDeviceDriverMetal::timestamp_query_pool_create(uint32_t p_query_count) {
+-	return QueryPoolID(1);
++	TimestampQueryPool *pool = memnew(TimestampQueryPool);
++	pool->query_count = p_query_count;
++	return QueryPoolID(pool);
+ }
+ 
+ void RenderingDeviceDriverMetal::timestamp_query_pool_free(QueryPoolID p_pool_id) {
++	memdelete((TimestampQueryPool *)p_pool_id.id);
+ }
+ 
+ void RenderingDeviceDriverMetal::timestamp_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) {
+-	// Metal doesn't support timestamp queries, so we just clear the buffer.
+-	bzero(r_results, p_query_count * sizeof(uint64_t));
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool_id.id;
++	MutexLock lock(pool->mutex);
++	DEV_ASSERT(p_query_count <= pool->query_count);
++	for (uint32_t i = 0; i < p_query_count; i++) {
++		// Metal exposes whole-command-buffer times even when counter sampling is
++		// unavailable. Keep intermediate markers at the start so no fabricated
++		// per-pass timings are reported, while the final delta is the real total.
++		r_results[i] = i + 1 == p_query_count ? pool->gpu_end_ns : pool->gpu_start_ns;
++	}
+ }
+ 
+ uint64_t RenderingDeviceDriverMetal::timestamp_query_result_to_time(uint64_t p_result) {
+@@ -2349,9 +2359,34 @@ uint64_t RenderingDeviceDriverMetal::timestamp_query_result_to_time(uint64_t p_r
+ }
+ 
+ void RenderingDeviceDriverMetal::command_timestamp_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) {
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool_id.id;
++	MutexLock lock(pool->mutex);
++	pool->gpu_start_ns = 0;
++	pool->gpu_end_ns = 0;
+ }
+ 
+ void RenderingDeviceDriverMetal::command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {
++	MDCommandBufferBase *cb = (MDCommandBufferBase *)p_cmd_buffer.id;
++	cb->timestamp_write((void *)p_pool_id.id, p_index);
++}
++
++void RenderingDeviceDriverMetal::_timestamp_command_buffer_completed(void *p_pool, MTL::CommandBuffer *p_command_buffer) {
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool;
++	const double start_seconds = p_command_buffer->GPUStartTime();
++	const double end_seconds = p_command_buffer->GPUEndTime();
++	if (start_seconds <= 0.0 || end_seconds < start_seconds) {
++		return;
++	}
++
++	const uint64_t start_ns = (uint64_t)(start_seconds * 1000000000.0);
++	const uint64_t end_ns = (uint64_t)(end_seconds * 1000000000.0);
++	MutexLock lock(pool->mutex);
++	if (pool->gpu_start_ns == 0 || start_ns < pool->gpu_start_ns) {
++		pool->gpu_start_ns = start_ns;
++	}
++	if (end_ns > pool->gpu_end_ns) {
++		pool->gpu_end_ns = end_ns;
++	}
+ }
+ 
+ #pragma mark - Labels
+diff --git a/drivers/metal/rendering_device_driver_metal.h b/drivers/metal/rendering_device_driver_metal.h
+index 6e9050b438..fe0b799b9e 100644
+--- a/drivers/metal/rendering_device_driver_metal.h
++++ b/drivers/metal/rendering_device_driver_metal.h
+@@ -30,6 +30,7 @@
+ 
+ #pragma once
+ 
++#include "core/os/mutex.h"
+ #include "drivers/metal/metal_device_profile.h"
+ #include "drivers/metal/metal_objects_shared.h"
+ #include "servers/rendering/rendering_device_driver.h"
+@@ -484,6 +485,14 @@ public:
+ 	virtual void command_trace_rays(CommandBufferID p_cmd_buffer, const ShaderBindingTable &p_raygen_sbt, const ShaderBindingTable &p_miss_sbt, const ShaderBindingTable &p_hit_sbt, uint32_t p_width, uint32_t p_height, uint32_t p_depth) override final;
+ 
+ #pragma mark - Queries
++	struct TimestampQueryPool {
++		Mutex mutex;
++		uint32_t query_count = 0;
++		uint64_t gpu_start_ns = 0;
++		uint64_t gpu_end_ns = 0;
++	};
++
++	void _timestamp_command_buffer_completed(void *p_pool, MTL::CommandBuffer *p_command_buffer);
+ 
+ 	// ----- TIMESTAMP -----
+ 
