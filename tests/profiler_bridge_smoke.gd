@@ -15,22 +15,61 @@ func _run() -> void:
 		push_error("LogotProfilerBridge API handshake failed")
 		quit(3)
 		return
+	var console := root.get_node_or_null("Logot")
+	if console == null:
+		console = root.get_node_or_null("Console")
 	bridge.call("set_capture_enabled", true, true)
+	bridge.call("set_gpu_capture_enabled", true)
 	print("LOGOT_PROFILER_SMOKE_START status=%s" % str(bridge.call("get_status")))
 	for _index in 30:
+		bridge.call("set_capture_enabled", true, true)
+		if console != null and console.has_method("request_performance_source_collection"):
+			console.call("request_performance_source_collection", "gpu")
+		else:
+			bridge.call("set_gpu_capture_enabled", true)
 		await process_frame
 		bridge.call("poll_frame")
 	var frames: Array = bridge.call("drain_frames") as Array
-	print("LOGOT_PROFILER_SMOKE_DRAIN status=%s" % str(bridge.call("get_status")))
+	var active_status: Dictionary = bridge.call("get_status") as Dictionary
+	print("LOGOT_PROFILER_SMOKE_DRAIN status=%s" % str(active_status))
+	var gpu_timing_mode := str(active_status.get("gpu_timing_mode", "unknown"))
+	var latest_gpu_frame: Dictionary = {}
+	for frame_variant in frames:
+		if frame_variant is Dictionary and str((frame_variant as Dictionary).get("kind", "")) == "render" and float((frame_variant as Dictionary).get("gpu_total_ms", 0.0)) > 0.0:
+			latest_gpu_frame = frame_variant as Dictionary
+	if gpu_timing_mode in ["breakdown", "total_only"] and latest_gpu_frame.is_empty():
+		push_error("Metal GPU timing capability produced no positive whole-frame sample: %s" % str(active_status))
+		quit(6)
+		return
+	if gpu_timing_mode == "breakdown":
+		var found_gpu_source := false
+		for source_variant in latest_gpu_frame.get("render_sources", []):
+			if source_variant is Dictionary and float((source_variant as Dictionary).get("gpu_ms", 0.0)) > 0.0:
+				found_gpu_source = true
+				break
+		if not found_gpu_source:
+			push_error("Metal counter sampling reported breakdown capability without a positive pass: %s" % str(latest_gpu_frame))
+			quit(7)
+			return
+	if not latest_gpu_frame.is_empty():
+		var ranked_sources: Array = (latest_gpu_frame.get("render_sources", []) as Array).duplicate(true)
+		ranked_sources.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a.get("gpu_ms", 0.0)) > float(b.get("gpu_ms", 0.0)))
+		print("LOGOT_GPU_PROFILE mode=%s total_ms=%.4f top=%s" % [gpu_timing_mode, float(latest_gpu_frame.get("gpu_total_ms", 0.0)), str(ranked_sources.slice(0, mini(5, ranked_sources.size())))])
 	bridge.call("set_capture_enabled", false, false)
+	bridge.call("set_gpu_capture_enabled", false)
+	for _index in 5:
+		await process_frame
+		bridge.call("poll_frame")
+	var stopped_status: Dictionary = bridge.call("get_status") as Dictionary
+	if bool(stopped_status.get("render_requested", true)) or bool(stopped_status.get("owns_render_profiling", true)):
+		push_error("Profiler bridge did not release render capture after its lease: %s" % str(stopped_status))
+		quit(8)
+		return
 	var found_script := false
 	for frame_variant in frames:
 		if frame_variant is Dictionary and str((frame_variant as Dictionary).get("kind", "")) == "script":
 			found_script = true
 			break
-	var console := root.get_node_or_null("Logot")
-	if console == null:
-		console = root.get_node_or_null("Console")
 	if not found_script and console != null and console.has_method("get_performance_source_snapshot"):
 		var snapshot: Dictionary = console.call("get_performance_source_snapshot", true) as Dictionary
 		var current: Dictionary = snapshot.get("current", {}) as Dictionary

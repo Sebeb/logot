@@ -23,6 +23,9 @@ func run(ctx) -> void:
 		Console.request_performance_source_collection("gpu")
 		Console.request_performance_source_collection("cpu", "both")
 		await ctx.wait_frames(1)
+		# SceneTree --script runs do not invoke Logot's game-only _process path on
+		# editor binaries, so drive the same monitor tick explicitly.
+		Console._update_performance_monitor(1.0 / 60.0)
 	var snapshot: Dictionary = Console.get_performance_source_snapshot(true)
 	var current: Dictionary = snapshot.get("current", {}) as Dictionary
 	var render_cpu: Dictionary = current.get("render_cpu", {}) as Dictionary
@@ -30,6 +33,7 @@ func run(ctx) -> void:
 	var gpu: Dictionary = current.get("gpu", {}) as Dictionary
 	var bridge_status: Dictionary = snapshot.get("bridge_status", {}) as Dictionary
 	var gpu_timestamps_available := bool(bridge_status.get("gpu_timestamps_available", false))
+	var gpu_timing_mode := str(bridge_status.get("gpu_timing_mode", "unknown"))
 	ctx.check("native_render_cpu_sample", not render_cpu.is_empty(), str(snapshot))
 	ctx.check("native_whole_cpu_sample", not whole_cpu.is_empty(), str(snapshot))
 	ctx.check("native_gpu_state", not gpu.is_empty() if gpu_timestamps_available else gpu.is_empty(), str(snapshot))
@@ -44,12 +48,28 @@ func run(ctx) -> void:
 				paths_are_named = false
 				break
 		ctx.check("native_whole_cpu_paths", paths_are_named, str(whole_cpu))
-	if gpu_timestamps_available and not gpu.is_empty():
+	if gpu_timing_mode == "breakdown" and not gpu.is_empty():
 		ctx.check("native_gpu_sources", not (gpu.get("sources", []) as Array).is_empty(), str(gpu))
+	elif gpu_timing_mode == "total_only" and not gpu.is_empty():
+		ctx.check("native_gpu_total", float(gpu.get("total_ms", 0.0)) > 0.0, str(gpu))
+		ctx.check("native_gpu_no_fake_sources", (gpu.get("sources", []) as Array).is_empty(), str(gpu))
+		ctx.check("native_gpu_fallback_note", not str(gpu.get("note", "")).is_empty(), str(gpu))
 	else:
 		var warnings: Dictionary = snapshot.get("availability_warnings", {}) as Dictionary
 		ctx.check("native_gpu_unavailable_reported", warnings.has("gpu"), str(snapshot))
-	var path := Console.save_performance_source_snapshot("native-bridge-test")
+	var path: String = Console.save_performance_source_snapshot("native-bridge-test")
 	ctx.check("native_snapshot_written", not path.is_empty() and FileAccess.file_exists(path), path)
 	Console._set_performance_pin_mode("fps", false)
 	Console._set_performance_source_cpu_mode("render")
+	for _index in 5:
+		Console.request_performance_source_collection("cpu", "render")
+		await ctx.wait_frames(1)
+		Console._update_performance_monitor(1.0 / 60.0)
+	var cpu_only_status: Dictionary = (Engine.get_singleton("LogotProfilerBridge") as Object).call("get_status") as Dictionary
+	ctx.check("native_cpu_capture_without_gpu", bool(cpu_only_status.get("render_requested", false)) and not bool(cpu_only_status.get("gpu_capture_requested", true)), str(cpu_only_status))
+	ctx.check("native_cpu_capture_gpu_measurement_off", not bool(Console._performance_gpu_measurement_enabled), str(Console._performance_gpu_measurement_enabled))
+	await ctx.wait_frames(5)
+	var stopped_status: Dictionary = (Engine.get_singleton("LogotProfilerBridge") as Object).call("get_status") as Dictionary
+	ctx.check("native_capture_stopped", not bool(stopped_status.get("render_requested", true)) and not bool(stopped_status.get("owns_render_profiling", true)), str(stopped_status))
+	ctx.check("native_gpu_capture_stopped", not bool(stopped_status.get("gpu_capture_requested", true)), str(stopped_status))
+	ctx.check("native_gpu_measurement_stopped", not bool(Console._performance_gpu_measurement_enabled), str(Console._performance_gpu_measurement_enabled))

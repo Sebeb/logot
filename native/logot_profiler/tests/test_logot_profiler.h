@@ -25,6 +25,7 @@ TEST_CASE("[LogotProfiler] Nested render areas produce exclusive, complete sourc
 	CHECK(int64_t(frame["frame_number"]) == 42);
 	CHECK(double(frame["render_cpu_total_ms"]) == doctest::Approx(5.0));
 	CHECK(double(frame["gpu_total_ms"]) == doctest::Approx(7.0));
+	CHECK(bool(frame["gpu_breakdown_available"]));
 
 	double cpu_sum = 0.0;
 	double gpu_sum = 0.0;
@@ -36,6 +37,24 @@ TEST_CASE("[LogotProfiler] Nested render areas produce exclusive, complete sourc
 	}
 	CHECK(cpu_sum == doctest::Approx(5.0));
 	CHECK(gpu_sum == doctest::Approx(7.0));
+}
+
+TEST_CASE("[LogotProfiler] Whole-frame Metal fallback does not fabricate source timings") {
+	Vector<RenderingServerTypes::FrameProfileArea> areas;
+	areas.push_back(area(">Scene", 0.0, 0.0));
+	areas.push_back(area("Draw", 1.0, 0.0));
+	areas.push_back(area("<Scene", 2.0, 0.0));
+	areas.push_back(area("Frame end", 3.0, 4.5));
+
+	Dictionary frame = LogotProfilerBridge::parse_render_areas(areas, 43);
+	CHECK(bool(frame["gpu_available"]));
+	CHECK_FALSE(bool(frame["gpu_breakdown_available"]));
+	CHECK(double(frame["gpu_total_ms"]) == doctest::Approx(4.5));
+	Array sources = frame["render_sources"];
+	for (int i = 0; i < sources.size(); i++) {
+		Dictionary source = sources[i];
+		CHECK(double(source["gpu_ms"]) == doctest::Approx(0.0));
+	}
 }
 
 TEST_CASE("[LogotProfiler] Source retention caps named entries and preserves the remainder") {
