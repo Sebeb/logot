@@ -2808,6 +2808,7 @@ func _setup_game_ui() -> void:
 	_display.set_level_visibility_provider(get_level_visibility, set_level_visibility)
 	_display.set_channel_visibility_provider(get_channel_visibility, set_channel_visibility)
 	_display.add_custom_setting("touch_mode", "Touch mode", _should_enable_touch_mode_by_default())
+	_display.add_custom_setting("pinned_auto_swap_on_hover", "Auto-swap pinned corners on hover", false)
 
 	# Connect signals for visibility changes
 	_display.cleared.connect(_on_display_cleared)
@@ -3984,6 +3985,14 @@ func _set_setting_touch_mode(value: bool) -> void:
 	_set_console_setting_value("touch_mode", value)
 
 
+func _get_setting_pinned_auto_swap_on_hover() -> bool:
+	return _get_console_setting_value("pinned_auto_swap_on_hover", false)
+
+
+func _set_setting_pinned_auto_swap_on_hover(value: bool) -> void:
+	_set_console_setting_value("pinned_auto_swap_on_hover", value)
+
+
 func _set_touch_mode_enabled(value: bool, sync_display_setting: bool = true) -> void:
 	_touch_mode_enabled = value
 	if sync_display_setting and _display:
@@ -4543,6 +4552,12 @@ func _register_console_setting_commands() -> void:
 		_set_setting_touch_mode,
 		_get_setting_touch_mode,
 		"Set whether touch mode is enabled."
+	)
+	add_setget_command(
+		"console/settings/pinned_auto_swap_on_hover",
+		_set_setting_pinned_auto_swap_on_hover,
+		_get_setting_pinned_auto_swap_on_hover,
+		"Set whether hovering a pinned corner temporarily swaps it to the opposite side."
 	)
 	_register_render_scale_setting_command(
 		"console/settings/render_scale/log/keyboard",
