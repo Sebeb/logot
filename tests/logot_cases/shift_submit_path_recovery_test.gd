@@ -30,6 +30,10 @@ func run(ctx) -> void:
 		_console.line_edit.text == "/path_recovery/",
 		"text=%s" % _console.line_edit.text
 	)
+	ctx.check(
+		"nearest valid path shows the command palette again",
+		display._is_command_popup_visible()
+	)
 
 	_console.line_edit.text = "/path_recovery/rem"
 	_console.line_edit.caret_column = _console.line_edit.text.length()
@@ -43,10 +47,15 @@ func run(ctx) -> void:
 
 	_console.remove_command("path_recovery/remaining")
 	display.reconcile_retained_command_path()
+	await ctx.wait_frames(2)
 	ctx.check(
 		"missing ancestors back up to root",
 		_console.line_edit.text == "/",
 		"text=%s" % _console.line_edit.text
+	)
+	ctx.check(
+		"root fallback shows the command palette again",
+		display._is_command_popup_visible()
 	)
 
 

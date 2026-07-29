@@ -6173,14 +6173,14 @@ func reconcile_retained_command_path() -> void:
 	while not command_path.is_empty():
 		if _is_registered_command_path_or_parent(command_path, registered_addresses):
 			_set_line_edit_command_path(command_path, true)
-			update_autocomplete_popup()
+			on_text_changed_autocomplete(line_edit.text)
 			return
 
 		var parent_separator := command_path.rfind("/")
 		command_path = command_path.substr(0, parent_separator) if parent_separator != -1 else ""
 
 	_set_line_edit_command_path("", false)
-	update_autocomplete_popup()
+	on_text_changed_autocomplete(line_edit.text)
 
 
 func _is_registered_command_path_or_parent(command_path: String, registered_addresses: Array[String]) -> bool:
