@@ -1775,6 +1775,22 @@ const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
 const AUTOCOMPLETE_TEXT_WIDTH_CACHE_LIMIT := 4096
 const AUTOCOMPLETE_COMMAND_SLIDE_DURATION := 0.16
 const AUTOCOMPLETE_COMMAND_SLIDE_DISTANCE := 28.0
+const COMMAND_PALETTE_RESIZE_HANDLE_WIDTH := 56.0
+const COMMAND_PALETTE_RESIZE_HANDLE_HEIGHT := 12.0
+const COMMAND_PALETTE_RESIZE_HANDLE_GRIP_WIDTH := 28.0
+const COMMAND_PALETTE_RESIZE_HANDLE_GRIP_HEIGHT := 4.0
+const COMMAND_PALETTE_RESIZE_HANDLE_GAP := 3.0
+const COMMAND_PALETTE_RESIZE_GRIP_COLOR := Color(0.65, 0.75, 0.92, 0.55)
+const COMMAND_PALETTE_RESIZE_GRIP_HOVER_COLOR := Color(0.82, 0.89, 1.0, 0.95)
+
+# Stacking order for the console's free-floating overlays. They all share one canvas
+# layer, so these decide who occludes whom. The command palette sits above the pinned
+# variables: pins are glanceable clutter, the palette is what you are actively driving.
+# Logot's in-game popup overlay sits above all of these, at 210.
+const OVERLAY_Z_PINNED_VARIABLES := 200
+const OVERLAY_Z_COMMAND_PALETTE := 202
+const OVERLAY_Z_COMMAND_PALETTE_RESIZE_HANDLE := 203
+const OVERLAY_Z_RENDER_TEXTURE_FULLSCREEN := 205
 const AUTOCOMPLETE_ROOT_COMMANDS_HINT := "press down for history"
 const AUTOCOMPLETE_HISTORY_HINT := "press up for commands"
 const AUTOCOMPLETE_ROOT_COMMANDS_LOCKED_HINT := "down wraps to top (Esc resets history access)"
@@ -1924,6 +1940,12 @@ var _command_autocomplete_target_size := Vector2.ZERO
 var _command_autocomplete_slide_offset := 0.0
 var _command_autocomplete_touch_slide_offset_x := 0.0
 var _command_autocomplete_alpha := 1.0
+var _command_palette_resize_handle: Control
+var _command_palette_resize_grip: Panel
+var _command_palette_height_override := 0.0
+var _command_palette_resize_dragging := false
+var _command_palette_resize_drag_start_y := 0.0
+var _command_palette_resize_drag_start_height := 0.0
 var _autocomplete_selected_index := -1
 var _autocomplete_column_states: Array[Dictionary] = []
 var _autocomplete_column_nodes: Array[Control] = []
@@ -2219,6 +2241,8 @@ func _get_instance_visibility(session_id: int) -> int:
 
 func set_history_autocomplete_popup(popup: ItemList) -> void:
 	_history_autocomplete_popup = popup
+	if _history_autocomplete_popup:
+		_history_autocomplete_popup.z_index = OVERLAY_Z_COMMAND_PALETTE
 
 
 func set_ingame_overlay_edge_overrides(top: float = 0.0, left: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> void:
@@ -2252,10 +2276,12 @@ func set_command_autocomplete_popup(popup: PanelContainer, scroll: ScrollContain
 	if _command_autocomplete_popup:
 		_command_autocomplete_popup.clip_contents = true
 		_command_autocomplete_popup.modulate = Color(1, 1, 1, 0)
+		_command_autocomplete_popup.z_index = OVERLAY_Z_COMMAND_PALETTE
 	if _command_autocomplete_scroll:
 		_command_autocomplete_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 		_command_autocomplete_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 		_command_autocomplete_scroll.clip_contents = true
+	_ensure_command_palette_resize_handle()
 	_apply_command_palette_render_scale()
 
 
@@ -3783,6 +3809,110 @@ func _apply_command_autocomplete_popup_visual_state() -> void:
 	_command_autocomplete_popup.global_position = _command_autocomplete_target_global_position + Vector2(_command_autocomplete_touch_slide_offset_x, _command_autocomplete_slide_offset)
 	_command_autocomplete_popup.size = _command_autocomplete_target_size
 	_command_autocomplete_popup.modulate = Color(1, 1, 1, clampf(_command_autocomplete_alpha, 0.0, 1.0))
+	_update_command_palette_resize_handle()
+
+
+func _ensure_command_palette_resize_handle() -> void:
+	if _command_palette_resize_handle != null and is_instance_valid(_command_palette_resize_handle):
+		return
+	if _command_autocomplete_popup == null or _command_autocomplete_popup.get_parent() == null:
+		return
+
+	var handle := Control.new()
+	handle.name = "CommandPaletteResizeHandle"
+	handle.visible = false
+	handle.z_index = OVERLAY_Z_COMMAND_PALETTE_RESIZE_HANDLE
+	handle.mouse_filter = Control.MOUSE_FILTER_STOP
+	handle.mouse_default_cursor_shape = Control.CURSOR_VSIZE
+	handle.tooltip_text = "Drag to resize the command palette"
+	handle.gui_input.connect(_on_command_palette_resize_handle_gui_input)
+	_command_autocomplete_popup.get_parent().add_child(handle)
+
+	var grip := Panel.new()
+	grip.name = "Grip"
+	grip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var grip_style := StyleBoxFlat.new()
+	grip_style.bg_color = COMMAND_PALETTE_RESIZE_GRIP_COLOR
+	grip_style.set_corner_radius_all(int(COMMAND_PALETTE_RESIZE_HANDLE_GRIP_HEIGHT * 0.5))
+	grip.add_theme_stylebox_override("panel", grip_style)
+	handle.add_child(grip)
+
+	handle.mouse_entered.connect(_set_command_palette_resize_grip_highlighted.bind(true))
+	handle.mouse_exited.connect(_set_command_palette_resize_grip_highlighted.bind(false))
+
+	_command_palette_resize_handle = handle
+	_command_palette_resize_grip = grip
+
+
+func _set_command_palette_resize_grip_highlighted(highlighted: bool) -> void:
+	if _command_palette_resize_grip == null or not is_instance_valid(_command_palette_resize_grip):
+		return
+	if not highlighted and _command_palette_resize_dragging:
+		return
+	var grip_style := _command_palette_resize_grip.get_theme_stylebox("panel")
+	if grip_style is StyleBoxFlat:
+		(grip_style as StyleBoxFlat).bg_color = COMMAND_PALETTE_RESIZE_GRIP_HOVER_COLOR if highlighted else COMMAND_PALETTE_RESIZE_GRIP_COLOR
+
+
+## Keeps the drag handle centred just above the palette, following its slide/fade animation.
+func _update_command_palette_resize_handle() -> void:
+	if _command_palette_resize_handle == null or not is_instance_valid(_command_palette_resize_handle):
+		return
+	if _command_autocomplete_popup == null or not _command_autocomplete_popup.visible or _is_touch_command_palette_layout():
+		_command_palette_resize_handle.visible = false
+		return
+
+	var multiplier := _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
+	var handle_size := Vector2(COMMAND_PALETTE_RESIZE_HANDLE_WIDTH, COMMAND_PALETTE_RESIZE_HANDLE_HEIGHT) * multiplier
+	var popup_position := _command_autocomplete_popup.global_position
+	var popup_size := _command_autocomplete_popup.size
+
+	_command_palette_resize_handle.size = handle_size
+	_command_palette_resize_handle.global_position = Vector2(
+		popup_position.x + (popup_size.x - handle_size.x) * 0.5,
+		popup_position.y - COMMAND_PALETTE_RESIZE_HANDLE_GAP * multiplier - handle_size.y
+	)
+	_command_palette_resize_handle.modulate = Color(1, 1, 1, clampf(_command_autocomplete_alpha, 0.0, 1.0))
+	_command_palette_resize_handle.visible = true
+
+	if _command_palette_resize_grip != null and is_instance_valid(_command_palette_resize_grip):
+		var grip_size := Vector2(COMMAND_PALETTE_RESIZE_HANDLE_GRIP_WIDTH, COMMAND_PALETTE_RESIZE_HANDLE_GRIP_HEIGHT) * multiplier
+		_command_palette_resize_grip.size = grip_size
+		_command_palette_resize_grip.position = (handle_size - grip_size) * 0.5
+
+
+func _on_command_palette_resize_handle_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var button_event := event as InputEventMouseButton
+		if button_event.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if button_event.pressed:
+			_command_palette_resize_dragging = true
+			_command_palette_resize_drag_start_y = button_event.global_position.y
+			_command_palette_resize_drag_start_height = float(_get_command_autocomplete_target_height())
+			_set_command_palette_resize_grip_highlighted(true)
+		elif _command_palette_resize_dragging:
+			_command_palette_resize_dragging = false
+			# The pointer often ends the drag away from the handle, so drop the hover tint.
+			_set_command_palette_resize_grip_highlighted(
+				_command_palette_resize_handle.get_global_rect().has_point(button_event.global_position)
+			)
+			_save_filter_settings()
+		_command_palette_resize_handle.accept_event()
+	elif event is InputEventMouseMotion and _command_palette_resize_dragging:
+		var motion_event := event as InputEventMouseMotion
+		var drag_delta := _command_palette_resize_drag_start_y - motion_event.global_position.y
+		_set_command_palette_height_override(_command_palette_resize_drag_start_height + drag_delta)
+		_command_palette_resize_handle.accept_event()
+
+
+func _set_command_palette_height_override(height: float) -> void:
+	var clamped := _clamp_command_palette_height(height)
+	if is_equal_approx(_command_palette_height_override, clamped):
+		return
+	_command_palette_height_override = clamped
+	if _is_command_popup_visible():
+		_position_command_autocomplete_popup()
 
 
 func _set_command_autocomplete_slide_offset(value: float) -> void:
@@ -3905,7 +4035,7 @@ func _ensure_pinned_overlay() -> void:
 	_pinned_overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_pinned_overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_pinned_overlay_root.visible = false
-	_pinned_overlay_root.z_index = 200
+	_pinned_overlay_root.z_index = OVERLAY_Z_PINNED_VARIABLES
 	add_child(_pinned_overlay_root)
 
 	for corner in PINNED_OVERLAY_CORNERS:
@@ -3937,7 +4067,7 @@ func _ensure_render_texture_fullscreen_overlay() -> void:
 	overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay_root.visible = false
-	overlay_root.z_index = 205
+	overlay_root.z_index = OVERLAY_Z_RENDER_TEXTURE_FULLSCREEN
 	add_child(overlay_root)
 	_render_texture_fullscreen_root = overlay_root
 
@@ -5527,12 +5657,16 @@ func _load_filter_settings() -> void:
 
 
 func _save_custom_settings(_config: ConfigFile) -> void:
+	_config.set_value("command_palette", "height", _command_palette_height_override)
 	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER, INPUT_METHOD_TOUCH]:
 		for target in [RENDER_SCALE_TARGET_LOG, RENDER_SCALE_TARGET_COMMAND_PALETTE, RENDER_SCALE_TARGET_PINNED_VARIABLES]:
 			_config.set_value("render_scale", "%s/%s" % [input_method, target], get_render_scale_percent(target, input_method))
 
 
 func _load_custom_settings(_config: ConfigFile) -> void:
+	# Stored raw; clamped on use, since the window and line edit may not be laid out yet.
+	_command_palette_height_override = maxf(0.0, float(_config.get_value("command_palette", "height", 0.0)))
+
 	if not _config.has_section("render_scale"):
 		return
 	for input_method in [INPUT_METHOD_KEYBOARD, INPUT_METHOD_CONTROLLER, INPUT_METHOD_TOUCH]:
@@ -8408,8 +8542,34 @@ func _debug_command_popup_height(source: String) -> void:
 	)
 
 
-func _get_command_autocomplete_popup_height() -> int:
+## Vertical space the drag handle needs above the palette so it stays on screen.
+func _get_command_palette_resize_handle_reserve() -> float:
+	if _is_touch_command_palette_layout():
+		return 0.0
+	return (COMMAND_PALETTE_RESIZE_HANDLE_HEIGHT + COMMAND_PALETTE_RESIZE_HANDLE_GAP) * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
+
+
+func _get_command_palette_default_height() -> int:
 	return AUTOCOMPLETE_FIXED_VISIBLE_ITEMS * _get_scaled_autocomplete_item_height() + int(round(8.0 * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)))
+
+
+func _get_command_palette_max_height() -> float:
+	var available_height := get_viewport_rect().size.y
+	if line_edit:
+		available_height = minf(available_height, line_edit.get_global_rect().position.y - _get_scaled_autocomplete_popup_gap())
+	return maxf(1.0, available_height - _get_command_palette_resize_handle_reserve())
+
+
+func _clamp_command_palette_height(height: float) -> float:
+	var max_height := _get_command_palette_max_height()
+	var min_height := minf(float(_get_command_palette_default_height()) * 0.5, max_height)
+	return clampf(height, min_height, max_height)
+
+
+func _get_command_autocomplete_popup_height() -> int:
+	if _command_palette_height_override > 0.0:
+		return maxi(1, int(round(_clamp_command_palette_height(_command_palette_height_override))))
+	return _get_command_palette_default_height()
 
 
 func _get_command_autocomplete_target_height() -> int:
@@ -8418,10 +8578,7 @@ func _get_command_autocomplete_target_height() -> int:
 	if not line_edit:
 		return _get_command_autocomplete_popup_height()
 
-	var line_edit_rect := line_edit.get_global_rect()
-	var desired_height := float(_get_command_autocomplete_popup_height())
-	var available_height := maxi(0.0, line_edit_rect.position.y - _get_scaled_autocomplete_popup_gap())
-	return maxi(1, int(floor(minf(desired_height, available_height))))
+	return maxi(1, int(floor(minf(float(_get_command_autocomplete_popup_height()), _get_command_palette_max_height()))))
 
 
 func _get_command_autocomplete_column_viewport_height() -> int:
@@ -8430,12 +8587,26 @@ func _get_command_autocomplete_column_viewport_height() -> int:
 		return target_height
 
 	var horizontal_scrollbar := _command_autocomplete_scroll.get_h_scroll_bar()
-	return _calculate_command_autocomplete_column_viewport_height(
+	var measured_height := _calculate_command_autocomplete_column_viewport_height(
 		_command_autocomplete_scroll.size.y,
 		horizontal_scrollbar.size.y if horizontal_scrollbar != null else 0.0,
 		horizontal_scrollbar != null and horizontal_scrollbar.visible,
 		target_height
 	)
+	# The measured height lags behind a shrinking palette: the columns' own minimum
+	# size holds the scroll container open until they are told to shrink first.
+	var column_ceiling := maxi(1, target_height - int(ceil(_get_command_autocomplete_panel_vertical_margin())))
+	return mini(measured_height, column_ceiling)
+
+
+## Vertical space the palette panel's stylebox consumes around its columns.
+func _get_command_autocomplete_panel_vertical_margin() -> float:
+	if _command_autocomplete_popup == null:
+		return 0.0
+	var panel_style := _command_autocomplete_popup.get_theme_stylebox("panel")
+	if panel_style == null:
+		return 0.0
+	return maxf(panel_style.get_margin(SIDE_TOP) + panel_style.get_margin(SIDE_BOTTOM), panel_style.get_minimum_size().y)
 
 
 func _calculate_command_autocomplete_column_viewport_height(scroll_height: float, horizontal_scrollbar_height: float, horizontal_scrollbar_visible: bool, fallback_height: int) -> int:
