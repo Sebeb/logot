@@ -1,0 +1,356 @@
+diff --git a/drivers/metal/metal3_objects.cpp b/drivers/metal/metal3_objects.cpp
+index e87e30d528..284c874175 100644
+--- a/drivers/metal/metal3_objects.cpp
++++ b/drivers/metal/metal3_objects.cpp
+@@ -115,6 +115,7 @@ void MDCommandBuffer::end() {
+ 
+ void MDCommandBuffer::commit() {
+ 	end();
++	_encode_pending_timestamp();
+ 	if (use_barriers) {
+ 		if (_scratch.is_changed()) {
+ 			Span<MTL::Buffer *const> bufs = _scratch.get_buffers();
+@@ -307,12 +308,29 @@ MTL::BlitCommandEncoder *MDCommandBuffer::_ensure_blit_encoder() {
+ 	}
+ 
+ 	type = MDCommandBufferStateType::Blit;
+-	blit.encoder = NS::RetainPtr(command_buffer()->blitCommandEncoder());
++	if (has_pending_timestamp_queries()) {
++		NS::SharedPtr<MTL::BlitPassDescriptor> desc = NS::TransferPtr(MTL::BlitPassDescriptor::alloc()->init());
++		device_driver->_timestamp_attach_blit_pass(get_timestamp_query_pool(), take_pending_timestamp_query(), desc.get());
++		blit.encoder = NS::RetainPtr(command_buffer()->blitCommandEncoder(desc.get()));
++	} else {
++		blit.encoder = NS::RetainPtr(command_buffer()->blitCommandEncoder());
++	}
+ 	_encode_barrier(blit.encoder.get());
+ 
+ 	return blit.encoder.get();
+ }
+ 
++void MDCommandBuffer::_encode_pending_timestamp() {
++	if (!has_pending_timestamp_queries()) {
++		return;
++	}
++	DEV_ASSERT(type == MDCommandBufferStateType::None);
++	NS::SharedPtr<MTL::BlitPassDescriptor> desc = NS::TransferPtr(MTL::BlitPassDescriptor::alloc()->init());
++	device_driver->_timestamp_attach_blit_pass(get_timestamp_query_pool(), take_pending_timestamp_query(), desc.get());
++	MTL::BlitCommandEncoder *encoder = command_buffer()->blitCommandEncoder(desc.get());
++	encoder->endEncoding();
++}
++
+ void MDCommandBuffer::resolve_texture(RDD::TextureID p_src_texture, RDD::TextureLayout p_src_texture_layout, uint32_t p_src_layer, uint32_t p_src_mipmap, RDD::TextureID p_dst_texture, RDD::TextureLayout p_dst_texture_layout, uint32_t p_dst_layer, uint32_t p_dst_mipmap) {
+ 	MTL::Texture *src_tex = rid::get<MTL::Texture>(p_src_texture);
+ 	MTL::Texture *dst_tex = rid::get<MTL::Texture>(p_dst_texture);
+@@ -348,6 +366,9 @@ void MDCommandBuffer::clear_color_texture(RDD::TextureID p_texture, RDD::Texture
+ 	}
+ 
+ 	NS::SharedPtr<MTL::RenderPassDescriptor> desc = NS::TransferPtr(MTL::RenderPassDescriptor::alloc()->init());
++	if (has_pending_timestamp_queries()) {
++		device_driver->_timestamp_attach_render_pass(get_timestamp_query_pool(), take_pending_timestamp_query(), desc.get());
++	}
+ 
+ 	if (p_subresources.aspect.has_flag(RDD::TEXTURE_ASPECT_COLOR_BIT)) {
+ 		MTL::RenderPassColorAttachmentDescriptor *caDesc = desc->colorAttachments()->object(0);
+@@ -1384,7 +1405,14 @@ void MDCommandBuffer::ComputeState::end_encoding() {
+ 
+ void MDCommandBuffer::_compute_set_dirty_state() {
+ 	if (compute.dirty.has_flag(ComputeState::DIRTY_PIPELINE)) {
+-		compute.encoder = NS::RetainPtr(command_buffer()->computeCommandEncoder(MTL::DispatchTypeConcurrent));
++		if (has_pending_timestamp_queries()) {
++			NS::SharedPtr<MTL::ComputePassDescriptor> desc = NS::TransferPtr(MTL::ComputePassDescriptor::alloc()->init());
++			desc->setDispatchType(MTL::DispatchTypeConcurrent);
++			device_driver->_timestamp_attach_compute_pass(get_timestamp_query_pool(), take_pending_timestamp_query(), desc.get());
++			compute.encoder = NS::RetainPtr(command_buffer()->computeCommandEncoder(desc.get()));
++		} else {
++			compute.encoder = NS::RetainPtr(command_buffer()->computeCommandEncoder(MTL::DispatchTypeConcurrent));
++		}
+ 		_encode_barrier(compute.encoder.get());
+ 		compute.encoder->setComputePipelineState(compute.pipeline->state.get());
+ 	}
+diff --git a/drivers/metal/metal3_objects.h b/drivers/metal/metal3_objects.h
+index 4e690cdc8f..503d5fdc02 100644
+--- a/drivers/metal/metal3_objects.h
++++ b/drivers/metal/metal3_objects.h
+@@ -305,6 +305,7 @@ private:
+ 
+ 	void _end_compute_dispatch();
+ 	void _end_blit();
++	void _encode_pending_timestamp();
+ 	MTL::BlitCommandEncoder *_ensure_blit_encoder();
+ 
+ 	enum class CopySource {
+diff --git a/drivers/metal/metal_objects_shared.h b/drivers/metal/metal_objects_shared.h
+index 34be9740c7..0c9189cbb8 100644
+--- a/drivers/metal/metal_objects_shared.h
++++ b/drivers/metal/metal_objects_shared.h
+@@ -639,8 +639,7 @@ struct RenderStateBase {
+ class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDCommandBufferBase {
+ 	LocalVector<CFTypeRef> _retained_resources;
+ 	void *timestamp_query_pool = nullptr;
+-	uint32_t first_timestamp_query = UINT32_MAX;
+-	uint32_t last_timestamp_query = 0;
++	LocalVector<uint32_t> pending_timestamp_queries;
+ 
+ protected:
+ 	// From RenderingDevice
+@@ -685,20 +684,30 @@ public:
+ 	virtual void commit() = 0;
+ 	virtual void end() = 0;
+ 
+-	_FORCE_INLINE_ void timestamp_write(void *p_pool, uint32_t p_index) {
++	_FORCE_INLINE_ void timestamp_write(void *p_pool, uint32_t p_index, bool p_use_counter_sampling) {
+ 		DEV_ASSERT(timestamp_query_pool == nullptr || timestamp_query_pool == p_pool);
+ 		timestamp_query_pool = p_pool;
+-		first_timestamp_query = MIN(first_timestamp_query, p_index);
+-		last_timestamp_query = MAX(last_timestamp_query, p_index);
++		if (p_use_counter_sampling) {
++			pending_timestamp_queries.push_back(p_index);
++		}
+ 	}
+ 
+ 	_FORCE_INLINE_ void reset_timestamp_writes() {
+ 		timestamp_query_pool = nullptr;
+-		first_timestamp_query = UINT32_MAX;
+-		last_timestamp_query = 0;
++		pending_timestamp_queries.clear();
+ 	}
+ 
+ 	_FORCE_INLINE_ void *get_timestamp_query_pool() const { return timestamp_query_pool; }
++	_FORCE_INLINE_ bool has_pending_timestamp_queries() const { return !pending_timestamp_queries.is_empty(); }
++	_FORCE_INLINE_ uint32_t take_pending_timestamp_query() {
++		DEV_ASSERT(!pending_timestamp_queries.is_empty());
++		// A pass descriptor has one sample index per boundary. Sampling the most
++		// recent marker leaves older co-located markers invalid; readback fills
++		// those with this same boundary value, producing the required zero delta.
++		uint32_t index = pending_timestamp_queries[pending_timestamp_queries.size() - 1];
++		pending_timestamp_queries.clear();
++		return index;
++	}
+ 
+ 	virtual void bind_pipeline(RDD::PipelineID p_pipeline) = 0;
+ 	void encode_push_constant_data(RDD::ShaderID p_shader, VectorView<uint32_t> p_data);
+diff --git a/drivers/metal/metal_timestamp_capture.h b/drivers/metal/metal_timestamp_capture.h
+new file mode 100644
+index 0000000000..e17059634a
+--- /dev/null
++++ b/drivers/metal/metal_timestamp_capture.h
+@@ -0,0 +1,10 @@
++/**************************************************************************/
++/*  metal_timestamp_capture.h                                             */
++/**************************************************************************/
++
++#pragma once
++
++// Logot's GPU widget has a lease independent from CPU render profiling.
++// This gate keeps Metal timestamp sampling dormant when only CPU markers are
++// being consumed.
++void metal_set_timestamp_capture_enabled(bool p_enabled);
+diff --git a/drivers/metal/rendering_device_driver_metal.cpp b/drivers/metal/rendering_device_driver_metal.cpp
+index 2602799645..808c8a2a27 100644
+--- a/drivers/metal/rendering_device_driver_metal.cpp
++++ b/drivers/metal/rendering_device_driver_metal.cpp
+@@ -57,20 +57,29 @@
+ #include "core/string/ustring.h"
+ #include "core/templates/hash_map.h"
+ #include "drivers/apple/foundation_helpers.h"
++#include "drivers/metal/metal_timestamp_capture.h"
+ #include "drivers/metal/pixel_formats.h"
+ #include "drivers/metal/rendering_context_driver_metal.h"
+ #include "drivers/metal/rendering_shader_container_metal.h"
+ 
+ #include <Metal/Metal.hpp>
++#include <mach/mach_time.h>
+ #include <os/log.h>
+ #include <os/signpost.h>
+ 
+ #include <algorithm>
++#include <atomic>
+ 
+ #ifndef MTLGPUAddress
+ typedef uint64_t MTLGPUAddress;
+ #endif
+ 
++static std::atomic_bool metal_timestamp_capture_enabled{ true };
++
++void metal_set_timestamp_capture_enabled(bool p_enabled) {
++	metal_timestamp_capture_enabled.store(p_enabled, std::memory_order_relaxed);
++}
++
+ #pragma mark - Logging
+ 
+ extern os_log_t LOG_DRIVER;
+@@ -2335,6 +2344,19 @@ void RenderingDeviceDriverMetal::command_trace_rays(CommandBufferID p_cmd_buffer
+ RDD::QueryPoolID RenderingDeviceDriverMetal::timestamp_query_pool_create(uint32_t p_query_count) {
+ 	TimestampQueryPool *pool = memnew(TimestampQueryPool);
+ 	pool->query_count = p_query_count;
++	if (timestamp_counter_set) {
++		NS::SharedPtr<MTL::CounterSampleBufferDescriptor> desc = NS::TransferPtr(MTL::CounterSampleBufferDescriptor::alloc()->init());
++		desc->setCounterSet(timestamp_counter_set.get());
++		desc->setSampleCount(p_query_count);
++		desc->setStorageMode(MTL::StorageModeShared);
++		desc->setLabel(MTLSTR("Godot GPU timestamp queries"));
++		NS::Error *error = nullptr;
++		pool->sample_buffer = NS::TransferPtr(device->newCounterSampleBuffer(desc.get(), &error));
++		if (!pool->sample_buffer) {
++			String reason = error ? String(error->localizedDescription()->utf8String()) : "unknown error";
++			WARN_PRINT(vformat("Metal timestamp counter sample buffer creation failed; using whole-frame GPU timings: %s", reason));
++		}
++	}
+ 	return QueryPoolID(pool);
+ }
+ 
+@@ -2344,6 +2366,45 @@ void RenderingDeviceDriverMetal::timestamp_query_pool_free(QueryPoolID p_pool_id
+ 
+ void RenderingDeviceDriverMetal::timestamp_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) {
+ 	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool_id.id;
++	if (pool->sample_buffer) {
++		_refresh_timestamp_period();
++		NS::SharedPtr<NS::Data> resolved = NS::RetainPtr(pool->sample_buffer->resolveCounterRange(NS::Range(0, p_query_count)));
++		const uint64_t *samples = resolved && resolved->length() >= p_query_count * sizeof(MTL::CounterResultTimestamp) ? (const uint64_t *)resolved->bytes() : nullptr;
++		for (uint32_t i = 0; i < p_query_count; i++) {
++			uint64_t value = samples ? samples[i] : 0;
++			if (value == 0 || value == MTL::CounterErrorValue || timestamp_ns_per_gpu_tick <= 0.0) {
++				r_results[i] = 0;
++			} else {
++				r_results[i] = (uint64_t)((long double)value * timestamp_ns_per_gpu_tick);
++			}
++		}
++
++		// Invalid samples arise when multiple markers share a pass boundary. Fill
++		// gaps with a neighboring real sample so deltas clamp to zero.
++		uint64_t previous = 0;
++		for (uint32_t i = 0; i < p_query_count; i++) {
++			if (r_results[i] != 0) {
++				previous = r_results[i];
++			} else if (previous != 0) {
++				r_results[i] = previous;
++			}
++		}
++		uint64_t next = 0;
++		for (uint32_t i = p_query_count; i > 0; i--) {
++			if (r_results[i - 1] != 0) {
++				next = r_results[i - 1];
++			} else if (next != 0) {
++				r_results[i - 1] = next;
++			}
++		}
++		for (uint32_t i = 1; i < p_query_count; i++) {
++			if (r_results[i] < r_results[i - 1]) {
++				r_results[i] = r_results[i - 1];
++			}
++		}
++		return;
++	}
++
+ 	MutexLock lock(pool->mutex);
+ 	DEV_ASSERT(p_query_count <= pool->query_count);
+ 	for (uint32_t i = 0; i < p_query_count; i++) {
+@@ -2366,8 +2427,72 @@ void RenderingDeviceDriverMetal::command_timestamp_query_pool_reset(CommandBuffe
+ }
+ 
+ void RenderingDeviceDriverMetal::command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {
++	if (!metal_timestamp_capture_enabled.load(std::memory_order_relaxed)) {
++		return;
++	}
+ 	MDCommandBufferBase *cb = (MDCommandBufferBase *)p_cmd_buffer.id;
+-	cb->timestamp_write((void *)p_pool_id.id, p_index);
++	cb->timestamp_write((void *)p_pool_id.id, p_index, _timestamp_pool_uses_counter_sampling((void *)p_pool_id.id));
++}
++
++bool RenderingDeviceDriverMetal::_timestamp_pool_uses_counter_sampling(void *p_pool) const {
++	return ((TimestampQueryPool *)p_pool)->sample_buffer.get() != nullptr;
++}
++
++void RenderingDeviceDriverMetal::_timestamp_attach_render_pass(void *p_pool, uint32_t p_index, MTL::RenderPassDescriptor *p_desc) {
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool;
++	MTL::RenderPassSampleBufferAttachmentDescriptor *attachment = p_desc->sampleBufferAttachments()->object(0);
++	attachment->setSampleBuffer(pool->sample_buffer.get());
++	attachment->setStartOfVertexSampleIndex(p_index);
++}
++
++void RenderingDeviceDriverMetal::_timestamp_attach_compute_pass(void *p_pool, uint32_t p_index, MTL::ComputePassDescriptor *p_desc) {
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool;
++	MTL::ComputePassSampleBufferAttachmentDescriptor *attachment = p_desc->sampleBufferAttachments()->object(0);
++	attachment->setSampleBuffer(pool->sample_buffer.get());
++	attachment->setStartOfEncoderSampleIndex(p_index);
++}
++
++void RenderingDeviceDriverMetal::_timestamp_attach_blit_pass(void *p_pool, uint32_t p_index, MTL::BlitPassDescriptor *p_desc) {
++	TimestampQueryPool *pool = (TimestampQueryPool *)p_pool;
++	MTL::BlitPassSampleBufferAttachmentDescriptor *attachment = p_desc->sampleBufferAttachments()->object(0);
++	attachment->setSampleBuffer(pool->sample_buffer.get());
++	attachment->setStartOfEncoderSampleIndex(p_index);
++}
++
++void RenderingDeviceDriverMetal::_initialize_timestamp_counters() {
++	if (!device->supportsCounterSampling(MTL::CounterSamplingPointAtStageBoundary)) {
++		return;
++	}
++
++	NS::Array *counter_sets = device->counterSets();
++	for (NS::UInteger i = 0; i < counter_sets->count(); i++) {
++		MTL::CounterSet *counter_set = counter_sets->object<MTL::CounterSet>(i);
++		if (counter_set->name()->isEqualToString(MTL::CommonCounterSetTimestamp)) {
++			timestamp_counter_set = NS::RetainPtr(counter_set);
++			break;
++		}
++	}
++	if (!timestamp_counter_set) {
++		return;
++	}
++
++	mach_timebase_info_data_t timebase;
++	if (mach_timebase_info(&timebase) == KERN_SUCCESS && timebase.denom != 0) {
++		timestamp_ns_per_cpu_tick = (double)timebase.numer / (double)timebase.denom;
++	}
++	device->sampleTimestamps(&timestamp_cpu_reference, &timestamp_gpu_reference);
++	print_verbose("Metal GPU timestamp counter sampling enabled.");
++}
++
++void RenderingDeviceDriverMetal::_refresh_timestamp_period() {
++	MTL::Timestamp cpu_now = 0;
++	MTL::Timestamp gpu_now = 0;
++	device->sampleTimestamps(&cpu_now, &gpu_now);
++	if (cpu_now > timestamp_cpu_reference && gpu_now > timestamp_gpu_reference) {
++		timestamp_ns_per_gpu_tick = ((double)(cpu_now - timestamp_cpu_reference) * timestamp_ns_per_cpu_tick) / (double)(gpu_now - timestamp_gpu_reference);
++		timestamp_cpu_reference = cpu_now;
++		timestamp_gpu_reference = gpu_now;
++	}
+ }
+ 
+ void RenderingDeviceDriverMetal::_timestamp_command_buffer_completed(void *p_pool, MTL::CommandBuffer *p_command_buffer) {
+@@ -2897,6 +3022,7 @@ Error RenderingDeviceDriverMetal::_initialize(uint32_t p_device_index, uint32_t
+ 	context_device = context_driver->device_get(p_device_index);
+ 	Error err = _create_device();
+ 	ERR_FAIL_COND_V(err, ERR_CANT_CREATE);
++	_initialize_timestamp_counters();
+ 
+ 	device_properties = memnew(MetalDeviceProperties(device));
+ 	pixel_formats = memnew(PixelFormats(device, device_properties->features));
+diff --git a/drivers/metal/rendering_device_driver_metal.h b/drivers/metal/rendering_device_driver_metal.h
+index fe0b799b9e..533bb472a8 100644
+--- a/drivers/metal/rendering_device_driver_metal.h
++++ b/drivers/metal/rendering_device_driver_metal.h
+@@ -490,9 +490,22 @@ public:
+ 		uint32_t query_count = 0;
+ 		uint64_t gpu_start_ns = 0;
+ 		uint64_t gpu_end_ns = 0;
++		NS::SharedPtr<MTL::CounterSampleBuffer> sample_buffer;
+ 	};
+ 
++	NS::SharedPtr<MTL::CounterSet> timestamp_counter_set;
++	MTL::Timestamp timestamp_cpu_reference = 0;
++	MTL::Timestamp timestamp_gpu_reference = 0;
++	double timestamp_ns_per_gpu_tick = 0.0;
++	double timestamp_ns_per_cpu_tick = 1.0;
++
++	void _initialize_timestamp_counters();
++	void _refresh_timestamp_period();
+ 	void _timestamp_command_buffer_completed(void *p_pool, MTL::CommandBuffer *p_command_buffer);
++	bool _timestamp_pool_uses_counter_sampling(void *p_pool) const;
++	void _timestamp_attach_render_pass(void *p_pool, uint32_t p_index, MTL::RenderPassDescriptor *p_desc);
++	void _timestamp_attach_compute_pass(void *p_pool, uint32_t p_index, MTL::ComputePassDescriptor *p_desc);
++	void _timestamp_attach_blit_pass(void *p_pool, uint32_t p_index, MTL::BlitPassDescriptor *p_desc);
+ 
+ 	// ----- TIMESTAMP -----
+ 
