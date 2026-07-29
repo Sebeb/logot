@@ -774,6 +774,8 @@ func _submit_line_edit_input(raw_text: String, keep_input: bool = false, prefer_
 			_display.add_to_command_history(submitted_text)
 		if _logot and _logot.has_method("on_text_entered"):
 			_logot.on_text_entered(submitted_text)
+		if keep_input and _display:
+			_display.reconcile_retained_command_path()
 		return true
 
 	return not keep_input

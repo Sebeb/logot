@@ -6092,6 +6092,50 @@ func _set_line_edit_command_path(command_path: String, include_trailing_separato
 	line_edit.caret_column = line_edit.text.length()
 
 
+## Repositions a retained command input at its nearest valid ancestor after a
+## command changes the catalog. Root is always a valid fallback.
+func reconcile_retained_command_path() -> void:
+	if not line_edit:
+		return
+
+	var input_text := line_edit.text.strip_edges()
+	if not input_text.begins_with("/") or input_text.begins_with("//"):
+		return
+
+	var command_path := input_text.substr(1).trim_suffix("/")
+	var argument_separator := command_path.find(" ")
+	if argument_separator != -1:
+		command_path = command_path.substr(0, argument_separator)
+	command_path = _resolve_alias_command_path(command_path)
+
+	var registered_addresses := _get_registered_addresses()
+	if _is_registered_command_path_or_parent(command_path, registered_addresses):
+		return
+
+	var separator := command_path.rfind("/")
+	command_path = command_path.substr(0, separator) if separator != -1 else ""
+	while not command_path.is_empty():
+		if _is_registered_command_path_or_parent(command_path, registered_addresses):
+			_set_line_edit_command_path(command_path, true)
+			update_autocomplete_popup()
+			return
+
+		var parent_separator := command_path.rfind("/")
+		command_path = command_path.substr(0, parent_separator) if parent_separator != -1 else ""
+
+	_set_line_edit_command_path("", false)
+	update_autocomplete_popup()
+
+
+func _is_registered_command_path_or_parent(command_path: String, registered_addresses: Array[String]) -> bool:
+	if registered_addresses.has(command_path):
+		return true
+	for address in registered_addresses:
+		if str(address).begins_with(command_path + "/"):
+			return true
+	return false
+
+
 func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String]:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
 	var addresses: Array[String] = []
