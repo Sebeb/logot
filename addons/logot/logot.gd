@@ -785,10 +785,10 @@ func _rebuild_orderable_group_commands(group_path: String) -> void:
 		console_commands[object_path] = object_command
 		generated.append(object_path)
 		var actions := [
-			["move up", -1, false, KEY_UP],
-			["move down", 1, false, KEY_DOWN],
-			["move to top", -1, true, (KEY_UP | KEY_MASK_SHIFT) as Key],
-			["move to bottom", 1, true, (KEY_DOWN | KEY_MASK_SHIFT) as Key],
+			["move_up", -1, false, KEY_UP],
+			["move_down", 1, false, KEY_DOWN],
+			["move_to_top", -1, true, (KEY_UP | KEY_MASK_SHIFT) as Key],
+			["move_to_bottom", 1, true, (KEY_DOWN | KEY_MASK_SHIFT) as Key],
 		]
 		for action in actions:
 			var action_path := "%s/%s" % [object_path, str(action[0])]

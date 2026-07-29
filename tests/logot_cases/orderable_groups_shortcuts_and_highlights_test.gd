@@ -25,8 +25,8 @@ func run(ctx) -> void:
 	var commands: Dictionary = ctx.console.get_console_commands()
 	ctx.check("orderable objects become labeled commands", commands.has("test-orderable/items/alpha") and commands["test-orderable/items/alpha"].display_label == "Alpha")
 	ctx.check("objects carry orderable metadata", commands["test-orderable/items/alpha"].orderable_group == "test-orderable/items")
-	ctx.check("move submenu contains four actions", commands.has("test-orderable/items/alpha/move up") and commands.has("test-orderable/items/alpha/move down") and commands.has("test-orderable/items/alpha/move to top") and commands.has("test-orderable/items/alpha/move to bottom"))
-	ctx.check("move actions use expected shortcuts", commands["test-orderable/items/alpha/move up"].keyboard_shortcut == KEY_UP and commands["test-orderable/items/alpha/move to top"].keyboard_shortcut == (KEY_UP | KEY_MASK_SHIFT))
+	ctx.check("move submenu contains four actions", commands.has("test-orderable/items/alpha/move_up") and commands.has("test-orderable/items/alpha/move_down") and commands.has("test-orderable/items/alpha/move_to_top") and commands.has("test-orderable/items/alpha/move_to_bottom"))
+	ctx.check("move actions use expected shortcuts", commands["test-orderable/items/alpha/move_up"].keyboard_shortcut == KEY_UP and commands["test-orderable/items/alpha/move_to_top"].keyboard_shortcut == (KEY_UP | KEY_MASK_SHIFT))
 
 	ctx.console._move_orderable_object("test-orderable/items", "beta", -1, false)
 	ctx.check("move callback rewrites every order", objects[0].order == 1 and objects[1].order == 0 and objects[2].order == 2)

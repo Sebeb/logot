@@ -46,7 +46,7 @@ The successful PGO-111 retest ran the focused behavior suite headlessly (18/18 c
 
 ## Orderable Groups, Shortcuts, and Multi-Highlights
 
-`Logot.add_orderable_group(path, fetch_objects, get_order, set_order)` registers a group whose provider returns `{id, label}` dictionaries. The palette sorts those generated object commands by `get_order`, renders a drag handle on each row, and rewrites zero-based orders through `set_order` after a handle drag. `refresh_orderable_group(path)` rebuilds the generated catalog when membership or labels change. Every object receives a `move` submenu with move-up, move-down, move-to-top, and move-to-bottom commands bound to Cmd/Ctrl+Up, Cmd/Ctrl+Down, Cmd/Ctrl+Shift+Up, and Cmd/Ctrl+Shift+Down.
+`Logot.add_orderable_group(path, fetch_objects, get_order, set_order)` registers a group whose provider returns `{id, label}` dictionaries. The palette sorts those generated object commands by `get_order`, renders a drag handle on each row, and rewrites zero-based orders through `set_order` after a handle drag. `refresh_orderable_group(path)` rebuilds the generated catalog when membership or labels change. Every object receives a `move` submenu with `move_up`, `move_down`, `move_to_top`, and `move_to_bottom` commands bound to Cmd/Ctrl+Up, Cmd/Ctrl+Down, Cmd/Ctrl+Shift+Up, and Cmd/Ctrl+Shift+Down.
 
 Commands accept an optional trailing `keyboard_shortcut: Key`. Visible shortcuts are resolved across the active column and its immediate preview: preview bindings replace active-column bindings, while the first row wins within one column. Losing bindings remain visible with reduced alpha. A command/control key event submits the winning command directly.
 
