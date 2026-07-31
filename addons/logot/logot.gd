@@ -265,6 +265,7 @@ var was_paused_already := false
 var _pending_pinned_display_variables: Dictionary = {}
 var _ui_update_batch_depth := 0
 var _ui_update_batch_displays: Array[LogotDisplay] = []
+var _catalog_validation_pending := false
 var _pending_render_texture_widget_view_mode: Dictionary = {}
 var _external_displays: Array = []
 var _display_variable_signal_connections: Dictionary = {}
@@ -2178,6 +2179,9 @@ func batch_ui_updates(callback: Callable) -> bool:
 	callback.call()
 	_ui_update_batch_depth -= 1
 	if _ui_update_batch_depth == 0:
+		if _catalog_validation_pending:
+			_catalog_validation_pending = false
+			_validate_default_child_commands()
 		for display in _ui_update_batch_displays:
 			if display != null and is_instance_valid(display):
 				display.end_ui_update_batch()
@@ -2425,7 +2429,14 @@ func _on_display_variable_signal_emitted(address: String) -> void:
 
 
 func _notify_command_catalog_changed() -> void:
-	_validate_default_child_commands()
+	# Validating every default-child chain is O(commands); doing it on each add/remove
+	# makes bulk (un)registration O(commands^2), the boot/quit lag spike. Inside a
+	# batch, coalesce the validation into a single pass at batch end (see
+	# batch_ui_updates); the diagnostic result is identical and reflects the final state.
+	if _ui_update_batch_depth > 0:
+		_catalog_validation_pending = true
+	else:
+		_validate_default_child_commands()
 	for display in _get_live_displays():
 		display.invalidate_command_catalog()
 
