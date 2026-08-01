@@ -250,6 +250,7 @@ signal timer_paused(key: String, name: String, elapsed_text: String)
 signal timer_resumed(key: String, name: String)
 signal timer_stopped(key: String, name: String, elapsed_text: String)
 signal performance_fps_changed()
+signal pinned_display_variables_visibility_changed(visible: bool)
 
 var control: Control
 var rich_label: RichTextLabel
@@ -4492,6 +4493,18 @@ func _toggle_all_pins_visibility() -> void:
 			continue
 		if display.has_method("set_pinned_display_variables_visible"):
 			display.set_pinned_display_variables_visible(next_visible)
+
+	pinned_display_variables_visibility_changed.emit(next_visible)
+
+
+func is_pinned_display_variables_visible() -> bool:
+	var active_display := _get_active_display()
+	if active_display and active_display.has_method("is_pinned_display_variables_visible"):
+		return bool(active_display.is_pinned_display_variables_visible())
+	var live_displays := _get_live_displays()
+	if not live_displays.is_empty() and live_displays[0].has_method("is_pinned_display_variables_visible"):
+		return bool(live_displays[0].is_pinned_display_variables_visible())
+	return true
 
 
 func _set_setting_truncate_multiline(value: bool) -> void:
