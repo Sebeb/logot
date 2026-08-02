@@ -1739,7 +1739,7 @@ func remove_widget(address: String) -> void:
 
 
 func get_widgets() -> Dictionary:
-	return widgets.duplicate()
+	return widgets
 
 
 ## Pins a value in the overlay. Set options["wrap_value"] to true for prose values.
@@ -2383,7 +2383,11 @@ func get_render_texture_widget_view_mode(address: String) -> String:
 
 
 func get_console_commands() -> Dictionary:
-	return console_commands.duplicate()
+	return console_commands
+
+
+func has_command(command_path: String) -> bool:
+	return console_commands.has(command_path)
 
 
 func get_display_variables() -> Dictionary:
