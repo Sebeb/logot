@@ -7,7 +7,7 @@ func _init() -> void:
 	id = "command_palette_pinned_variables"
 	display_name = "Command Palette Pinned Variables"
 	scene_path = "res://Main.tscn"
-	fail_fast = true
+	fail_fast = false
 
 
 func run(ctx) -> void:
@@ -29,6 +29,9 @@ func run(ctx) -> void:
 	var multiline_value_address := "tests/command_palette_multiline_value"
 	console.add_display_variable(multiline_value_address, func(): return "first line\nsecond line")
 	console.pin_display_variable(multiline_value_address)
+	var wrapping_value_address := "tests/command_palette_wrapping_value"
+	console.add_display_variable(wrapping_value_address, func(): return "A declared prose value wraps beneath its label across every line required by the available column width.", Callable(), Callable(), true, "", 0, null, &"", Callable(), {"wrap_value": true})
+	console.pin_display_variable(wrapping_value_address)
 	var rich_text_value_address := "tests/command_palette_rich_text_value"
 	console.pin(rich_text_value_address, "[color=#ff2e2ef2]Generation Cells[/color]")
 	var root_matches: Array = display._build_tier_matches("", "")
@@ -86,6 +89,29 @@ func run(ctx) -> void:
 		"row=%s" % [display._pinned_overlay_rows[multiline_value_address].get_parsed_text()]
 	)
 	ctx.check(
+		"declared-wrapping pinned values move beneath their title",
+		bool(display._pinned_overlay_rows[wrapping_value_address].get_meta("logot_pin_stacked_value", false))
+	)
+	ctx.check("non-declaring display variables remain compact", not bool(display._get_display_variable_render_snapshot(address).get("wrap_value", false)))
+	ctx.check("declared-wrapping snapshot exposes its declaration", bool(display._get_display_variable_render_snapshot(wrapping_value_address).get("wrap_value", false)))
+
+	var mixed_column = LogotDisplay.AutocompleteCommandColumn.new()
+	display.add_child(mixed_column)
+	mixed_column.configure_theme(display)
+	mixed_column.size = Vector2(260.0, 320.0)
+	var mixed_rows: Array[Dictionary] = [
+		{"label": "compact before", "value_text": "one", "measured_value_width": 40},
+		{"label": "wrapped prose", "value_text": "This declared prose value needs several measured lines in the narrow test column.", "wrap_value": true, "measured_value_width": 400},
+		{"label": "compact after", "value_text": "two", "measured_value_width": 40},
+	]
+	mixed_column.set_column_data(mixed_rows, {}, -1, false, 32)
+	var wrapped_height: float = mixed_column._get_row_height(1)
+	ctx.check("declared-wrapping column value uses N-line measured height", wrapped_height > 64.0, "height=%s rows=%s" % [wrapped_height, mixed_column.get_rows()])
+	ctx.check("non-declaring column rows retain one-line height", is_equal_approx(mixed_column._get_row_height(0), 32.0) and is_equal_approx(mixed_column._get_row_height(2), 32.0))
+	var third_row_y := mixed_column._get_row_height(0) + wrapped_height + 1.0
+	ctx.check("mixed-height hit-testing resolves the row after wrapped prose", mixed_column._get_row_index_at_position(Vector2(10.0, third_row_y)) == 2, "y=%s prefix=%s" % [third_row_y, mixed_column._row_height_prefix])
+	await ctx.capture_visual("declared_wrapping_column_and_overlay")
+	ctx.check(
 		"pinned custom values parse BBCode",
 		"Generation Cells" in display._pinned_overlay_rows[rich_text_value_address].get_parsed_text()
 			and not "[color=" in display._pinned_overlay_rows[rich_text_value_address].get_parsed_text(),
@@ -136,5 +162,8 @@ func run(ctx) -> void:
 	console.remove_display_variable(long_label_address)
 	console.unpin_display_variable(multiline_value_address)
 	console.remove_display_variable(multiline_value_address)
+	console.unpin_display_variable(wrapping_value_address)
+	console.remove_display_variable(wrapping_value_address)
+	mixed_column.queue_free()
 	console.unpin(rich_text_value_address)
 	console._close_command_entry_view()
