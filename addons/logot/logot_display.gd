@@ -1474,7 +1474,14 @@ class AutocompleteCommandColumn:
 					current = candidate
 					continue
 				lines.append(current)
-				current = word
+				current = ""
+				for character in word:
+					var split_candidate := current + character
+					if not current.is_empty() and _font.get_string_size(split_candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size).x > max_width:
+						lines.append(current)
+						current = character
+					else:
+						current = split_candidate
 			if not current.is_empty() or paragraph.is_empty():
 				lines.append(current)
 		if lines.is_empty():
@@ -9170,7 +9177,16 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		column_height = int(_get_touch_command_autocomplete_column_size().y)
 	if bool(column_state.get("preview", false)):
 		var estimated_header_height := 72
-		var row_capacity := maxi(1, int(floor(float(maxi(0, column_height - estimated_header_height)) / float(maxi(1, _get_scaled_autocomplete_item_height())))))
+		var available_preview_height := float(maxi(0, column_height - estimated_header_height))
+		var row_capacity := 0
+		var base_row_height := float(maxi(1, _get_scaled_autocomplete_item_height()))
+		for row_data in rows:
+			var candidate_height := base_row_height * maxf(1.0, float((row_data as Dictionary).get("row_height_multiplier", 1.0)))
+			if row_capacity > 0 and candidate_height > available_preview_height:
+				break
+			available_preview_height -= candidate_height
+			row_capacity += 1
+		row_capacity = maxi(1, row_capacity)
 		var fitted_rows := _collapse_rows_between_highlights(rows, row_capacity)
 		if fitted_rows.size() != rows.size():
 			rows = fitted_rows

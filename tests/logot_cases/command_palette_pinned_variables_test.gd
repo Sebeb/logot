@@ -108,7 +108,7 @@ func run(ctx) -> void:
 	var wrapped_height: float = mixed_column._get_row_height(1)
 	ctx.check("declared-wrapping column value uses N-line measured height", wrapped_height > 64.0, "height=%s rows=%s" % [wrapped_height, mixed_column.get_rows()])
 	ctx.check("non-declaring column rows retain one-line height", is_equal_approx(mixed_column._get_row_height(0), 32.0) and is_equal_approx(mixed_column._get_row_height(2), 32.0))
-	var third_row_y := mixed_column._get_row_height(0) + wrapped_height + 1.0
+	var third_row_y := mixed_column._get_rows_top_for_scroll(0) + mixed_column._get_row_height(0) + wrapped_height + 1.0
 	ctx.check("mixed-height hit-testing resolves the row after wrapped prose", mixed_column._get_row_index_at_position(Vector2(10.0, third_row_y)) == 2, "y=%s prefix=%s" % [third_row_y, mixed_column._row_height_prefix])
 	await ctx.capture_visual("declared_wrapping_column_and_overlay")
 	ctx.check(
