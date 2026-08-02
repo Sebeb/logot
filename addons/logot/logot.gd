@@ -890,7 +890,7 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		option_group_name,
 		option_group_priority
 	)
-	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name)
+	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name, Callable(), {})
 
 
 func _resolve_setget_option_values(getter: Callable, options_provider: Callable = Callable()) -> Array:
@@ -2035,7 +2035,8 @@ func _ensure_timer_display_variables(key: String) -> void:
 		TIMER_COMMAND_GROUP_PRIORITY,
 		null,
 		&"",
-		Callable(self, "_get_timer_display_name").bind(normalized_key)
+		Callable(self, "_get_timer_display_name").bind(normalized_key),
+		{}
 	)
 
 
@@ -4704,7 +4705,8 @@ func _register_ingame_popup_commands() -> void:
 		add_display_variable(
 			command_path,
 			Callable(self, "_get_ingame_popup_level_indicator").bind(level),
-			Callable(self, "_get_ingame_popup_level_indicator_color").bind(level)
+			Callable(self, "_get_ingame_popup_level_indicator_color").bind(level),
+			Callable(), true, "", 0, null, &"", Callable(), {}
 		)
 
 
@@ -4716,7 +4718,7 @@ func _register_dev_commands() -> void:
 		0,
 		"Prints the current git branch name."
 	)
-	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch, Callable(), _get_current_git_branch_display_items)
+	add_display_variable(_CURRENT_GIT_BRANCH_COMMAND_PATH, _get_current_git_branch, Callable(), _get_current_git_branch_display_items, true, "", 0, null, &"", Callable(), {})
 	_register_performance_commands()
 
 
@@ -4738,7 +4740,9 @@ func _register_performance_commands() -> void:
 		"",
 		0,
 		self,
-		&"performance_fps_changed"
+		&"performance_fps_changed",
+		Callable(),
+		{}
 	)
 	add_widget(
 		_PERFORMANCE_OVERVIEW_WIDGET_PATH,
