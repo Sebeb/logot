@@ -149,6 +149,7 @@ class LogotDisplayVariable:
 	var change_signal_source: Object
 	var change_signal_name: StringName
 	var display_label_provider: Callable
+	var wrap_value: bool
 
 	func _init(
 		in_getter: Callable,
@@ -159,7 +160,8 @@ class LogotDisplayVariable:
 		in_group_priority: int = 0,
 		in_change_signal_source: Object = null,
 		in_change_signal_name: StringName = &"",
-		in_display_label_provider: Callable = Callable()
+		in_display_label_provider: Callable = Callable(),
+		in_options: Dictionary = {}
 	):
 		getter = in_getter
 		inline_color_provider = in_inline_color_provider
@@ -170,6 +172,7 @@ class LogotDisplayVariable:
 		change_signal_source = in_change_signal_source
 		change_signal_name = in_change_signal_name
 		display_label_provider = in_display_label_provider
+		wrap_value = bool(in_options.get("wrap_value", false))
 
 
 class LogotWidget:
@@ -5027,8 +5030,10 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 	var items: Array[Dictionary] = []
 	var inline_color := Color.TRANSPARENT
 	var display_label := ""
+	var wrap_value := false
 	if display_variable is LogotDisplayVariable:
 		var display_variable_object := display_variable as LogotDisplayVariable
+		wrap_value = display_variable_object.wrap_value
 		if display_variable_object.getter.is_valid():
 			current_value = display_variable_object.getter.call()
 		if display_variable_object.items_provider.is_valid():
@@ -5084,6 +5089,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 		"resolved_address": resolved_address,
 		"text": text,
 		"display_label": display_label,
+		"wrap_value": wrap_value,
 		"items": items,
 		"inline_color": inline_color,
 		"autocomplete_color": autocomplete_color,
@@ -5091,6 +5097,7 @@ func _get_display_variable_render_snapshot(address: String) -> Dictionary:
 		"signature": var_to_str({
 			"text": text,
 			"display_label": display_label,
+			"wrap_value": wrap_value,
 			"items": item_signatures,
 			"inline_color": inline_color.to_html(false),
 			"autocomplete_color": autocomplete_color.to_html(false),
