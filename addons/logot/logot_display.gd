@@ -1977,6 +1977,7 @@ const AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH := 380
 const AUTOCOMPLETE_VALUE_MAX_WIDTH := 180
 const AUTOCOMPLETE_HEADER_WIDTH_BUFFER := 28
 const AUTOCOMPLETE_TEXT_WIDTH_CACHE_LIMIT := 4096
+const AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT := 8
 const AUTOCOMPLETE_COMMAND_SLIDE_DURATION := 0.16
 const AUTOCOMPLETE_COMMAND_SLIDE_DISTANCE := 28.0
 const COMMAND_PALETTE_RESIZE_HANDLE_WIDTH := 56.0
@@ -2230,6 +2231,7 @@ var _autocomplete_tiers_with_children: Dictionary = {}
 var _tier_command_group_cache: Dictionary = {}
 var _signal_backed_display_snapshot_cache: Dictionary = {}
 var _autocomplete_text_width_cache: Dictionary = {}
+var _autocomplete_display_value_cache: Dictionary = {}
 var _autocomplete_visible_address_columns: Dictionary = {}
 var _visible_getter_autocomplete_signatures: Dictionary = {}
 var _ingame_overlay_top_edge_override := 0.0
@@ -2378,6 +2380,7 @@ func invalidate_display_variable(address: String) -> void:
 	if normalized_address.is_empty():
 		return
 	_signal_backed_display_snapshot_cache.erase(normalized_address)
+	_autocomplete_display_value_cache.erase(normalized_address)
 	_debug_display_variable_invalidation_count += 1
 	if _pinned_display_variables.has(normalized_address):
 		_update_pinned_corner_redirects()
@@ -5061,6 +5064,14 @@ func _get_display_variable_entry(address: String) -> Dictionary:
 	}
 
 
+func _get_display_variable_wrap_value(address: String) -> bool:
+	if address.is_empty():
+		return false
+	var entry := _get_display_variable_entry(address)
+	var display_variable = entry.get("display_variable", null)
+	return display_variable is LogotDisplayVariable and (display_variable as LogotDisplayVariable).wrap_value
+
+
 func _is_signal_backed_display_variable(address: String) -> bool:
 	var entry := _get_display_variable_entry(address)
 	var display_variable = entry.get("display_variable", null)
@@ -7119,6 +7130,10 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 	var display_variable_address := ""
 	if match_data.get("has_display_variable", false):
 		display_variable_address = _resolve_alias_command_path(str(match_data.get("tier", "")))
+	# Row geometry needs to know that a value wraps before its getter is hydrated. The
+	# declaration is available without resolving the value, so keep the expensive text
+	# lookup lazy while giving wrapped rows their correct layout mode from the start.
+	var wrap_value := _get_display_variable_wrap_value(display_variable_address)
 	var row := {
 		"label": _get_autocomplete_tier_label(prefix, match_data),
 		"label_highlight_ranges": match_data.get("label_highlight_ranges", []),
@@ -7127,6 +7142,7 @@ func _build_command_autocomplete_row_data(prefix: String, match_data: Dictionary
 		"value_text_color": null,
 		"value_items": shortcut_items,
 		"display_variable_address": display_variable_address,
+		"wrap_value": wrap_value,
 		"value_loaded": display_variable_address.is_empty(),
 		"has_children": match_data.get("has_children", false),
 		"can_submit": match_data.get("has_command", false),
@@ -7365,12 +7381,8 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 			continue
 		var match_data: Dictionary = matches[match_index]
 		var value_data := _get_autocomplete_display_variable_value_data(match_data)
-		row_data["value_text"] = str(value_data.get("text", ""))
-		row_data["value_text_color"] = value_data.get("color", null)
-		row_data["value_items"] = value_data.get("items", [])
-		row_data["wrap_value"] = bool(value_data.get("wrap_value", false))
-		row_data["display_variable_address"] = str(value_data.get("address", row_data.get("display_variable_address", "")))
-		row_data["value_loaded"] = true
+		_cache_autocomplete_display_value(value_data)
+		_apply_autocomplete_row_display_value(row_data, value_data, true)
 		var row_value_width := _get_command_autocomplete_row_value_width(list, row_data)
 		var row_action_width := _get_command_autocomplete_row_action_width(row_data)
 		row_data["measured_value_width"] = row_value_width
@@ -7419,26 +7431,53 @@ func _get_autocomplete_display_variable_value_data_for_address(address: String) 
 	}
 
 
-# A row's pinned value is resolved lazily once it scrolls into view, but the column has to
-# be measured before any row is visible. Measuring an unresolved row would size the column
-# for its label alone, so pull the value in eagerly when the layout pass needs its width.
-func _resolve_autocomplete_row_display_value(row_data: Dictionary, snapshot_cache: Dictionary) -> void:
-	if bool(row_data.get("value_loaded", false)):
-		return
-	var address := _resolve_alias_command_path(str(row_data.get("display_variable_address", "")).strip_edges())
+## Keeps value-width measurements across catalog rebuilds without making cached data authoritative
+## for visible rows. Hydration always refreshes visible values from their getter.
+func _cache_autocomplete_display_value(value_data: Dictionary) -> void:
+	var address := _resolve_alias_command_path(str(value_data.get("address", "")).strip_edges())
 	if address.is_empty():
-		row_data["value_loaded"] = true
 		return
-	var value_data: Dictionary = snapshot_cache.get(address, {})
-	if value_data.is_empty():
-		value_data = _get_autocomplete_display_variable_value_data_for_address(address)
-		snapshot_cache[address] = value_data
+	if _autocomplete_display_value_cache.size() >= AUTOCOMPLETE_TEXT_WIDTH_CACHE_LIMIT:
+		_autocomplete_display_value_cache.clear()
+	_autocomplete_display_value_cache[address] = value_data.duplicate(true)
+
+
+func _apply_autocomplete_row_display_value(row_data: Dictionary, value_data: Dictionary, value_loaded: bool) -> void:
 	row_data["value_text"] = str(value_data.get("text", ""))
 	row_data["value_text_color"] = value_data.get("color", null)
 	row_data["value_items"] = value_data.get("items", [])
 	row_data["wrap_value"] = bool(value_data.get("wrap_value", false))
-	row_data["display_variable_address"] = str(value_data.get("address", address))
-	row_data["value_loaded"] = true
+	row_data["display_variable_address"] = str(value_data.get("address", row_data.get("display_variable_address", "")))
+	row_data["value_loaded"] = value_loaded
+
+
+func _apply_cached_autocomplete_row_display_value(row_data: Dictionary) -> bool:
+	var address := _resolve_alias_command_path(str(row_data.get("display_variable_address", "")).strip_edges())
+	if address.is_empty():
+		return false
+	if not _autocomplete_display_value_cache.has(address):
+		return false
+	_apply_autocomplete_row_display_value(row_data, _autocomplete_display_value_cache[address] as Dictionary, false)
+	return true
+
+
+## A bounded sample gives a new column a useful first width. Uncached values remain lazy and
+## are measured when they scroll into view, where they can widen the column if necessary.
+func _sample_autocomplete_row_display_value(row_data: Dictionary, snapshot_cache: Dictionary) -> bool:
+	if bool(row_data.get("value_loaded", false)):
+		return false
+	var address := _resolve_alias_command_path(str(row_data.get("display_variable_address", "")).strip_edges())
+	if address.is_empty():
+		return false
+	if _apply_cached_autocomplete_row_display_value(row_data):
+		return false
+	var value_data: Dictionary = snapshot_cache.get(address, {})
+	if value_data.is_empty():
+		value_data = _get_autocomplete_display_variable_value_data_for_address(address)
+		snapshot_cache[address] = value_data
+	_cache_autocomplete_display_value(value_data)
+	_apply_autocomplete_row_display_value(row_data, value_data, false)
+	return true
 
 
 func _get_command_autocomplete_column_name(prefix: String) -> String:
@@ -8581,7 +8620,7 @@ func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
 	return current_action_width
 
 
-func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String, reserved_width: int = 0) -> Dictionary:
+func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String, reserved_width: int = 0, unloaded_value_sample_count: int = AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT) -> Dictionary:
 	var column_has_icons := false
 	for candidate_row in rows:
 		if (candidate_row as Dictionary).get("icon") is Texture2D:
@@ -8592,6 +8631,7 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	var action_width := 0
 	var total_width := 0
 	var value_snapshot_cache: Dictionary = {}
+	var remaining_value_samples := maxi(0, unloaded_value_sample_count)
 	for row_index in range(rows.size()):
 		var row_data: Dictionary = rows[row_index]
 		var row_name_width := _measure_autocomplete_text_width(control, str(row_data.get("label", "")))
@@ -8611,7 +8651,9 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 			rows[row_index] = row_data
 			continue
 		name_width = maxi(name_width, row_name_width)
-		_resolve_autocomplete_row_display_value(row_data, value_snapshot_cache)
+		if not bool(row_data.get("value_loaded", false)) and not _apply_cached_autocomplete_row_display_value(row_data) and remaining_value_samples > 0:
+			if _sample_autocomplete_row_display_value(row_data, value_snapshot_cache):
+				remaining_value_samples -= 1
 		row_value_width = _get_command_autocomplete_row_value_width(control, row_data)
 		row_action_width = _get_command_autocomplete_row_action_width(row_data)
 		if row_value_width > 0:
@@ -8718,6 +8760,10 @@ func _on_command_autocomplete_column_visible_rows_changed(list: AutocompleteComm
 		if row_variant is Dictionary:
 			rows.append(row_variant as Dictionary)
 	if _hydrate_visible_command_autocomplete_rows(list, _autocomplete_column_states[column_index], rows):
+		_autocomplete_column_states[column_index] = _refresh_autocomplete_column_layout_after_visible_hydration(list, _autocomplete_column_states[column_index], column_index, rows)
+		_update_touch_command_autocomplete_column_visibility()
+		_position_command_autocomplete_popup()
+		_ensure_active_command_column_visible()
 		_refresh_autocomplete_visible_address_tracking()
 
 
@@ -9232,11 +9278,51 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 			column_description
 		)
 
-	_hydrate_visible_command_autocomplete_rows(list, column_state, rows)
+	if _hydrate_visible_command_autocomplete_rows(list, column_state, rows):
+		column_state = _refresh_autocomplete_column_layout_after_visible_hydration(list, column_state, column_index, rows)
 	var show_touch_navigation := _is_touch_command_palette_layout() and is_active_column and not bool(column_state.get("preview", false))
 	var navigation_label := "Close" if str(column_state.get("prefix", "")).is_empty() else "Back"
 	list.set_header_navigation(show_touch_navigation, navigation_label)
 
+	return column_state
+
+
+## Visible values own the final column width. The bounded first-pass sample avoids a full
+## getter sweep, then each newly hydrated scroll window converges the layout on real values.
+func _refresh_autocomplete_column_layout_after_visible_hydration(list: AutocompleteCommandColumn, column_state: Dictionary, column_index: int, rows: Array[Dictionary]) -> Dictionary:
+	var prefix := str(column_state.get("prefix", ""))
+	var command_name := prefix.trim_suffix("/")
+	var column_name := str(column_state.get("column_name_override", _get_command_autocomplete_column_name(prefix)))
+	var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
+	var widget_path := _get_widget_path_for_autocomplete_column_state(column_state)
+	var scrollbar_reserve := int(ceil(list.get_row_scrollbar_reserve_width()))
+	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve, 0)
+	var previous_width := int(column_state.get("width", 0))
+	_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, scrollbar_reserve)
+	if int(column_state.get("width", 0)) == previous_width:
+		return column_state
+
+	var selected_row_index := -1
+	var selected_match_index := int(column_state.get("selected_index", -1))
+	for row_index in range(rows.size()):
+		if int((rows[row_index] as Dictionary).get("match_index", -1)) == selected_match_index:
+			selected_row_index = row_index
+			break
+	var column_height := list.custom_minimum_size.y
+	if column_height <= 0.0:
+		column_height = list.size.y
+	list.custom_minimum_size = Vector2(column_state["width"], column_height)
+	list.size = list.custom_minimum_size
+	list.set_column_data(
+		rows,
+		layout,
+		selected_row_index,
+		column_state.get("preview", false),
+		_get_scaled_autocomplete_item_height(),
+		column_index == _autocomplete_active_column_index,
+		column_name,
+		column_description
+	)
 	return column_state
 
 

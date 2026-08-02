@@ -30,6 +30,12 @@ func run(ctx) -> void:
 		addresses.append(address)
 		console.add_display_variable(address, _read_value.bind(address))
 
+	# Give the headless column enough width to distinguish the short and long layouts.
+	console.line_edit.custom_minimum_size.x = 380.0
+	console.line_edit.size.x = 380.0
+	# Keep the initial viewport at the short values so the final long value proves that
+	# scrolling can refine width without preloading the entire column.
+	display._autocomplete_highlighted_tiers["perf_values/"] = "perf_values/item_00"
 	console.line_edit.text = "/perf_values/"
 	console.line_edit.caret_column = console.line_edit.text.length()
 	display.on_text_changed_autocomplete(console.line_edit.text)
@@ -45,6 +51,16 @@ func run(ctx) -> void:
 	var active_index: int = display._autocomplete_active_column_index
 	var active_column = display._autocomplete_column_nodes[active_index] if active_index >= 0 and active_index < display._autocomplete_column_nodes.size() else null
 	var active_column_id: int = active_column.get_instance_id() if active_column != null else 0
+	var initial_width := int(display._autocomplete_column_states[active_index].get("width", 0)) if active_index >= 0 and active_index < display._autocomplete_column_states.size() else 0
+	if active_column != null:
+		active_column._scroll_rows(VALUE_COUNT)
+		await ctx.wait_frames(2)
+	var widened_width := int(display._autocomplete_column_states[active_index].get("width", 0)) if active_index >= 0 and active_index < display._autocomplete_column_states.size() else 0
+	ctx.check(
+		"scrolling a long value widens the column lazily",
+		widened_width > initial_width,
+		"initial=%d widened=%d" % [initial_width, widened_width]
+	)
 
 	display._debug_autocomplete_update_count = 0
 	for query in ["/perf_values/i", "/perf_values/it", "/perf_values/item_1"]:
@@ -91,4 +107,6 @@ func run(ctx) -> void:
 
 func _read_value(address: String) -> String:
 	_getter_counts[address] = int(_getter_counts.get(address, 0)) + 1
+	if address.ends_with("item_63"):
+		return "this is the widest lazy value in the column"
 	return address
