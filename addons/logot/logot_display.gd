@@ -338,6 +338,14 @@ class AutocompleteCommandColumn:
 	const TOUCH_TAP_HIGHLIGHT_SECONDS := 0.11
 	const TOUCH_FLASH_INTERVAL_SECONDS := 0.08
 
+	## Where an embedded widget sits relative to the column's scrolling region.
+	## PINNED keeps it between the header and the rows, always on screen; INLINE makes it
+	## the first item of the scrollable content, so it scrolls away ahead of the rows.
+	enum WidgetPlacement {
+		PINNED,
+		INLINE,
+	}
+
 	var _rows: Array[Dictionary] = []
 	var _row_height_prefix := PackedFloat64Array([0.0])
 	var _sticky_group_header_indices := PackedInt32Array()
@@ -356,6 +364,10 @@ class AutocompleteCommandColumn:
 	var _embedded_widget: Control
 	var _embedded_widget_path := ""
 	var _embedded_widget_height := 0.0
+	var _embedded_widget_placement := WidgetPlacement.PINNED
+	## Only meaningful for an INLINE widget: true once the content has been scrolled past the
+	## widget's slot, which leaves the first row at the top of the scrolling region.
+	var _inline_widget_scrolled_out := false
 	var _updating_scrollbar := false
 	var _touch_mode := false
 	var _press_active := false
@@ -607,14 +619,55 @@ class AutocompleteCommandColumn:
 	func _scroll_rows(delta_rows: int) -> void:
 		if delta_rows == 0:
 			return
-		var max_scroll := _get_max_scroll_row()
-		var next_scroll := clampi(_scroll_row + delta_rows, 0, max_scroll)
-		if next_scroll == _scroll_row:
+		var current_slot := _get_scroll_slot()
+		var next_slot := clampi(current_slot + delta_rows, 0, _get_max_scroll_slot())
+		if next_slot == current_slot:
 			return
-		_scroll_row = next_scroll
+		_set_scroll_slot(next_slot)
 		_update_row_scrollbar()
 		queue_redraw()
 		visible_rows_changed.emit()
+
+	## An inline widget occupies a leading slot in the scrolling region, so scroll positions are
+	## addressed in slots rather than row indices: slot 0 shows the widget with the rows starting
+	## underneath it, and every slot above that maps to a row index one step lower.
+	func _has_inline_widget_slot() -> bool:
+		return (
+			_embedded_widget != null
+			and is_instance_valid(_embedded_widget)
+			and _embedded_widget_placement == WidgetPlacement.INLINE
+		)
+
+	func _get_scroll_slot() -> int:
+		if not _has_inline_widget_slot():
+			return _scroll_row
+		if _scroll_row > 0 or _inline_widget_scrolled_out:
+			return _scroll_row + 1
+		return 0
+
+	func _set_scroll_slot(slot: int) -> void:
+		if not _has_inline_widget_slot():
+			_inline_widget_scrolled_out = false
+			_scroll_row = clampi(slot, 0, _get_max_scroll_row())
+			return
+		var clamped_slot := clampi(slot, 0, _get_max_scroll_slot())
+		_inline_widget_scrolled_out = clamped_slot > 0
+		_scroll_row = maxi(0, clamped_slot - 1)
+
+	func _get_max_scroll_slot() -> int:
+		if not _has_inline_widget_slot():
+			return _get_max_scroll_row()
+		# The reachable range has to be measured from the top of the content, where the widget is
+		# on screen and squeezing rows out of view -- once it has scrolled away the rows have the
+		# whole region to themselves and would report a shorter range, stranding the widget.
+		var was_scrolled_out := _inline_widget_scrolled_out
+		_inline_widget_scrolled_out = false
+		var max_scroll_row_from_top := _get_max_scroll_row()
+		_inline_widget_scrolled_out = was_scrolled_out
+		if max_scroll_row_from_top == 0:
+			# Every row already fits alongside the widget, so there is nothing to scroll.
+			return 0
+		return max_scroll_row_from_top + 1
 
 	func _scroll_by_pixel_delta(delta_y: float) -> void:
 		_drag_scroll_remainder += delta_y
@@ -634,12 +687,14 @@ class AutocompleteCommandColumn:
 			_flash_visible = false
 		queue_redraw()
 
-	func set_embedded_widget(widget: Control, widget_path: String = "") -> void:
+	func set_embedded_widget(widget: Control, widget_path: String = "", placement: WidgetPlacement = WidgetPlacement.PINNED) -> void:
 		if _embedded_widget != null and is_instance_valid(_embedded_widget) and _embedded_widget != widget:
 			remove_child(_embedded_widget)
 			_embedded_widget.queue_free()
 		_embedded_widget = widget
 		_embedded_widget_path = widget_path.strip_edges()
+		_embedded_widget_placement = placement
+		_inline_widget_scrolled_out = false
 		if _embedded_widget != null:
 			_embedded_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			if _embedded_widget.get_parent() != self:
@@ -652,6 +707,19 @@ class AutocompleteCommandColumn:
 
 	func get_embedded_widget_path() -> String:
 		return _embedded_widget_path
+
+	func set_embedded_widget_placement(placement: WidgetPlacement) -> void:
+		if _embedded_widget_placement == placement:
+			return
+		_embedded_widget_placement = placement
+		_inline_widget_scrolled_out = false
+		_update_embedded_widget_layout()
+		_ensure_selection_visible()
+		_update_row_scrollbar()
+		queue_redraw()
+
+	func get_embedded_widget_placement() -> WidgetPlacement:
+		return _embedded_widget_placement
 
 	func configure_theme(theme_source: Control) -> void:
 		if theme_source == null:
@@ -722,10 +790,10 @@ class AutocompleteCommandColumn:
 		return Vector2i(start_index, _get_visible_content_end_index_for_scroll(start_index))
 
 	func replace_rows_preserving_scroll(rows: Array[Dictionary]) -> void:
-		var previous_scroll := _scroll_row
+		var previous_slot := _get_scroll_slot()
 		_rows = rows
 		_rebuild_row_geometry_cache()
-		_scroll_row = clampi(previous_scroll, 0, _get_max_scroll_row())
+		_set_scroll_slot(previous_slot)
 		_update_row_scrollbar()
 		queue_redraw()
 
@@ -749,6 +817,9 @@ class AutocompleteCommandColumn:
 		queue_redraw()
 
 	func _ensure_selection_visible() -> void:
+		# Re-anchoring the rows always measures from the top of the content, so an inline widget
+		# that had been scrolled away comes back with them.
+		_inline_widget_scrolled_out = false
 		if _rows.is_empty():
 			_scroll_row = 0
 			return
@@ -1061,10 +1132,21 @@ class AutocompleteCommandColumn:
 	func _is_embedded_widget_visible_for_scroll(scroll_row: int) -> bool:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
 			return false
-		return clampi(scroll_row, 0, maxi(0, _rows.size())) == 0
+		if _embedded_widget_placement == WidgetPlacement.PINNED:
+			return true
+		return clampi(scroll_row, 0, maxi(0, _rows.size())) == 0 and not _inline_widget_scrolled_out
 
 	func _get_rows_top_for_scroll(scroll_row: int) -> float:
 		if not _is_embedded_widget_visible_for_scroll(scroll_row):
+			return _header_height
+		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
+
+	## Top of the scrolling region itself: a pinned widget is carved out above it, while an inline
+	## widget lives inside it and so scrolls (and is tracked by the scrollbar) along with the rows.
+	func _get_scroll_region_top() -> float:
+		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
+			return _header_height
+		if _embedded_widget_placement == WidgetPlacement.INLINE:
 			return _header_height
 		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
 
@@ -1090,12 +1172,17 @@ class AutocompleteCommandColumn:
 			return
 		_update_embedded_widget_layout()
 
-		var max_scroll := _get_max_scroll_row()
-		var has_overflow := max_scroll > 0
+		var max_slot := _get_max_scroll_slot()
+		var has_overflow := max_slot > 0
 		_row_scrollbar.visible = has_overflow
 
+		var previous_slot := _get_scroll_slot()
+		_set_scroll_slot(0 if not has_overflow else previous_slot)
+		if _get_scroll_slot() != previous_slot:
+			# Clamping can pull an inline widget back on screen, so its visibility is restated.
+			_update_embedded_widget_layout()
+
 		if not has_overflow:
-			_scroll_row = 0
 			_updating_scrollbar = true
 			_row_scrollbar.value = 0.0
 			_row_scrollbar.page = 1.0
@@ -1103,29 +1190,28 @@ class AutocompleteCommandColumn:
 			_updating_scrollbar = false
 			return
 
-		_scroll_row = clampi(_scroll_row, 0, max_scroll)
 		var visible_rows := _get_visible_content_row_count_for_scroll(_scroll_row)
 
 		var scrollbar_width := maxf(8.0, _row_scrollbar.custom_minimum_size.x)
-		var rows_top := _get_rows_top_for_scroll(_scroll_row)
-		_row_scrollbar.position = Vector2(maxf(0.0, size.x - scrollbar_width), rows_top)
-		_row_scrollbar.size = Vector2(scrollbar_width, maxf(0.0, size.y - rows_top))
+		var region_top := _get_scroll_region_top()
+		_row_scrollbar.position = Vector2(maxf(0.0, size.x - scrollbar_width), region_top)
+		_row_scrollbar.size = Vector2(scrollbar_width, maxf(0.0, size.y - region_top))
 
 		_updating_scrollbar = true
 		_row_scrollbar.min_value = 0.0
-		_row_scrollbar.max_value = float(max_scroll + visible_rows)
+		_row_scrollbar.max_value = float(max_slot + visible_rows)
 		_row_scrollbar.page = float(maxi(1, visible_rows))
-		_row_scrollbar.value = float(_scroll_row)
+		_row_scrollbar.value = float(_get_scroll_slot())
 		_updating_scrollbar = false
 
 	func _on_row_scrollbar_value_changed(value: float) -> void:
 		if _updating_scrollbar:
 			return
-		var max_scroll := _get_max_scroll_row()
-		var next_scroll := clampi(int(round(value)), 0, max_scroll)
-		if next_scroll == _scroll_row:
+		var current_slot := _get_scroll_slot()
+		var next_slot := clampi(int(round(value)), 0, _get_max_scroll_slot())
+		if next_slot == current_slot:
 			return
-		_scroll_row = next_scroll
+		_set_scroll_slot(next_slot)
 		_update_row_scrollbar()
 		queue_redraw()
 		visible_rows_changed.emit()
@@ -9025,7 +9111,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 			_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, 0)
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
-	_configure_autocomplete_column_widget(list, widget_path)
+	_configure_autocomplete_column_widget(list, widget_path, _get_autocomplete_column_widget_placement(column_state))
 
 	var is_active_column := column_index == _autocomplete_active_column_index
 	list.set_touch_mode(_is_touch_command_palette_layout())
@@ -9163,12 +9249,23 @@ func _get_widget_path_for_autocomplete_column_state(column_state: Dictionary) ->
 	return command_path if _has_widget(command_path) else ""
 
 
-func _configure_autocomplete_column_widget(list: AutocompleteCommandColumn, widget_path: String) -> void:
+## A preview column is a read-only look ahead, so its widget stays pinned under the header where
+## it always reads as the column's subject. The current and past columns are browsed, so theirs
+## belongs inline with the rows it introduces and scrolls away as the user works down the list.
+func _get_autocomplete_column_widget_placement(column_state: Dictionary) -> AutocompleteCommandColumn.WidgetPlacement:
+	if bool(column_state.get("preview", false)):
+		return AutocompleteCommandColumn.WidgetPlacement.PINNED
+	return AutocompleteCommandColumn.WidgetPlacement.INLINE
+
+
+func _configure_autocomplete_column_widget(list: AutocompleteCommandColumn, widget_path: String, placement: AutocompleteCommandColumn.WidgetPlacement) -> void:
 	var normalized_widget_path := widget_path.strip_edges()
 	if normalized_widget_path.is_empty():
 		list.set_embedded_widget(null, "")
 		return
 	if list.get_embedded_widget_path() == normalized_widget_path:
+		# The column is being reused for the same widget, but it may have changed phase since.
+		list.set_embedded_widget_placement(placement)
 		return
 	var widget_instance := _create_widget_instance(normalized_widget_path, "palette")
 	if widget_instance != null:
@@ -9181,7 +9278,7 @@ func _configure_autocomplete_column_widget(list: AutocompleteCommandColumn, widg
 		label.text = "Widget unavailable"
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		widget_instance = label
-	list.set_embedded_widget(widget_instance, normalized_widget_path)
+	list.set_embedded_widget(widget_instance, normalized_widget_path, placement)
 
 
 func _create_widget_autocomplete_preview_column(column_state: Dictionary) -> AutocompleteCommandColumn:
