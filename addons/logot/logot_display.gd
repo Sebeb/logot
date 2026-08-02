@@ -3245,9 +3245,11 @@ func _pinned_display_variable_value_has_line_break(value_text: String, value_ite
 	return false
 
 
-func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_address: String, value_text: String, value_items: Array = []) -> bool:
+func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_address: String, value_text: String, value_items: Array = [], wrap_value: bool = false) -> bool:
 	if row == null:
 		return false
+	if wrap_value:
+		return true
 	if _pinned_display_variable_value_has_line_break(value_text, value_items):
 		return true
 	var usable_width := PINNED_OVERLAY_MAX_VARIABLE_WIDTH - PINNED_OVERLAY_VARIABLE_WIDTH_PADDING
@@ -3259,11 +3261,11 @@ func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_add
 	return ceili(value_width / inline_value_width) > 2
 
 
-func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool, value_items: Array = []) -> void:
+func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool, value_items: Array = [], wrap_value: bool = false) -> void:
 	if row == null:
 		return
 	row.push_bgcolor(PINNED_OVERLAY_ROW_BG_COLOR)
-	var stack_value := _should_stack_pinned_display_variable_value(row, display_address, value_text, value_items)
+	var stack_value := _should_stack_pinned_display_variable_value(row, display_address, value_text, value_items, wrap_value)
 	row.set_meta("logot_pin_stacked_value", stack_value)
 	row.push_table(1 if stack_value else 2)
 	if stack_value:
@@ -4881,13 +4883,14 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 		"render": str(snapshot.get("signature", "")),
 		"align_right": align_right,
 		"inline_color": (snapshot.get("inline_color", Color.TRANSPARENT) as Color).to_html(true),
+		"wrap_value": bool(snapshot.get("wrap_value", false)),
 	})
 	if force or _pinned_row_render_cache.get(address, "") != signature:
 		var value_text := str(snapshot.get("text", ""))
 		var value_color: Color = snapshot.get("inline_color", Color.TRANSPARENT)
 		var value_items: Array = snapshot.get("items", [])
 		(row as RichTextLabel).clear()
-		_append_pinned_display_variable_row_text(row as RichTextLabel, display_address, value_text, value_color, align_right, value_items)
+		_append_pinned_display_variable_row_text(row as RichTextLabel, display_address, value_text, value_color, align_right, value_items, bool(snapshot.get("wrap_value", false)))
 		var plain_text := "%s %s" % [value_text, display_address] if align_right else "%s: %s" % [display_address, value_text]
 		_apply_pinned_variable_width_cap(row as RichTextLabel, plain_text)
 		_pinned_row_render_cache[address] = signature
