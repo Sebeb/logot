@@ -1684,8 +1684,10 @@ func is_command_path_disabled(command_path: String) -> bool:
 			return true
 	return false
 
-func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"", display_label_provider: Callable = Callable()) -> void:
-	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name, display_label_provider)
+## Registers a value shown beside its command. Set options["wrap_value"] to true for prose
+## values that should render below the label and wrap across as many lines as needed.
+func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"", display_label_provider: Callable = Callable(), options: Dictionary = {}) -> void:
+	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name, display_label_provider, options)
 	_register_display_variable_signal(address, change_signal_source, change_signal_name)
 	_notify_command_catalog_changed()
 
@@ -1737,7 +1739,8 @@ func get_widgets() -> Dictionary:
 	return widgets.duplicate()
 
 
-func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"") -> void:
+## Pins a value in the overlay. Set options["wrap_value"] to true for prose values.
+func pin(key: String, value_or_getter: Variant, change_signal_source: Object = null, change_signal_name: StringName = &"", options: Dictionary = {}) -> void:
 	var address := key.strip_edges()
 	if address.is_empty():
 		print_error("Pin key cannot be empty.")
@@ -1766,7 +1769,9 @@ func pin(key: String, value_or_getter: Variant, change_signal_source: Object = n
 		"",
 		0,
 		change_signal_source if use_change_signal else null,
-		change_signal_name if use_change_signal else &""
+		change_signal_name if use_change_signal else &"",
+		Callable(),
+		options
 	)
 	pin_display_variable(address)
 
@@ -6003,6 +6008,15 @@ func toggle_console(reset_on_hide: bool = true) -> void:
 	console_closed.emit()
 	_sync_pinned_overlay_suppression()
 	_update_touch_toggle_button()
+
+
+## Opens the command palette with [param command_path] selected. Widgets use
+## this instead of executing their own address, which only prints a preview hint.
+func reveal_command_path(command_path: String) -> bool:
+	if _display == null or not is_instance_valid(_display):
+		return false
+	toggle_console(false)
+	return _display._reveal_command_path(command_path)
 
 
 func _handle_escape_input() -> void:
