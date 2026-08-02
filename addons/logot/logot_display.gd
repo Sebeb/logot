@@ -2121,6 +2121,7 @@ var _welcome_message: String = "Logot\n"
 var _log_entries_provider: Callable
 var _entry_text_provider: Callable
 var _commands_provider: Callable  # Returns Dictionary of command_name -> command_data
+var _command_children_provider: Callable  # Returns direct child paths for a command path
 var _command_path_disabled_provider: Callable  # Returns whether a command path is disabled
 var _default_child_resolver: Callable  # Resolves recursive default-child command paths
 var _orderable_reorder_handler: Callable
@@ -2213,6 +2214,9 @@ var _display_safe_area_override_enabled := false
 var _display_safe_area_override := Rect2()
 var _palette_widget_instances: Dictionary = {}
 var _command_catalog_dirty := true
+var _base_registered_address_set: Dictionary = {}
+var _base_registered_children: Dictionary = {}
+var _command_catalog_path_revisions: Dictionary = {}
 var _ui_update_batch_depth := 0
 var _ui_update_catalog_dirty := false
 var _ui_update_catalog_refresh_popup := false
@@ -2226,6 +2230,7 @@ var _debug_display_variable_invalidation_count := 0
 var _base_registered_addresses_cache: Array[String] = []
 var _default_menu_hierarchy_cache: Dictionary = {}
 var _all_known_autocomplete_tiers_cache: Array[String] = []
+var _all_known_autocomplete_tier_set: Dictionary = {}
 var _all_known_autocomplete_tiers_cache_valid := false
 var _autocomplete_tiers_with_children: Dictionary = {}
 var _tier_command_group_cache: Dictionary = {}
@@ -2289,6 +2294,12 @@ func set_commands_provider(provider: Callable) -> void:
 	invalidate_command_catalog(false)
 
 
+## Supplies direct command children so tier derivation does not scan the command catalog.
+func set_command_children_provider(provider: Callable) -> void:
+	_command_children_provider = provider
+	invalidate_command_catalog(false)
+
+
 func set_command_path_disabled_provider(provider: Callable) -> void:
 	_command_path_disabled_provider = provider
 	invalidate_command_catalog(false)
@@ -2339,7 +2350,7 @@ func end_ui_update_batch() -> void:
 	if save_settings:
 		_save_filter_settings()
 	if refresh_catalog:
-		invalidate_command_catalog(refresh_popup)
+		_flush_command_catalog_invalidation(refresh_popup)
 	elif refresh_pins:
 		_refresh_pinned_display_variables()
 	if refresh_pin_options and not refresh_catalog:
@@ -2355,24 +2366,117 @@ func get_debug_update_counters() -> Dictionary:
 	}
 
 
-func invalidate_command_catalog(refresh_popup: bool = true) -> void:
-	_command_catalog_dirty = true
-	_base_registered_addresses_cache.clear()
-	_default_menu_hierarchy_cache.clear()
-	_all_known_autocomplete_tiers_cache.clear()
-	_all_known_autocomplete_tiers_cache_valid = false
-	_autocomplete_tiers_with_children.clear()
-	_tier_command_group_cache.clear()
-	_signal_backed_display_snapshot_cache.clear()
+func invalidate_command_catalog(refresh_popup: bool = true, changed_path: String = "") -> void:
+	var normalized_path := changed_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty():
+		_invalidate_all_command_catalog_caches()
+	else:
+		_invalidate_command_catalog_path(normalized_path)
 	if _ui_update_batch_depth > 0:
 		_ui_update_catalog_dirty = true
 		_ui_update_catalog_refresh_popup = _ui_update_catalog_refresh_popup or refresh_popup
 		_ui_update_pins_dirty = true
 		return
+	_flush_command_catalog_invalidation(refresh_popup)
+
+
+func _invalidate_all_command_catalog_caches() -> void:
+	_command_catalog_dirty = true
+	_base_registered_addresses_cache.clear()
+	_base_registered_address_set.clear()
+	_base_registered_children.clear()
+	_command_catalog_path_revisions.clear()
+	_default_menu_hierarchy_cache.clear()
+	_all_known_autocomplete_tiers_cache.clear()
+	_all_known_autocomplete_tier_set.clear()
+	_all_known_autocomplete_tiers_cache_valid = false
+	_autocomplete_tiers_with_children.clear()
+	_tier_command_group_cache.clear()
+	_signal_backed_display_snapshot_cache.clear()
+
+
+func _flush_command_catalog_invalidation(refresh_popup: bool) -> void:
 	_debug_command_catalog_flush_count += 1
 	_refresh_pinned_display_variables()
 	if refresh_popup and _is_command_popup_visible():
 		update_autocomplete_popup()
+
+
+func _invalidate_command_catalog_path(changed_path: String) -> void:
+	_command_catalog_path_revisions[changed_path] = int(_command_catalog_path_revisions.get(changed_path, 0)) + 1
+	if _command_catalog_dirty:
+		return
+	if _is_base_registered_address(changed_path):
+		_index_base_registered_address(changed_path)
+	else:
+		_unindex_base_registered_address(changed_path)
+
+	var affected_path := changed_path
+	while true:
+		_default_menu_hierarchy_cache.erase(affected_path)
+		_tier_command_group_cache.erase(affected_path)
+		if affected_path.is_empty():
+			break
+		var separator := affected_path.rfind("/")
+		affected_path = affected_path.substr(0, separator) if separator != -1 else ""
+	_signal_backed_display_snapshot_cache.erase(changed_path)
+	_refresh_cached_autocomplete_tiers(changed_path)
+	_refresh_cached_autocomplete_tier_children(changed_path)
+
+
+func _is_base_registered_address(address: String) -> bool:
+	return _get_commands().has(address) or _get_display_variables().has(address) or _get_widgets().has(address)
+
+
+func _add_cached_autocomplete_tier(tier: String) -> void:
+	if tier.is_empty() or _all_known_autocomplete_tier_set.has(tier):
+		return
+	_all_known_autocomplete_tier_set[tier] = true
+	_all_known_autocomplete_tiers_cache.append(tier)
+
+
+func _refresh_cached_autocomplete_tiers(changed_path: String) -> void:
+	if not _all_known_autocomplete_tiers_cache_valid:
+		return
+
+	var retained_tiers: Array[String] = []
+	for tier in _all_known_autocomplete_tiers_cache:
+		var tier_text := str(tier)
+		if tier_text.begins_with(changed_path + "/") and not _base_registered_address_set.has(tier_text) and not _base_registered_children.has(tier_text):
+			_all_known_autocomplete_tier_set.erase(tier_text)
+			continue
+		retained_tiers.append(tier_text)
+	_all_known_autocomplete_tiers_cache = retained_tiers
+
+	var path_part := ""
+	for segment_variant in changed_path.split("/", false):
+		path_part = str(segment_variant) if path_part.is_empty() else "%s/%s" % [path_part, str(segment_variant)]
+		if _base_registered_address_set.has(path_part) or _base_registered_children.has(path_part):
+			_add_cached_autocomplete_tier(path_part)
+
+	if not _is_base_registered_address(changed_path):
+		return
+	var prefix := changed_path + "/"
+	for address_variant in _get_menu_hierarchy_addresses(changed_path):
+		var next_tier := _get_next_tier(str(address_variant), prefix)
+		if not next_tier.is_empty():
+			_add_cached_autocomplete_tier(next_tier)
+
+
+func _refresh_cached_autocomplete_tier_children(changed_path: String) -> void:
+	if not _all_known_autocomplete_tiers_cache_valid:
+		return
+	var parent_path := ""
+	for segment_variant in changed_path.split("/", false):
+		if _base_registered_children.has(parent_path):
+			_autocomplete_tiers_with_children[parent_path] = true
+		else:
+			_autocomplete_tiers_with_children.erase(parent_path)
+		parent_path = str(segment_variant) if parent_path.is_empty() else "%s/%s" % [parent_path, str(segment_variant)]
+	if _base_registered_children.has(parent_path):
+		_autocomplete_tiers_with_children[parent_path] = true
+	else:
+		_autocomplete_tiers_with_children.erase(parent_path)
 
 
 func invalidate_display_variable(address: String) -> void:
@@ -5979,62 +6083,109 @@ func _sync_sidebar_state() -> void:
 	_refresh_collapsed_level_buttons()
 
 
-func _append_unique_address(addresses: Array[String], address: String) -> void:
-	if address.is_empty() or addresses.has(address):
+func _append_unique_address(addresses: Array[String], known_addresses: Dictionary, address: String) -> void:
+	if address.is_empty() or known_addresses.has(address):
 		return
+	known_addresses[address] = true
 	addresses.append(address)
+
+
+func _index_base_registered_address(address: String) -> void:
+	var normalized_address := address.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_address.is_empty() or _base_registered_address_set.has(normalized_address):
+		return
+	_base_registered_address_set[normalized_address] = true
+	_base_registered_addresses_cache.append(normalized_address)
+	var parent_path := ""
+	for segment_variant in normalized_address.split("/", false):
+		var child_path := str(segment_variant) if parent_path.is_empty() else "%s/%s" % [parent_path, str(segment_variant)]
+		var child_counts: Dictionary = _base_registered_children.get(parent_path, {})
+		child_counts[child_path] = int(child_counts.get(child_path, 0)) + 1
+		_base_registered_children[parent_path] = child_counts
+		parent_path = child_path
+
+
+func _unindex_base_registered_address(address: String) -> void:
+	var normalized_address := address.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_address.is_empty() or not _base_registered_address_set.has(normalized_address):
+		return
+	_base_registered_address_set.erase(normalized_address)
+	_base_registered_addresses_cache.erase(normalized_address)
+	var parent_path := ""
+	for segment_variant in normalized_address.split("/", false):
+		var child_path := str(segment_variant) if parent_path.is_empty() else "%s/%s" % [parent_path, str(segment_variant)]
+		if not _base_registered_children.has(parent_path):
+			return
+		var child_counts: Dictionary = _base_registered_children[parent_path]
+		var count := int(child_counts.get(child_path, 0)) - 1
+		if count <= 0:
+			child_counts.erase(child_path)
+		else:
+			child_counts[child_path] = count
+		if child_counts.is_empty():
+			_base_registered_children.erase(parent_path)
+		else:
+			_base_registered_children[parent_path] = child_counts
+		parent_path = child_path
+
+
+func _get_base_registered_children(command_path: String) -> Array[String]:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if not _base_registered_children.has(normalized_path):
+		return []
+	var children: Array[String] = []
+	for child_path_variant in (_base_registered_children[normalized_path] as Dictionary).keys():
+		children.append(str(child_path_variant))
+	return children
 
 
 func _get_base_registered_addresses() -> Array[String]:
 	if not _command_catalog_dirty:
-		return _base_registered_addresses_cache.duplicate()
+		return _base_registered_addresses_cache
 
-	var addresses: Array[String] = []
+	_base_registered_addresses_cache.clear()
+	_base_registered_address_set.clear()
+	_base_registered_children.clear()
 	for command in _get_commands():
-		_append_unique_address(addresses, str(command))
+		_index_base_registered_address(str(command))
 	for address in _get_display_variables():
-		_append_unique_address(addresses, str(address))
+		_index_base_registered_address(str(address))
 	for widget_path in _get_widgets():
-		_append_unique_address(addresses, str(widget_path))
-	_base_registered_addresses_cache = addresses.duplicate()
+		_index_base_registered_address(str(widget_path))
 	_command_catalog_dirty = false
-	return addresses
+	return _base_registered_addresses_cache
 
 
 func _get_default_menu_hierarchy_addresses(command_path: String) -> Array[String]:
-	var normalized_path := command_path.strip_edges().trim_suffix("/")
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
 	if _default_menu_hierarchy_cache.has(normalized_path):
 		var cached_addresses: Array[String] = []
 		for cached_address in _default_menu_hierarchy_cache[normalized_path]:
 			cached_addresses.append(str(cached_address))
 		return cached_addresses
 
+	_get_base_registered_addresses()
 	var addresses: Array[String] = []
-	var base_addresses := _get_base_registered_addresses()
-	if normalized_path.is_empty():
-		for address in base_addresses:
-			_append_unique_address(addresses, address)
-		_default_menu_hierarchy_cache[normalized_path] = addresses.duplicate()
-		return addresses
-
-	var path_prefix := normalized_path + "/"
-	for base_address in base_addresses:
-		if str(base_address).begins_with(path_prefix):
-			_append_unique_address(addresses, str(base_address))
+	var known_addresses: Dictionary = {}
+	if _command_children_provider.is_valid():
+		for child_path_variant in _command_children_provider.call(normalized_path):
+			_append_unique_address(addresses, known_addresses, str(child_path_variant))
+	for child_path in _get_base_registered_children(normalized_path):
+		_append_unique_address(addresses, known_addresses, child_path)
 
 	if _get_command_data_direct(normalized_path) != null:
 		for option_address in _get_command_option_subcommand_addresses(normalized_path, 0):
-			_append_unique_address(addresses, option_address)
+			_append_unique_address(addresses, known_addresses, option_address)
 
 	if _is_pinnable_item_direct(normalized_path):
 		for pin_option_address in _get_pin_action_subcommand_addresses(normalized_path):
-			_append_unique_address(addresses, pin_option_address)
+			_append_unique_address(addresses, known_addresses, pin_option_address)
 
 	if normalized_path.ends_with("/pin"):
 		var pin_parent_address := normalized_path.trim_suffix("/pin")
 		if _is_pinnable_item_direct(pin_parent_address):
 			for corner in PINNED_OVERLAY_CORNERS:
-				_append_unique_address(addresses, "%s/%s" % [normalized_path, corner])
+				_append_unique_address(addresses, known_addresses, "%s/%s" % [normalized_path, corner])
 
 	_default_menu_hierarchy_cache[normalized_path] = addresses.duplicate()
 	return addresses
@@ -6361,19 +6512,21 @@ func _is_registered_command_path_or_parent(command_path: String, registered_addr
 	for address in registered_addresses:
 		if str(address).begins_with(command_path + "/"):
 			return true
-	return false
+	_get_base_registered_addresses()
+	return _base_registered_address_set.has(command_path) or _base_registered_children.has(command_path)
 
 
 func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String]:
 	var normalized_path := command_path.strip_edges().trim_suffix("/")
 	var addresses: Array[String] = []
+	var known_addresses: Dictionary = {}
 	if normalized_path != "pins" and not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return addresses
 
 	for pinned_address in _get_available_pinned_display_variables():
 		var alias_path := _get_pins_alias_path(pinned_address)
 		if _get_command_data_direct(alias_path) == null:
-			_append_unique_address(addresses, alias_path)
+			_append_unique_address(addresses, known_addresses, alias_path)
 
 	if not normalized_path.begins_with(PINS_ALIAS_PREFIX):
 		return addresses
@@ -6396,7 +6549,7 @@ func _get_pins_view_dynamic_menu_hierarchy_addresses(command_path: String) -> Ar
 		var first_separator := alias_remainder.find("/")
 		if first_separator != -1:
 			alias_token = alias_remainder.substr(0, first_separator)
-		_append_unique_address(addresses, PINS_ALIAS_PREFIX + alias_token + suffix)
+		_append_unique_address(addresses, known_addresses, PINS_ALIAS_PREFIX + alias_token + suffix)
 
 	return addresses
 
@@ -6407,8 +6560,11 @@ func _get_dynamic_menu_hierarchy_addresses(command_path: String) -> Array[String
 
 func _get_menu_hierarchy_addresses(command_path: String) -> Array[String]:
 	var addresses := _get_default_menu_hierarchy_addresses(command_path)
+	var known_addresses: Dictionary = {}
+	for address in addresses:
+		known_addresses[address] = true
 	for dynamic_address in _get_dynamic_menu_hierarchy_addresses(command_path):
-		_append_unique_address(addresses, dynamic_address)
+		_append_unique_address(addresses, known_addresses, dynamic_address)
 	return addresses
 
 
@@ -6957,6 +7113,7 @@ func _get_all_known_autocomplete_tiers() -> Array[String]:
 		if separator > 0:
 			_autocomplete_tiers_with_children[tier.substr(0, separator)] = true
 	_all_known_autocomplete_tiers_cache = tiers.duplicate()
+	_all_known_autocomplete_tier_set = known_tiers.duplicate()
 	_all_known_autocomplete_tiers_cache_valid = true
 	return tiers
 

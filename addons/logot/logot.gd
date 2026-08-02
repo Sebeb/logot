@@ -257,6 +257,9 @@ var rich_label: RichTextLabel
 var line_edit: LineEdit
 
 var console_commands := {}
+var _command_children: Dictionary = {}
+var _command_catalog_revision := 0
+var _command_argument_options_cache: Dictionary = {}
 var _orderable_groups: Dictionary = {}
 var _disabled_command_paths: Dictionary = {}
 var display_variables := {}
@@ -708,20 +711,20 @@ func add_command(command_name : String, function : Callable, arguments = [], req
 		var param_array : PackedStringArray
 		for i in range(arguments):
 			param_array.append("arg_" + str(i + 1))
-		console_commands[command_name] = LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut)
+		_set_console_command(command_name, LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut))
 	elif arguments is Array:
 		var str_args : PackedStringArray
 		for argument in arguments:
 			str_args.append(str(argument))
-		console_commands[command_name] = LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut)
-	_notify_command_catalog_changed()
+		_set_console_command(command_name, LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut))
+	_notify_command_catalog_changed(command_name)
 
 
 func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
 	var str_args: PackedStringArray = PackedStringArray()
 	for argument in arguments:
 		str_args.append(str(argument))
-	console_commands[command_name] = LogotCommand.new(
+	_set_console_command(command_name, LogotCommand.new(
 		function,
 		str_args,
 		required,
@@ -740,8 +743,70 @@ func add_command_with_options(command_name: String, function: Callable, argument
 		default_child_path,
 		default_child_provider,
 		keyboard_shortcut
-	)
-	_notify_command_catalog_changed()
+	))
+	_notify_command_catalog_changed(command_name)
+
+
+func _set_console_command(command_name: String, command_data: Variant) -> void:
+	if not console_commands.has(command_name):
+		_index_command_path(command_name)
+	console_commands[command_name] = command_data
+
+
+func _erase_console_command(command_name: String) -> bool:
+	if not console_commands.has(command_name):
+		return false
+	console_commands.erase(command_name)
+	_unindex_command_path(command_name)
+	return true
+
+
+func _index_command_path(command_path: String) -> void:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty():
+		return
+	var parent_path := ""
+	for segment_variant in normalized_path.split("/", false):
+		var segment := str(segment_variant)
+		var child_path := segment if parent_path.is_empty() else "%s/%s" % [parent_path, segment]
+		var child_counts: Dictionary = _command_children.get(parent_path, {})
+		child_counts[child_path] = int(child_counts.get(child_path, 0)) + 1
+		_command_children[parent_path] = child_counts
+		parent_path = child_path
+
+
+func _unindex_command_path(command_path: String) -> void:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if normalized_path.is_empty():
+		return
+	var parent_path := ""
+	for segment_variant in normalized_path.split("/", false):
+		var segment := str(segment_variant)
+		var child_path := segment if parent_path.is_empty() else "%s/%s" % [parent_path, segment]
+		if not _command_children.has(parent_path):
+			return
+		var child_counts: Dictionary = _command_children[parent_path]
+		var count := int(child_counts.get(child_path, 0)) - 1
+		if count <= 0:
+			child_counts.erase(child_path)
+		else:
+			child_counts[child_path] = count
+		if child_counts.is_empty():
+			_command_children.erase(parent_path)
+		else:
+			_command_children[parent_path] = child_counts
+		parent_path = child_path
+
+
+## Returns direct catalog tiers below a path without scanning every registered command.
+func get_command_children(command_path: String = "") -> Array[String]:
+	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
+	if not _command_children.has(normalized_path):
+		return []
+	var children: Array[String] = []
+	for child_path_variant in (_command_children[normalized_path] as Dictionary).keys():
+		children.append(str(child_path_variant))
+	return children
 
 
 ## Registers a dynamic group of `{id, label}` objects which can be reordered.
@@ -769,7 +834,7 @@ func refresh_orderable_group(group_path: String) -> void:
 func _rebuild_orderable_group_commands(group_path: String) -> void:
 	var config: Dictionary = _orderable_groups[group_path]
 	for old_path in config.get("commands", []):
-		console_commands.erase(str(old_path))
+		_erase_console_command(str(old_path))
 	var descriptors: Array = []
 	var fetched = (config.get("fetch") as Callable).call()
 	if fetched is Array:
@@ -786,7 +851,7 @@ func _rebuild_orderable_group_commands(group_path: String) -> void:
 		object_command.orderable_group = group_path
 		object_command.orderable_object_id = descriptor.get("id")
 		object_command.orderable_order = descriptor_index
-		console_commands[object_path] = object_command
+		_set_console_command(object_path, object_command)
 		generated.append(object_path)
 		var actions := [
 			["move_up", -1, false, KEY_UP],
@@ -799,11 +864,11 @@ func _rebuild_orderable_group_commands(group_path: String) -> void:
 			var callback := _move_orderable_object.bind(group_path, descriptor.get("id"), int(action[1]), bool(action[2]))
 			var action_command := LogotCommand.new(callback, PackedStringArray(), 0, "", [], Callable(), Callable(), "move", 0, "", 0, str(action[0]), null, Color.TRANSPARENT, Color.TRANSPARENT, "", Callable(), action[3] as Key)
 			action_command.orderable_group = group_path
-			console_commands[action_path] = action_command
+			_set_console_command(action_path, action_command)
 			generated.append(action_path)
 	config["commands"] = generated
 	_orderable_groups[group_path] = config
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(group_path)
 
 
 func _move_orderable_object(group_path: String, object_id: Variant, direction: int, absolute: bool) -> void:
@@ -877,7 +942,7 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 	var command_function := func(value_text: String) -> void:
 		_execute_setget_command_setter(command_name, setter, getter, value_text, options_provider)
 
-	console_commands[command_name] = LogotCommand.new(
+	_set_console_command(command_name, LogotCommand.new(
 		command_function,
 		command_arguments,
 		0,
@@ -889,7 +954,7 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 		group_priority,
 		option_group_name,
 		option_group_priority
-	)
+	))
 	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name, Callable(), {})
 
 
@@ -1174,7 +1239,16 @@ func _get_command_argument_option_values(command_name: String, argument_index: i
 	if command_data is LogotCommand:
 		var command := command_data as LogotCommand
 		if command.argument_options_provider.is_valid():
-			var provided_options = _normalize_command_option_values(command.argument_options_provider.call())
+			var provided_options: Array = []
+			var cached_options = _command_argument_options_cache.get(command_name, {})
+			if cached_options is Dictionary and int((cached_options as Dictionary).get("revision", -1)) == _command_catalog_revision:
+				provided_options = (cached_options as Dictionary).get("values", []) as Array
+			else:
+				provided_options = _normalize_command_option_values(command.argument_options_provider.call())
+				_command_argument_options_cache[command_name] = {
+					"revision": _command_catalog_revision,
+					"values": provided_options,
+				}
 			if argument_index < provided_options.size():
 				return provided_options[argument_index]
 
@@ -1657,9 +1731,9 @@ func _execute_setget_command_setter(command_name: String, setter: Callable, gett
 
 
 func remove_command(command_name : String) -> void:
-	console_commands.erase(command_name)
+	_erase_console_command(command_name)
 	_disabled_command_paths.erase(command_name)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(command_name)
 
 
 ## Disables a command path. By default its descendants are disabled too, preserving
@@ -1673,18 +1747,25 @@ func set_command_path_disabled(command_path: String, disabled: bool = true, incl
 		_disabled_command_paths[normalized_path] = include_descendants
 	else:
 		_disabled_command_paths.erase(normalized_path)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(normalized_path)
 
 
 func is_command_path_disabled(command_path: String) -> bool:
 	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
 	if normalized_path.is_empty():
 		return false
-	for disabled_path_variant in _disabled_command_paths:
-		var disabled_path := str(disabled_path_variant)
-		var include_descendants := bool(_disabled_command_paths[disabled_path_variant])
-		if normalized_path == disabled_path or (include_descendants and normalized_path.begins_with(disabled_path + "/")):
-			return true
+	# Walking ancestors keeps this O(path depth) instead of O(disabled paths), which
+	# matters because the palette queries it once per rendered row. An exact match always
+	# disables; a strict ancestor only does so when it kept descendant semantics.
+	var ancestor_path := normalized_path
+	while not ancestor_path.is_empty():
+		if _disabled_command_paths.has(ancestor_path):
+			if ancestor_path == normalized_path or bool(_disabled_command_paths[ancestor_path]):
+				return true
+		var separator := ancestor_path.rfind("/")
+		if separator < 0:
+			break
+		ancestor_path = ancestor_path.substr(0, separator)
 	return false
 
 ## Registers a value shown beside its command. Set options["wrap_value"] to true for prose
@@ -1692,14 +1773,14 @@ func is_command_path_disabled(command_path: String) -> bool:
 func add_display_variable(address: String, getter: Callable, inline_color_provider: Callable = Callable(), items_provider: Callable = Callable(), pinnable: bool = true, group_name: String = "", group_priority: int = 0, change_signal_source: Object = null, change_signal_name: StringName = &"", display_label_provider: Callable = Callable(), options: Dictionary = {}) -> void:
 	display_variables[address] = LogotDisplayVariable.new(getter, inline_color_provider, items_provider, pinnable, group_name, group_priority, change_signal_source, change_signal_name, display_label_provider, options)
 	_register_display_variable_signal(address, change_signal_source, change_signal_name)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(address)
 
 
 func remove_display_variable(address: String) -> void:
 	_unregister_display_variable_signal(address)
 	display_variables.erase(address)
 	notify_display_variable_changed(address)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(address)
 
 
 func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO, display_label: String = "") -> void:
@@ -1708,7 +1789,7 @@ func add_widget(address: String, scene_or_path: Variant, description: String = "
 		push_warning("Cannot add Logot widget with an empty address.")
 		return
 	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size, display_label)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(normalized_address)
 
 
 func add_render_texture_widget(address: String, texture_getter: Callable, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2(220, 160)) -> void:
@@ -1727,7 +1808,7 @@ func add_render_texture_widget(address: String, texture_getter: Callable, descri
 		"group_priority": group_priority if not group_name.strip_edges().is_empty() else 0,
 		"default_minimum_size": default_minimum_size,
 	}
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(normalized_address)
 
 
 func remove_widget(address: String) -> void:
@@ -1735,7 +1816,7 @@ func remove_widget(address: String) -> void:
 	if normalized_address.is_empty():
 		return
 	widgets.erase(normalized_address)
-	_notify_command_catalog_changed()
+	_notify_command_catalog_changed(normalized_address)
 
 
 func get_widgets() -> Dictionary:
@@ -2442,7 +2523,10 @@ func _on_display_variable_signal_emitted(address: String) -> void:
 	notify_display_variable_changed(address)
 
 
-func _notify_command_catalog_changed() -> void:
+func _notify_command_catalog_changed(changed_path: String = "") -> void:
+	_command_catalog_revision += 1
+	if _command_argument_options_cache.size() >= 4096:
+		_command_argument_options_cache.clear()
 	# Validating every default-child chain is O(commands); doing it on each add/remove
 	# makes bulk (un)registration O(commands^2), the boot/quit lag spike. Inside a
 	# batch, coalesce the validation into a single pass at batch end (see
@@ -2452,7 +2536,7 @@ func _notify_command_catalog_changed() -> void:
 	else:
 		_validate_default_child_commands()
 	for display in _get_live_displays():
-		display.invalidate_command_catalog()
+		display.invalidate_command_catalog(true, changed_path)
 
 
 func set_ingame_overlay_edge_overrides(top: float = 0.0, left: float = 0.0, right: float = 0.0, bottom: float = 0.0) -> void:
@@ -2825,6 +2909,7 @@ func _setup_game_ui() -> void:
 	_display.set_log_entries_provider(func(): return _log_entries)
 	_display.set_entry_text_provider(func(entry, truncate): return get_collapsed_display_text(entry, truncate))
 	_display.set_commands_provider(func(): return console_commands)
+	_display.set_command_children_provider(get_command_children)
 	_display.set_command_path_disabled_provider(is_command_path_disabled)
 	_display.set_default_child_resolver(resolve_default_child_chain)
 	_display.set_orderable_reorder_handler(_drag_orderable_object)
