@@ -4841,7 +4841,9 @@ func _create_pinned_overlay_row() -> RichTextLabel:
 func _create_pinned_overlay_widget_row(address: String) -> Control:
 	var panel := PanelContainer.new()
 	panel.set_meta("logot_pin_type", "widget")
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# A pinned widget may contain controls. PASS keeps the chrome transparent
+	# while allowing its widget descendants to receive pointer input.
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.04, 0.055, 0.075, 0.72)
 	panel_style.border_color = Color(0.65, 0.75, 0.92, 0.30)
@@ -4850,7 +4852,7 @@ func _create_pinned_overlay_widget_row(address: String) -> Control:
 	panel.add_theme_stylebox_override("panel", panel_style)
 
 	var content := VBoxContainer.new()
-	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.mouse_filter = Control.MOUSE_FILTER_PASS
 	content.add_theme_constant_override("separation", 1)
 	panel.add_child(content)
 
