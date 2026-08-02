@@ -674,11 +674,12 @@ class AutocompleteCommandColumn:
 
 	func _scroll_by_pixel_delta(delta_y: float) -> void:
 		_drag_scroll_remainder += delta_y
-		var step := maxf(1.0, float(_row_height))
-		while _drag_scroll_remainder >= step:
+		while _drag_scroll_remainder >= maxf(1.0, _get_row_height(clampi(_scroll_row, 0, maxi(0, _rows.size() - 1)))):
+			var step := maxf(1.0, _get_row_height(clampi(_scroll_row, 0, maxi(0, _rows.size() - 1))))
 			_scroll_rows(1)
 			_drag_scroll_remainder -= step
-		while _drag_scroll_remainder <= -step:
+		while _drag_scroll_remainder <= -maxf(1.0, _get_row_height(clampi(_scroll_row - 1, 0, maxi(0, _rows.size() - 1)))):
+			var step := maxf(1.0, _get_row_height(clampi(_scroll_row - 1, 0, maxi(0, _rows.size() - 1))))
 			_scroll_rows(-1)
 			_drag_scroll_remainder += step
 
@@ -850,8 +851,10 @@ class AutocompleteCommandColumn:
 		return _get_visible_row_capacity_for_scroll(_scroll_row)
 
 	func _get_visible_row_capacity_for_scroll(scroll_row: int) -> int:
-		var base_row_height := maxf(1.0, float(_row_height))
-		return maxi(1, int(floor(maxf(0.0, size.y - _get_rows_top_for_scroll(scroll_row)) / base_row_height)))
+		if _rows.is_empty():
+			return 0
+		var clamped_scroll_row := clampi(scroll_row, 0, _rows.size() - 1)
+		return maxi(1, _get_visible_content_end_index_for_scroll(clamped_scroll_row) - clamped_scroll_row)
 
 	func _find_best_scroll_row_for_selection(selected_row: int, max_scroll: int) -> int:
 		if selected_row < 0 or _rows.is_empty():
@@ -930,6 +933,7 @@ class AutocompleteCommandColumn:
 		return maxf(float(_row_height), float(_row_height) * maxf(1.0, multiplier))
 
 	func _rebuild_row_geometry_cache() -> void:
+		_remeasure_wrapped_rows()
 		_row_height_prefix.resize(_rows.size() + 1)
 		_row_height_prefix[0] = 0.0
 		_sticky_group_header_indices.resize(_rows.size())
@@ -957,6 +961,20 @@ class AutocompleteCommandColumn:
 				if header_stack[level_index] >= 0:
 					sticky_index = header_stack[level_index]
 			_sticky_group_header_indices[row_index] = sticky_index
+
+	func _remeasure_wrapped_rows() -> void:
+		if _font == null:
+			return
+		for row_data in _rows:
+			if not bool(row_data.get("wrap_value", false)):
+				continue
+			var group_indent := get_group_content_indent(row_data)
+			var action_width := float(row_data.get("measured_action_width", 0.0))
+			var available_width := maxf(1.0, size.x - CONTENT_PADDING_X * 2.0 - group_indent * 2.0 - action_width - (CELL_GAP if action_width > 0.0 else 0.0))
+			var lines := _wrap_text_to_width(str(row_data.get("value_text", "")), available_width)
+			row_data["wrapped_value_lines"] = lines
+			row_data["row_height_multiplier"] = 1.0 + maxf(1.0, float(lines.size()))
+			row_data["two_line"] = false
 
 	func _get_visible_content_height_for_scroll(scroll_row: int) -> float:
 		var rows_top := _get_rows_top_for_scroll(scroll_row)
@@ -1024,6 +1042,7 @@ class AutocompleteCommandColumn:
 
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_RESIZED:
+			_rebuild_row_geometry_cache()
 			var scrollbar_was_visible := _row_scrollbar != null and _row_scrollbar.visible
 			_update_header_layout()
 			_update_embedded_widget_layout()
@@ -1351,6 +1370,22 @@ class AutocompleteCommandColumn:
 		var raw_label_text := str(row_data.get("label", ""))
 		var truncate_label_from_start := bool(row_data.get("truncate_label_from_start", false))
 		var label_highlight_ranges_variant = row_data.get("label_highlight_ranges", [])
+		if bool(row_data.get("wrap_value", false)):
+			var label_height := float(_row_height)
+			var line_baseline_offset := _get_baseline_offset(label_height)
+			var label_text_wrapped := _fit_text_to_width(raw_label_text, maxf(0.0, info_cursor_x - content_left), truncate_label_from_start)
+			if not label_text_wrapped.is_empty():
+				draw_string(_font, Vector2(content_left, row_rect.position.y + line_baseline_offset), label_text_wrapped, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+			var wrapped_lines: PackedStringArray = row_data.get("wrapped_value_lines", PackedStringArray())
+			if wrapped_lines.is_empty():
+				wrapped_lines = _wrap_text_to_width(str(row_data.get("value_text", "")), maxf(1.0, info_cursor_x - content_left))
+			var value_color_variant = row_data.get("value_text_color", null)
+			var value_color := value_color_variant as Color if value_color_variant is Color else text_color
+			for line_index in range(wrapped_lines.size()):
+				draw_string(_font, Vector2(content_left, row_rect.position.y + label_height * (line_index + 1) + line_baseline_offset), wrapped_lines[line_index], HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, value_color)
+			if action_rect.size.x > 0.0:
+				_draw_action_icons(action_rect, bool(row_data.get("has_children", false)), bool(row_data.get("can_submit", false)), bool(row_data.get("draggable", false)), selection_state, text_color)
+			return
 		if bool(row_data.get("two_line", false)):
 			var half_height := row_rect.size.y * 0.5
 			var line_baseline_offset := _get_baseline_offset(half_height)
@@ -1426,6 +1461,25 @@ class AutocompleteCommandColumn:
 				selection_state,
 				text_color
 			)
+
+	func _wrap_text_to_width(text: String, max_width: float) -> PackedStringArray:
+		var lines := PackedStringArray()
+		var normalized := text.replace("\r\n", "\n").replace("\r", "\n")
+		for paragraph in normalized.split("\n", true):
+			var current := ""
+			for word_variant in paragraph.split(" ", false):
+				var word := str(word_variant)
+				var candidate := word if current.is_empty() else "%s %s" % [current, word]
+				if current.is_empty() or _font.get_string_size(candidate, HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size).x <= max_width:
+					current = candidate
+					continue
+				lines.append(current)
+				current = word
+			if not current.is_empty() or paragraph.is_empty():
+				lines.append(current)
+		if lines.is_empty():
+			lines.append("")
+		return lines
 
 	func _get_group_tint(row_data: Dictionary) -> Color:
 		var tint = row_data.get("group_tint", Color.TRANSPARENT)
@@ -7303,6 +7357,7 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 		row_data["value_text"] = str(value_data.get("text", ""))
 		row_data["value_text_color"] = value_data.get("color", null)
 		row_data["value_items"] = value_data.get("items", [])
+		row_data["wrap_value"] = bool(value_data.get("wrap_value", false))
 		row_data["display_variable_address"] = str(value_data.get("address", row_data.get("display_variable_address", "")))
 		row_data["value_loaded"] = true
 		var row_value_width := _get_command_autocomplete_row_value_width(list, row_data)
@@ -7320,7 +7375,7 @@ func _hydrate_visible_command_autocomplete_rows(list: AutocompleteCommandColumn,
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
 		if row_action_width > 0:
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_action_width
-		var needs_two_line := row_value_width > 0 and single_line_width > column_width
+		var needs_two_line := not bool(row_data.get("wrap_value", false)) and row_value_width > 0 and single_line_width > column_width
 		row_data["two_line"] = needs_two_line
 		row_data["row_height_multiplier"] = 2.0 if needs_two_line else 1.0
 		rows[row_index] = row_data
@@ -7349,6 +7404,7 @@ func _get_autocomplete_display_variable_value_data_for_address(address: String) 
 		"color": inline_color if inline_color is Color and (inline_color as Color).a > 0.0 else null,
 		"items": snapshot.get("items", []),
 		"address": tier,
+		"wrap_value": bool(snapshot.get("wrap_value", false)),
 	}
 
 
@@ -7369,6 +7425,7 @@ func _resolve_autocomplete_row_display_value(row_data: Dictionary, snapshot_cach
 	row_data["value_text"] = str(value_data.get("text", ""))
 	row_data["value_text_color"] = value_data.get("color", null)
 	row_data["value_items"] = value_data.get("items", [])
+	row_data["wrap_value"] = bool(value_data.get("wrap_value", false))
 	row_data["display_variable_address"] = str(value_data.get("address", address))
 	row_data["value_loaded"] = true
 
@@ -8493,7 +8550,7 @@ func _get_command_autocomplete_row_value_width(control: Control, row_data: Dicti
 		var value_text := str(row_data.get("value_text", ""))
 		if not value_text.is_empty():
 			current_value_width = _measure_autocomplete_text_width(control, value_text) + AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH
-	return mini(current_value_width, AUTOCOMPLETE_VALUE_MAX_WIDTH)
+	return current_value_width if bool(row_data.get("wrap_value", false)) else mini(current_value_width, AUTOCOMPLETE_VALUE_MAX_WIDTH)
 
 
 func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
@@ -8592,7 +8649,7 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_value_width
 		if row_action_width > 0:
 			single_line_width += AUTOCOMPLETE_CELL_GAP + row_action_width
-		var needs_two_line := row_value_width > 0 and single_line_width > content_width
+		var needs_two_line := not bool(row_data.get("wrap_value", false)) and row_value_width > 0 and single_line_width > content_width
 		row_data["two_line"] = needs_two_line
 		row_data["row_height_multiplier"] = 2.0 if needs_two_line else 1.0
 		rows[row_index] = row_data
