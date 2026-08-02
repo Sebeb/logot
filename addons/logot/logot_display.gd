@@ -6104,7 +6104,9 @@ func _create_widget_instance(address: String, mode: String, corner: String = PIN
 	var min_size := _get_widget_default_minimum_size(widget)
 	if min_size.x > 0.0 or min_size.y > 0.0:
 		control.custom_minimum_size = min_size
-	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Widgets own their own interaction policy. In particular, pinned widgets may
+	# expose buttons or pointer-driven controls; forcing IGNORE here makes those
+	# controls unreachable through the otherwise passive overlay containers.
 	if control.has_method("configure_logot_widget"):
 		control.call("configure_logot_widget", resolved_address, mode, _normalize_pin_corner(corner))
 	return control
