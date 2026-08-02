@@ -577,15 +577,12 @@ func _compute_result_passed(result) -> bool:
 	var ok := true
 	for check_result in result.code_checks:
 		if not check_result.passed:
-			print("DEBUGPGO96 failing check: %s :: %s" % [check_result.name, check_result.details])
 			ok = false
 	for visual_result in result.visual_checks:
 		if not visual_result.passed:
-			print("DEBUGPGO96 failing visual: %s" % [visual_result.name])
 			ok = false
 	for log_record in result.logs:
 		if int(log_record.level) == LogLevel.ERROR:
-			print("DEBUGPGO96 failing log: %s :: %s" % [log_record.channel, log_record.message])
 			ok = false
 	return ok
 
