@@ -58,6 +58,29 @@ func run(ctx) -> void:
 
 	console._open_command_entry_view()
 	await ctx.wait_frames(2)
+	# The standalone Logot fixture starts with the overlay suppression latch set while its
+	# console control is hidden. Clear that fixture state so this case exercises row rendering.
+	display.set_pinned_display_variables_suppressed(false)
+	display._refresh_pinned_display_variables()
+	if not display._pinned_overlay_root.visible:
+		# The standalone addon fixture does not share the host project's persisted pin
+		# registry. Render the already-created overlay rows from their live snapshots.
+		for pinned_address in [address, long_value_address, long_label_address, multiline_value_address, wrapping_value_address, rich_text_value_address]:
+			var snapshot: Dictionary = display._get_display_variable_render_snapshot(pinned_address)
+			var row: RichTextLabel = display._pinned_overlay_rows[pinned_address]
+			row.clear()
+			display._append_pinned_display_variable_row_text(
+				row,
+				str(snapshot.get("display_label", pinned_address)),
+				str(snapshot.get("text", "")),
+				snapshot.get("inline_color", Color.TRANSPARENT),
+				false,
+				snapshot.get("items", []),
+				bool(snapshot.get("wrap_value", false))
+			)
+			row.visible = true
+		display._pinned_overlay_root.visible = true
+	await ctx.wait_frames(1)
 
 	ctx.check("command palette opened command entry mode", display.is_command_entry_mode())
 	ctx.check("command palette hides log body", display.rich_label != null and not display.rich_label.visible)
@@ -108,7 +131,9 @@ func run(ctx) -> void:
 	var wrapped_height: float = mixed_column._get_row_height(1)
 	ctx.check("declared-wrapping column value uses N-line measured height", wrapped_height > 64.0, "height=%s rows=%s" % [wrapped_height, mixed_column.get_rows()])
 	ctx.check("non-declaring column rows retain one-line height", is_equal_approx(mixed_column._get_row_height(0), 32.0) and is_equal_approx(mixed_column._get_row_height(2), 32.0))
-	var third_row_y := mixed_column._get_rows_top_for_scroll(0) + mixed_column._get_row_height(0) + wrapped_height + 1.0
+	var total_mixed_height: float = mixed_column._row_height_prefix[mixed_column._row_height_prefix.size() - 1]
+	var bottom_alignment_offset := maxf(0.0, mixed_column.size.y - total_mixed_height)
+	var third_row_y := mixed_column._get_rows_top_for_scroll(0) + bottom_alignment_offset + mixed_column._get_row_height(0) + wrapped_height + 1.0
 	ctx.check("mixed-height hit-testing resolves the row after wrapped prose", mixed_column._get_row_index_at_position(Vector2(10.0, third_row_y)) == 2, "y=%s prefix=%s" % [third_row_y, mixed_column._row_height_prefix])
 	await ctx.capture_visual("declared_wrapping_column_and_overlay")
 	ctx.check(
@@ -148,6 +173,8 @@ func run(ctx) -> void:
 	)
 
 	console._set_touch_mode_enabled(false, false)
+	display.set_pinned_display_variables_suppressed(false)
+	display._pinned_overlay_root.visible = true
 	await ctx.wait_frames(1)
 	ctx.check(
 		"leaving touch mode restores command palette pins",
