@@ -95,9 +95,10 @@ class LogotCommand:
 	var orderable_object_id: Variant
 	var orderable_order: int = 0
 
+	## Accepts a named descriptor Dictionary. The positional form remains as a compatibility shim.
 	func _init(
-		in_function: Callable,
-		in_arguments: PackedStringArray,
+		command_spec_or_function: Variant,
+		in_arguments: PackedStringArray = PackedStringArray(),
 		in_required: int = 0,
 		in_description: String = "",
 		in_argument_options: Array = [],
@@ -117,26 +118,90 @@ class LogotCommand:
 		in_orderable_group: String = "",
 		in_orderable_object_id: Variant = null
 	):
-		function = in_function
-		arguments = in_arguments
-		required = in_required
-		description = in_description
-		argument_options = in_argument_options
-		argument_options_provider = in_argument_options_provider
-		value_getter = in_value_getter
-		group_name = in_group_name.strip_edges()
-		group_priority = in_group_priority if not group_name.is_empty() else 0
-		option_group_name = in_option_group_name.strip_edges()
-		option_group_priority = in_option_group_priority if not option_group_name.is_empty() else 0
-		group_tint = in_group_tint
-		option_group_tint = in_option_group_tint
-		display_label = in_display_label.strip_edges()
-		icon = in_icon
-		default_child_path = in_default_child_path.strip_edges()
-		default_child_provider = in_default_child_provider
-		keyboard_shortcut = in_keyboard_shortcut
-		orderable_group = in_orderable_group.strip_edges().trim_suffix("/")
-		orderable_object_id = in_orderable_object_id
+		if command_spec_or_function is Dictionary:
+			_set_from_spec(command_spec_or_function as Dictionary)
+			return
+		var legacy_spec := {
+			"function": command_spec_or_function,
+			"arguments": in_arguments,
+			"required": in_required,
+			"description": in_description,
+			"argument_options": in_argument_options,
+			"argument_options_provider": in_argument_options_provider,
+			"value_getter": in_value_getter,
+			"group_name": in_group_name,
+			"group_priority": in_group_priority,
+			"option_group_name": in_option_group_name,
+			"option_group_priority": in_option_group_priority,
+			"display_label": in_display_label,
+			"icon": in_icon,
+			"group_tint": in_group_tint,
+			"option_group_tint": in_option_group_tint,
+			"default_child_path": in_default_child_path,
+			"default_child_provider": in_default_child_provider,
+			"keyboard_shortcut": in_keyboard_shortcut,
+			"orderable_group": in_orderable_group,
+			"orderable_object_id": in_orderable_object_id,
+		}
+		_set_from_spec(legacy_spec)
+
+
+	func _set_from_spec(raw_spec: Dictionary) -> void:
+		var command_spec := raw_spec.duplicate()
+		var group_data = command_spec.get("group", {})
+		if group_data is Dictionary:
+			if not command_spec.has("group_name"):
+				command_spec["group_name"] = (group_data as Dictionary).get("name", "")
+			if not command_spec.has("group_priority"):
+				command_spec["group_priority"] = (group_data as Dictionary).get("priority", 0)
+			if not command_spec.has("group_tint"):
+				command_spec["group_tint"] = (group_data as Dictionary).get("tint", Color.TRANSPARENT)
+		var option_group_data = command_spec.get("option_group", {})
+		if option_group_data is Dictionary:
+			if not command_spec.has("option_group_name"):
+				command_spec["option_group_name"] = (option_group_data as Dictionary).get("name", "")
+			if not command_spec.has("option_group_priority"):
+				command_spec["option_group_priority"] = (option_group_data as Dictionary).get("priority", 0)
+			if not command_spec.has("option_group_tint"):
+				command_spec["option_group_tint"] = (option_group_data as Dictionary).get("tint", Color.TRANSPARENT)
+		var default_child = command_spec.get("default_child", null)
+		if default_child is Dictionary:
+			if not command_spec.has("default_child_path"):
+				command_spec["default_child_path"] = (default_child as Dictionary).get("path", (default_child as Dictionary).get("value", ""))
+			if not command_spec.has("default_child_provider"):
+				command_spec["default_child_provider"] = (default_child as Dictionary).get("provider", Callable())
+		elif default_child is String and not command_spec.has("default_child_path"):
+			command_spec["default_child_path"] = default_child
+
+		var raw_function = command_spec.get("function", command_spec.get("callable", Callable()))
+		function = raw_function if raw_function is Callable else Callable()
+		arguments = PackedStringArray()
+		var raw_arguments = command_spec.get("arguments", [])
+		if raw_arguments is PackedStringArray or raw_arguments is Array:
+			for argument in raw_arguments:
+				arguments.append(str(argument))
+		required = int(command_spec.get("required", 0))
+		description = str(command_spec.get("description", ""))
+		argument_options = command_spec.get("argument_options", []) as Array
+		argument_options_provider = command_spec.get("argument_options_provider", Callable()) as Callable
+		value_getter = command_spec.get("value_getter", Callable()) as Callable
+		group_name = str(command_spec.get("group_name", "")).strip_edges()
+		group_priority = int(command_spec.get("group_priority", 0)) if not group_name.is_empty() else 0
+		option_group_name = str(command_spec.get("option_group_name", "")).strip_edges()
+		option_group_priority = int(command_spec.get("option_group_priority", 0)) if not option_group_name.is_empty() else 0
+		var raw_group_tint = command_spec.get("group_tint", Color.TRANSPARENT)
+		group_tint = raw_group_tint if raw_group_tint is Color else Color.TRANSPARENT
+		var raw_option_group_tint = command_spec.get("option_group_tint", Color.TRANSPARENT)
+		option_group_tint = raw_option_group_tint if raw_option_group_tint is Color else Color.TRANSPARENT
+		display_label = str(command_spec.get("display_label", "")).strip_edges()
+		var raw_icon = command_spec.get("icon", null)
+		icon = raw_icon if raw_icon is Texture2D else null
+		default_child_path = str(command_spec.get("default_child_path", "")).strip_edges()
+		var raw_default_child_provider = command_spec.get("default_child_provider", Callable())
+		default_child_provider = raw_default_child_provider if raw_default_child_provider is Callable else Callable()
+		keyboard_shortcut = int(command_spec.get("keyboard_shortcut", KEY_NONE)) as Key
+		orderable_group = str(command_spec.get("orderable_group", "")).strip_edges().trim_suffix("/")
+		orderable_object_id = command_spec.get("orderable_object_id", null)
 
 
 class LogotDisplayVariable:

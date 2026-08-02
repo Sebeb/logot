@@ -12,7 +12,7 @@ Commands with child paths can declare a static relative `default_child_path` or 
 
 ## Key Files and Interfaces
 
-`addons/logot/logot_display.gd` defines `LogotDisplay.LogotCommand`, which stores the existing callable/catalog fields plus `group_tint`, `option_group_tint`, `default_child_path`, and `default_child_provider`. Its constructor keeps legacy positional registrations valid by appending the new optional fields. `addons/logot/logot.gd` extends `add_command()` and `add_command_with_options()` with the same optional trailing metadata.
+`addons/logot/logot_display.gd` defines `LogotDisplay.LogotCommand`, which stores the callable/catalog fields plus `group_tint`, `option_group_tint`, `default_child_path`, and `default_child_provider`. Registration uses a named descriptor Dictionary: `function`, `arguments`, option providers, grouping, presentation, default-child routing, and shortcut metadata are all explicit fields. `Logot.add_command()` and `add_command_with_options()` accept that descriptor directly; their established positional forms remain compatibility shims. `LogotCommand.new(descriptor)` follows the same contract while retaining its positional constructor shim.
 
 Dictionary-backed commands remain supported. The display normalizes either `group`/`option_group` dictionaries containing `name`, `priority`, and `tint`, or the equivalent flat fields. The catalog resolver accepts `default_child_path`, `default_child`, `default_child_provider`, and the nested dictionary form of `default_child` with `path`/`value` and `provider`.
 

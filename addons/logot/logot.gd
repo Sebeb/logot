@@ -706,45 +706,110 @@ func _clear_logs() -> void:
 # COMMAND SYSTEM
 # =============================================================================
 
-func add_command(command_name : String, function : Callable, arguments = [], required: int = 0, description : String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
-	if arguments is int:
-		var param_array : PackedStringArray
-		for i in range(arguments):
-			param_array.append("arg_" + str(i + 1))
-		_set_console_command(command_name, LogotCommand.new(function, param_array, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut))
-	elif arguments is Array:
-		var str_args : PackedStringArray
-		for argument in arguments:
-			str_args.append(str(argument))
-		_set_console_command(command_name, LogotCommand.new(function, str_args, required, description, [], Callable(), Callable(), group_name, group_priority, option_group_name, option_group_priority, display_label, icon, group_tint, option_group_tint, default_child_path, default_child_provider, keyboard_shortcut))
+## Registers a command from a named descriptor. The positional form remains as a compatibility shim.
+func add_command(command_name: String, command_spec_or_function: Variant, arguments: Variant = [], required: int = 0, description: String = "", group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, display_label: String = "", icon: Texture2D = null, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
+	var command_spec: Dictionary
+	if command_spec_or_function is Dictionary:
+		command_spec = _normalize_command_spec(command_spec_or_function as Dictionary)
+	else:
+		if not (command_spec_or_function is Callable):
+			push_warning("Cannot add command '%s': expected a Callable or descriptor Dictionary." % command_name)
+			return
+		command_spec = _normalize_command_spec({
+			"function": command_spec_or_function,
+			"arguments": arguments,
+			"required": required,
+			"description": description,
+			"group_name": group_name,
+			"group_priority": group_priority,
+			"option_group_name": option_group_name,
+			"option_group_priority": option_group_priority,
+			"display_label": display_label,
+			"icon": icon,
+			"group_tint": group_tint,
+			"option_group_tint": option_group_tint,
+			"default_child_path": default_child_path,
+			"default_child_provider": default_child_provider,
+			"keyboard_shortcut": keyboard_shortcut,
+		})
+	_set_console_command(command_name, LogotCommand.new(command_spec))
 	_notify_command_catalog_changed(command_name)
 
 
-func add_command_with_options(command_name: String, function: Callable, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
-	var str_args: PackedStringArray = PackedStringArray()
-	for argument in arguments:
-		str_args.append(str(argument))
-	_set_console_command(command_name, LogotCommand.new(
-		function,
-		str_args,
-		required,
-		description,
-		[],
-		argument_options_provider,
-		value_getter,
-		group_name,
-		group_priority,
-		option_group_name,
-		option_group_priority,
-		"",
-		null,
-		group_tint,
-		option_group_tint,
-		default_child_path,
-		default_child_provider,
-		keyboard_shortcut
-	))
+## Registers an option command from a named descriptor. The positional form remains as a compatibility shim.
+func add_command_with_options(command_name: String, command_spec_or_function: Variant, arguments: Array = [], required: int = 0, description: String = "", argument_options_provider: Callable = Callable(), value_getter: Callable = Callable(), group_name: String = "", group_priority: int = 0, option_group_name: String = "", option_group_priority: int = 0, group_tint: Color = Color.TRANSPARENT, option_group_tint: Color = Color.TRANSPARENT, default_child_path: String = "", default_child_provider: Callable = Callable(), keyboard_shortcut: Key = KEY_NONE) -> void:
+	var command_spec: Dictionary
+	if command_spec_or_function is Dictionary:
+		command_spec = _normalize_command_spec(command_spec_or_function as Dictionary)
+	else:
+		if not (command_spec_or_function is Callable):
+			push_warning("Cannot add option command '%s': expected a Callable or descriptor Dictionary." % command_name)
+			return
+		command_spec = _normalize_command_spec({
+			"function": command_spec_or_function,
+			"arguments": arguments,
+			"required": required,
+			"description": description,
+			"argument_options_provider": argument_options_provider,
+			"value_getter": value_getter,
+			"group_name": group_name,
+			"group_priority": group_priority,
+			"option_group_name": option_group_name,
+			"option_group_priority": option_group_priority,
+			"group_tint": group_tint,
+			"option_group_tint": option_group_tint,
+			"default_child_path": default_child_path,
+			"default_child_provider": default_child_provider,
+			"keyboard_shortcut": keyboard_shortcut,
+		})
+	_set_console_command(command_name, LogotCommand.new(command_spec))
 	_notify_command_catalog_changed(command_name)
+
+
+func _normalize_command_spec(raw_spec: Dictionary) -> Dictionary:
+	var command_spec := raw_spec.duplicate()
+	if not command_spec.has("function") and command_spec.has("callable"):
+		command_spec["function"] = command_spec.get("callable")
+	if not (command_spec.get("function", Callable()) is Callable):
+		command_spec["function"] = Callable()
+
+	var normalized_arguments: PackedStringArray = PackedStringArray()
+	var raw_arguments = command_spec.get("arguments", [])
+	if raw_arguments is int:
+		for argument_index in range(raw_arguments):
+			normalized_arguments.append("arg_%d" % (argument_index + 1))
+	elif raw_arguments is PackedStringArray or raw_arguments is Array:
+		for argument in raw_arguments:
+			normalized_arguments.append(str(argument))
+	command_spec["arguments"] = normalized_arguments
+
+	var group_data = command_spec.get("group", {})
+	if group_data is Dictionary:
+		if not command_spec.has("group_name"):
+			command_spec["group_name"] = (group_data as Dictionary).get("name", "")
+		if not command_spec.has("group_priority"):
+			command_spec["group_priority"] = (group_data as Dictionary).get("priority", 0)
+		if not command_spec.has("group_tint"):
+			command_spec["group_tint"] = (group_data as Dictionary).get("tint", Color.TRANSPARENT)
+
+	var option_group_data = command_spec.get("option_group", {})
+	if option_group_data is Dictionary:
+		if not command_spec.has("option_group_name"):
+			command_spec["option_group_name"] = (option_group_data as Dictionary).get("name", "")
+		if not command_spec.has("option_group_priority"):
+			command_spec["option_group_priority"] = (option_group_data as Dictionary).get("priority", 0)
+		if not command_spec.has("option_group_tint"):
+			command_spec["option_group_tint"] = (option_group_data as Dictionary).get("tint", Color.TRANSPARENT)
+
+	var default_child = command_spec.get("default_child", null)
+	if default_child is Dictionary:
+		if not command_spec.has("default_child_path"):
+			command_spec["default_child_path"] = (default_child as Dictionary).get("path", (default_child as Dictionary).get("value", ""))
+		if not command_spec.has("default_child_provider"):
+			command_spec["default_child_provider"] = (default_child as Dictionary).get("provider", Callable())
+	elif default_child is String and not command_spec.has("default_child_path"):
+		command_spec["default_child_path"] = default_child
+	return command_spec
 
 
 func _set_console_command(command_name: String, command_data: Variant) -> void:
@@ -847,7 +912,9 @@ func _rebuild_orderable_group_commands(group_path: String) -> void:
 	for descriptor_index in range(descriptors.size()):
 		var descriptor: Dictionary = descriptors[descriptor_index]
 		var object_path := "%s/%s" % [group_path, str(descriptor.get("id")).uri_encode()]
-		var object_command := LogotCommand.new(Callable(), PackedStringArray(), 0, "", [], Callable(), Callable(), "", 0, "", 0, str(descriptor.get("label")))
+		var object_command := LogotCommand.new({
+			"display_label": str(descriptor.get("label")),
+		})
 		object_command.orderable_group = group_path
 		object_command.orderable_object_id = descriptor.get("id")
 		object_command.orderable_order = descriptor_index
@@ -862,7 +929,12 @@ func _rebuild_orderable_group_commands(group_path: String) -> void:
 		for action in actions:
 			var action_path := "%s/%s" % [object_path, str(action[0])]
 			var callback := _move_orderable_object.bind(group_path, descriptor.get("id"), int(action[1]), bool(action[2]))
-			var action_command := LogotCommand.new(callback, PackedStringArray(), 0, "", [], Callable(), Callable(), "move", 0, "", 0, str(action[0]), null, Color.TRANSPARENT, Color.TRANSPARENT, "", Callable(), action[3] as Key)
+			var action_command := LogotCommand.new({
+				"function": callback,
+				"group_name": "move",
+				"display_label": str(action[0]),
+				"keyboard_shortcut": action[3] as Key,
+			})
 			action_command.orderable_group = group_path
 			_set_console_command(action_path, action_command)
 			generated.append(action_path)
@@ -942,19 +1014,17 @@ func add_setget_command(command_name: String, setter: Callable, getter: Callable
 	var command_function := func(value_text: String) -> void:
 		_execute_setget_command_setter(command_name, setter, getter, value_text, options_provider)
 
-	_set_console_command(command_name, LogotCommand.new(
-		command_function,
-		command_arguments,
-		0,
-		description,
-		[],
-		argument_options_provider,
-		getter,
-		group_name,
-		group_priority,
-		option_group_name,
-		option_group_priority
-	))
+	_set_console_command(command_name, LogotCommand.new({
+		"function": command_function,
+		"arguments": command_arguments,
+		"description": description,
+		"argument_options_provider": argument_options_provider,
+		"value_getter": getter,
+		"group_name": group_name,
+		"group_priority": group_priority,
+		"option_group_name": option_group_name,
+		"option_group_priority": option_group_priority,
+	}))
 	add_display_variable(command_name, getter, inline_color_provider, Callable(), true, group_name, group_priority, change_signal_source, change_signal_name, Callable(), {})
 
 
