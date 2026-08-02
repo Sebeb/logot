@@ -18,6 +18,11 @@ func run(ctx) -> void:
 		return
 
 	_console.add_command("path_recovery/item/delete", _delete_item_commands)
+	ctx.check("public command-path reveal wrapper succeeds", _console.reveal_command_path("path_recovery/item/delete"))
+	ctx.check(
+		"public command-path reveal wrapper selects the requested leaf",
+		str(display._autocomplete_highlighted_tiers.get("path_recovery/item/", "")) == "path_recovery/item/delete"
+	)
 	_console.line_edit.text = "/path_recovery/item/delete"
 	_console.line_edit.caret_column = _console.line_edit.text.length()
 	display.on_text_changed_autocomplete(_console.line_edit.text)
