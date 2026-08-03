@@ -5039,6 +5039,26 @@ func get_performance_source_update_interval_sec() -> float:
 	return 1.0 / maxf(1.0, _performance_source_update_rate_hz)
 
 
+## Groups matching GDScript profiler functions into one Whole Frame CPU allocation row.
+func register_performance_script_source_group(
+	group_path: String,
+	display_name: String,
+	signature_prefixes: PackedStringArray
+) -> void:
+	_ensure_performance_monitor_initialized()
+	_performance_source_monitor.call(
+		"register_script_source_group",
+		group_path,
+		display_name,
+		signature_prefixes
+	)
+
+
+func unregister_performance_script_source_group(group_path: String) -> void:
+	if _performance_source_monitor != null:
+		_performance_source_monitor.call("unregister_script_source_group", group_path)
+
+
 func _normalize_performance_source_update_rate_hz(value: float) -> float:
 	return clampf(value, 1.0, 60.0)
 

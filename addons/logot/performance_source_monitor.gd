@@ -15,6 +15,30 @@ var _bridge_error := ""
 var _render_requested := false
 var _scripts_requested := false
 var _test_mode := false
+var _script_source_groups: Dictionary = {}
+
+
+## Replaces matching per-function script profiler rows with one allocation bucket.
+## Prefixes are matched against the profiler signature (normally
+## `res://path/to/script.gd::function`). A source may belong to only one group; the
+## first registered matching group wins.
+func register_script_source_group(group_path: String, display_name: String, signature_prefixes: PackedStringArray) -> void:
+	var normalized_path := group_path.strip_edges()
+	if normalized_path.is_empty():
+		return
+	var prefixes := PackedStringArray()
+	for prefix in signature_prefixes:
+		var normalized_prefix := String(prefix).strip_edges()
+		if not normalized_prefix.is_empty() and not prefixes.has(normalized_prefix):
+			prefixes.append(normalized_prefix)
+	_script_source_groups[normalized_path] = {
+		"name": display_name.strip_edges() if not display_name.strip_edges().is_empty() else normalized_path,
+		"prefixes": prefixes,
+	}
+
+
+func unregister_script_source_group(group_path: String) -> void:
+	_script_source_groups.erase(group_path.strip_edges())
 
 
 func initialize() -> void:
@@ -140,6 +164,7 @@ func ingest_script_frame(frame: Dictionary, whole_frame_total_ms: float) -> void
 	var frame_number := int(frame.get("frame_number", 0))
 	var total_ms := maxf(0.001, whole_frame_total_ms)
 	var sources: Array[Dictionary] = []
+	var grouped_sources: Dictionary = {}
 	var function_total := 0.0
 	var raw_sources: Variant = frame.get("script_sources", [])
 	if raw_sources is Array:
@@ -151,6 +176,18 @@ func ingest_script_frame(frame: Dictionary, whole_frame_total_ms: float) -> void
 			if duration_ms <= 0.0:
 				continue
 			function_total += duration_ms
+			var group_path := _matching_script_source_group(str(source.get("path", "")))
+			if not group_path.is_empty():
+				var grouped: Dictionary = grouped_sources.get(group_path, {
+					"path": group_path,
+					"name": str((_script_source_groups[group_path] as Dictionary).get("name", group_path)),
+					"duration_ms": 0.0,
+					"call_count": 0,
+				})
+				grouped["duration_ms"] = float(grouped.get("duration_ms", 0.0)) + duration_ms
+				grouped["call_count"] = int(grouped.get("call_count", 0)) + int(source.get("call_count", 0))
+				grouped_sources[group_path] = grouped
+				continue
 			var normalized_source := _make_source(
 				str(source.get("path", "")),
 				str(source.get("name", source.get("path", ""))),
@@ -158,6 +195,8 @@ func ingest_script_frame(frame: Dictionary, whole_frame_total_ms: float) -> void
 			)
 			normalized_source["call_count"] = int(source.get("call_count", 0))
 			sources.append(normalized_source)
+	for grouped in grouped_sources.values():
+		sources.append((grouped as Dictionary).duplicate(true))
 
 	var normalized_due_to_timing_skew := function_total > total_ms and function_total > 0.0
 	if normalized_due_to_timing_skew:
@@ -175,6 +214,16 @@ func ingest_script_frame(frame: Dictionary, whole_frame_total_ms: float) -> void
 	var sample := _make_sample(frame_number, total_ms, sources)
 	sample["normalized_due_to_timing_skew"] = normalized_due_to_timing_skew
 	_upsert_history(whole_cpu_history, sample)
+
+
+func _matching_script_source_group(signature: String) -> String:
+	for group_path_variant in _script_source_groups.keys():
+		var group_path := String(group_path_variant)
+		var group := _script_source_groups[group_path] as Dictionary
+		for prefix in group.get("prefixes", PackedStringArray()) as PackedStringArray:
+			if signature.begins_with(String(prefix)):
+				return group_path
+	return ""
 
 
 func get_history(kind: String) -> Array[Dictionary]:
