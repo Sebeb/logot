@@ -18,6 +18,8 @@ Dictionary-backed commands remain supported. The display normalizes either `grou
 
 `Logot.resolve_default_child_chain(command_name)` is the single resolver shared by validation, direct execution, and display prediction. Its successful result carries `terminal_command`, `injected_arguments`, and ordered `focus_paths`; an invalid result carries the origin and an actionable `Invalid default child for '/…'` diagnostic. `Logot._notify_command_catalog_changed()` runs `_validate_default_child_commands()` before invalidating live displays, and `_execute_command()` routes an argument-free non-option parent through the resolver before dispatching the terminal callable.
 
+`Logot.set_command_path_disabled(path, disabled, include_descendants = true)` records availability. Its default keeps legacy menu-subtree behavior: disabling a path also disables every descendant. Callers that own only the exact command may pass `false`; the exact command remains disabled while independent routes that merely share its textual prefix remain executable and valid default-child targets.
+
 `LogotDisplay.set_default_child_resolver()` receives that resolver from `Logot`. The display's group-data normalization and tier-match builder preserve tint for both titled and empty-title groups. `_append_default_child_preview_columns()` appends one preview state per resolver focus path, while `_refresh_command_preview_option_state()` rebuilds those marked preview states whenever the palette refreshes.
 
 ## State, Lifecycle, and Data Flow
@@ -36,7 +38,7 @@ Tint travels from typed or dictionary metadata through `_normalize_command_group
 
 Default paths are relative to the declaring command after trimming slash and whitespace noise. Empty segments and `.` are ignored; `..` may move upward only while the path remains rooted. A chain has a 32-step maximum and tracks visited command paths, so cycles cannot execute indefinitely. Targets must resolve to a registered command or valid option/text-input subcommand and must not be disabled. A final non-callable, non-text-input command is rejected.
 
-Invalid provider return types, missing or stale targets, escaped/empty paths, cycles, disabled targets, non-executable terminals, and excessive recursion all yield a clear diagnostic. Invalid routes never execute an intermediate command or a partial default chain. Untinted catalog entries and groups retain legacy behavior, including group priority/order, ordinary preview selection fallback, filtering, history, autocomplete, scrolling, and navigation.
+Invalid provider return types, missing or stale targets, escaped/empty paths, cycles, disabled targets, non-executable terminals, and excessive recursion all yield a clear diagnostic. Invalid routes never execute an intermediate command or a partial default chain. Exact-only disables affect only their declared address; cascading remains the default for menu trees. Untinted catalog entries and groups retain legacy behavior, including group priority/order, ordinary preview selection fallback, filtering, history, autocomplete, scrolling, and navigation.
 
 Tints are additive metadata. Title emptiness suppresses only priority/header text; it must not discard a non-transparent tint. This preserves headerless visual grouping while avoiding a new special command type. The implementation is generic to the vendored Logot addon and must not encode application- or state-specific color/path knowledge.
 

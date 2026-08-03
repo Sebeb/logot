@@ -1662,13 +1662,15 @@ func remove_command(command_name : String) -> void:
 	_notify_command_catalog_changed()
 
 
-## Disables a command path and every descendant path in Logot's command palette.
-func set_command_path_disabled(command_path: String, disabled: bool = true) -> void:
+## Disables a command path. By default its descendants are disabled too, preserving
+## the menu-subtree semantics used by existing callers. Pass [param include_descendants]
+## as false when a command merely shares a textual prefix with independent routes.
+func set_command_path_disabled(command_path: String, disabled: bool = true, include_descendants: bool = true) -> void:
 	var normalized_path := command_path.strip_edges().trim_prefix("/").trim_suffix("/")
 	if normalized_path.is_empty():
 		return
 	if disabled:
-		_disabled_command_paths[normalized_path] = true
+		_disabled_command_paths[normalized_path] = include_descendants
 	else:
 		_disabled_command_paths.erase(normalized_path)
 	_notify_command_catalog_changed()
@@ -1680,7 +1682,8 @@ func is_command_path_disabled(command_path: String) -> bool:
 		return false
 	for disabled_path_variant in _disabled_command_paths:
 		var disabled_path := str(disabled_path_variant)
-		if normalized_path == disabled_path or normalized_path.begins_with(disabled_path + "/"):
+		var include_descendants := bool(_disabled_command_paths[disabled_path_variant])
+		if normalized_path == disabled_path or (include_descendants and normalized_path.begins_with(disabled_path + "/")):
 			return true
 	return false
 
