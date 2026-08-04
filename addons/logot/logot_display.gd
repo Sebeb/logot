@@ -2104,6 +2104,10 @@ const PINNED_OVERLAY_OPPOSITE_CORNER := {
 	PINNED_OVERLAY_CORNER_BOTTOM_RIGHT: PINNED_OVERLAY_CORNER_BOTTOM_LEFT,
 }
 const PINS_ALIAS_PREFIX := "pins/"
+## Number-key palette spaces. Cmd/Ctrl+Alt+N stores the current path in space N,
+## Cmd/Ctrl+N returns to it. Spaces are per-session working positions, not saved state.
+const COMMAND_PALETTE_SPACE_COUNT := 9
+const COMMAND_PALETTE_SPACE_ROOT_PATH := "/"
 const COMMAND_GROUP_PATH_SEPARATOR := "/"
 const HEADERLESS_COMMAND_GROUP_PREFIX := "."
 const PINNED_COMMAND_GROUP_NAME := "pinned variables"
@@ -2226,6 +2230,8 @@ var _autocomplete_active_column_index := -1
 var _autocomplete_highlighted_tiers: Dictionary = {}
 var _autocomplete_pre_filter_highlighted_tiers: Dictionary = {}
 var _autocomplete_shortcut_winners: Dictionary = {}
+var _command_palette_spaces: Dictionary = {}  # {slot: palette path}
+var _active_command_palette_space := 0  # 0 while no space has been entered
 var _pending_autocomplete_column_sync_start := -1
 var _autocomplete_column_sync_queued := false
 var _pending_autocomplete_column_sync_scroll_to_end := false
@@ -9612,7 +9618,17 @@ func _resolve_visible_keyboard_shortcuts() -> void:
 
 
 func handle_command_palette_shortcut(event: InputEventKey) -> bool:
-	if not event.pressed or event.echo or not event.is_command_or_control_pressed() or not _is_command_popup_visible():
+	if not event.pressed or event.echo or not event.is_command_or_control_pressed():
+		return false
+	# Spaces claim the plain and Alt number keys ahead of command bindings, so a number stays a
+	# space wherever the palette is. Shift+number is left to commands. They answer to the command
+	# input rather than the popup, so a filter that matches nothing can still be left by number.
+	var space_slot := _get_command_palette_space_slot(event)
+	if space_slot > 0 and not event.shift_pressed and _is_command_palette_input_active():
+		if event.alt_pressed:
+			return save_command_palette_space(space_slot)
+		return switch_to_command_palette_space(space_slot)
+	if not _is_command_popup_visible():
 		return false
 	_resolve_visible_keyboard_shortcuts()
 	var key := int(event.keycode) | (KEY_MASK_SHIFT if event.shift_pressed else 0)
@@ -9634,6 +9650,81 @@ func handle_command_palette_shortcut(event: InputEventKey) -> bool:
 		return false
 	command_palette_submit_requested.emit(submission_text)
 	return true
+
+
+## Maps a number key to its space, accepting the top row and the keypad. Option/Alt rewrites
+## `keycode` on macOS, so the layout-independent physical key is the fallback.
+func _get_command_palette_space_slot(event: InputEventKey) -> int:
+	for candidate in [int(event.keycode), int(event.physical_keycode)]:
+		if candidate >= KEY_1 and candidate < KEY_1 + COMMAND_PALETTE_SPACE_COUNT:
+			return candidate - KEY_1 + 1
+		if candidate >= KEY_KP_1 and candidate < KEY_KP_1 + COMMAND_PALETTE_SPACE_COUNT:
+			return candidate - KEY_KP_1 + 1
+	return 0
+
+
+## True while the input holds a command path, which is what a space addresses. This covers the
+## dedicated palette view and a `/` typed into the full console alike.
+func _is_command_palette_input_active() -> bool:
+	return line_edit != null and line_edit.text.strip_edges().begins_with("/")
+
+
+func _is_valid_command_palette_space(slot: int) -> bool:
+	return slot >= 1 and slot <= COMMAND_PALETTE_SPACE_COUNT and line_edit != null
+
+
+## The palette's position is its input text, so a space stores that text verbatim: a partial
+## filter or a typed argument is part of where the user was.
+func _get_current_command_palette_space_path() -> String:
+	var path := line_edit.text.strip_edges()
+	return path if path.begins_with("/") else COMMAND_PALETTE_SPACE_ROOT_PATH
+
+
+func _apply_command_palette_space_path(path: String) -> void:
+	var restored_path := path.strip_edges()
+	if not restored_path.begins_with("/"):
+		restored_path = COMMAND_PALETTE_SPACE_ROOT_PATH
+	_suppress_autocomplete_text_changes = true
+	line_edit.text = restored_path
+	line_edit.caret_column = line_edit.text.length()
+	_suppress_autocomplete_text_changes = false
+	on_text_changed_autocomplete(line_edit.text)
+
+
+## Stores the current path in `slot` and makes it the active space, so leaving it later
+## carries any further navigation back into the same slot.
+func save_command_palette_space(slot: int) -> bool:
+	if not _is_valid_command_palette_space(slot):
+		return false
+	_command_palette_spaces[slot] = _get_current_command_palette_space_path()
+	_active_command_palette_space = slot
+	return true
+
+
+## Banks the outgoing space's current path before restoring `slot`. A slot that was never
+## saved opens at root, so every number is usable immediately.
+func switch_to_command_palette_space(slot: int) -> bool:
+	if not _is_valid_command_palette_space(slot):
+		return false
+	if _active_command_palette_space == slot:
+		return true
+	if _active_command_palette_space > 0:
+		# A root path carries nothing worth remembering, and a palette reopened after a close
+		# sits at root, so banking it would discard what the space was explicitly given.
+		var outgoing_path := _get_current_command_palette_space_path()
+		if outgoing_path != COMMAND_PALETTE_SPACE_ROOT_PATH:
+			_command_palette_spaces[_active_command_palette_space] = outgoing_path
+	_active_command_palette_space = slot
+	_apply_command_palette_space_path(str(_command_palette_spaces.get(slot, COMMAND_PALETTE_SPACE_ROOT_PATH)))
+	return true
+
+
+func get_active_command_palette_space() -> int:
+	return _active_command_palette_space
+
+
+func get_command_palette_space_path(slot: int) -> String:
+	return str(_command_palette_spaces.get(slot, ""))
 
 
 func _get_widget_path_for_autocomplete_column_state(column_state: Dictionary) -> String:

@@ -57,3 +57,13 @@ Commands accept an optional trailing `keyboard_shortcut: Key`. Visible shortcuts
 Preview matches can carry multiple highlights. Default-child focus uses the existing blue outline, while shortcut highlights are layout-only. When the inclusive range between the first and last highlight exceeds the current row capacity, alternating gaps replace middle rows with disabled `+ X hidden options` summaries until every highlighted row fits. Column reconstruction on palette resize recalculates those summaries, restoring rows as height becomes available.
 
 `tests/logot_cases/orderable_groups_shortcuts_and_highlights_test.gd` covers generated command metadata, all movement modes, display ordering, drag reorder semantics, shortcut precedence, invisible preview highlights, and height-dependent gap collapsing.
+
+## Palette Spaces
+
+Nine number-key spaces hold palette positions for the current session. Cmd/Ctrl+Alt+`N` stores the current position in space `N` and makes it the active space; Cmd/Ctrl+`N` returns to space `N`, first banking the active space's present position so navigation carried out inside a space is kept without an explicit save. A space that has never been stored opens at `/`, so every number is usable immediately. Spaces are working positions rather than saved state: they are held in memory and are not written to the settings file.
+
+Banking skips a root position, on the same reasoning as the backtick stash: a palette reopened after a close sits at `/`, and banking that would discard the path the space was explicitly given.
+
+A position is the command input's text verbatim, so a partial filter or a typed argument is restored exactly as it was left. Spaces answer to that input rather than to the popup, which lets a filter matching nothing be left by number. `handle_command_palette_shortcut()` resolves them ahead of `_resolve_visible_keyboard_shortcuts()`, so a number key is a space wherever the palette is and a command that declares a bare number shortcut is shadowed while the palette is open; Shift+number is left to commands. The slot is read from the event's `keycode` and, because Option rewrites `keycode` on macOS, its `physical_keycode`, accepting both the number row and the keypad.
+
+`tests/logot_cases/command_palette_spaces_test.gd` covers saving, restoring, implicit banking on exit, filter preservation, unsaved-space fallback to root, Shift+number passthrough, and switching away from a filter with no matches.
