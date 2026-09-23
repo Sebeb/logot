@@ -26,6 +26,7 @@ signal running_state_changed(is_running: bool)
 var console = null
 var _discovery_roots: Array[String] = [TEST_CASES_ROOT]
 var _tests_by_id: Dictionary = {}
+var _registered_test_cases: Dictionary = {}
 var _invalid_test_messages: Array[String] = []
 var _last_discovery_report: Dictionary = {}
 var _last_batch_report: Dictionary = {}
@@ -88,6 +89,32 @@ func set_discovery_roots(roots: Array[String]) -> void:
 	if normalized.is_empty():
 		normalized.append(TEST_CASES_ROOT)
 	_discovery_roots = normalized
+
+
+func register_test_case(test_case) -> bool:
+	if test_case == null:
+		_invalid_test_messages.append("Cannot register a null test case.")
+		return false
+	if not _validate_test_case(test_case, "registered test case"):
+		return false
+	_registered_test_cases[test_case.id] = test_case
+	_tests_by_id[test_case.id] = test_case
+	_register_commands()
+	tests_changed.emit()
+	return true
+
+
+func unregister_test_case(test_id: String) -> bool:
+	var normalized_id := test_id.strip_edges()
+	if not _registered_test_cases.has(normalized_id):
+		return false
+	var registered_case = _registered_test_cases[normalized_id]
+	_registered_test_cases.erase(normalized_id)
+	if _tests_by_id.get(normalized_id, null) == registered_case:
+		_tests_by_id.erase(normalized_id)
+	_register_commands()
+	tests_changed.emit()
+	return true
 
 
 func get_discovery_report() -> Dictionary:
@@ -350,6 +377,11 @@ func _discover_tests() -> void:
 			if not _validate_test_case(test_case, script_path):
 				continue
 			_tests_by_id[test_case.id] = test_case
+
+	for test_case in _registered_test_cases.values():
+		if not _validate_test_case(test_case, "registered test case"):
+			continue
+		_tests_by_id[test_case.id] = test_case
 
 
 func _validate_test_case(test_case, script_path: String) -> bool:
