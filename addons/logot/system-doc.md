@@ -65,3 +65,12 @@ The runtime Logot node accepts a nullable exported `presentation_theme`. When su
 ### Responsive console footer
 
 The scene-owned footer keeps the native input HBox and its existing action controls, with the collapsed-filter VBox as a separate sibling. Its generated filter row uses native HFlowContainer layout, preserving all seven original levels, order and handlers while wrapping at the available width. Input remains independently usable as filter counts grow. No polling, manual viewport geometry, hidden controls or font-size workaround is added. Both runtime and editor display composition retain the input-row API and palette/history ownership. The responsive_console_input test exercises 780/520 resizing, keyboard/touch modes, filter cycling, focus/caret, history and palette.
+
+
+### Static widget sibling ordering
+
+`add_widget(address, scene_or_path, description = "", group_name = "", group_priority = 0, default_minimum_size = Vector2.ZERO, display_label = "", display_order = 0)` accepts an optional ascending integer order. Existing callers retain alphabetical tier ordering because their orders are all zero. Group priority and name, then search score, still take precedence; equal orders fall back to the tier name. Orders apply to direct widget tiers, not their parent menus. Static ordering does not enable drag handles or register movement commands. If an orderable command shares a widget tier, its existing drag order takes precedence.
+
+`set_widget_display_order(address, display_order) -> bool` changes typed or dictionary widget metadata in place and refreshes live displays through the existing catalog invalidation path. It returns false for missing widgets and true for existing widgets, including unchanged values; unchanged values skip invalidation. Address normalization matches registration and removal. The shared palette update retains columns and embedded controls for the same widget path, preserving their focus, caret and unsaved drafts. Removal erases the metadata with the widget; a new registration starts with its own order. Ordering is caller-owned metadata and is not persisted by Logot.
+
+`tests/logot_cases/widget_display_order_test.gd` exercises the real sibling match builder and open multi-column palette, including legacy defaults, explicit orders, ties, group priority, live update, registry/column/widget identity, focused drafts, no-op updates, removal and re-registration. The existing `orderable_groups_shortcuts_and_highlights` suite remains the regression for mutable drag ordering.

@@ -1855,13 +1855,32 @@ func remove_display_variable(address: String) -> void:
 	_notify_command_catalog_changed(address)
 
 
-func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO, display_label: String = "") -> void:
+func add_widget(address: String, scene_or_path: Variant, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2.ZERO, display_label: String = "", display_order: int = 0) -> void:
 	var normalized_address := address.strip_edges().trim_suffix("/")
 	if normalized_address.is_empty():
 		push_warning("Cannot add Logot widget with an empty address.")
 		return
-	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size, display_label)
+	widgets[normalized_address] = LogotWidget.new(scene_or_path, description, group_name, group_priority, default_minimum_size, display_label, display_order)
 	_notify_command_catalog_changed(normalized_address)
+
+
+## Changes sibling ordering without replacing registered metadata or live widget controls.
+## Returns false for an unknown address. Equal values retain tier-name ordering.
+func set_widget_display_order(address: String, display_order: int) -> bool:
+	var normalized_address := address.strip_edges().trim_suffix("/")
+	var widget = widgets.get(normalized_address)
+	if widget is LogotWidget:
+		if widget.display_order == display_order:
+			return true
+		widget.display_order = display_order
+	elif widget is Dictionary:
+		if int(widget.get("display_order", 0)) == display_order:
+			return true
+		widget["display_order"] = display_order
+	else:
+		return false
+	_notify_command_catalog_changed(normalized_address)
+	return true
 
 
 func add_render_texture_widget(address: String, texture_getter: Callable, description: String = "", group_name: String = "", group_priority: int = 0, default_minimum_size: Vector2 = Vector2(220, 160)) -> void:

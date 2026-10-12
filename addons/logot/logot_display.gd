@@ -244,6 +244,7 @@ class LogotWidget:
 	var scene_or_path: Variant
 	var description: String
 	var display_label: String
+	var display_order: int
 	var group_name: String
 	var group_priority: int
 	var default_minimum_size: Vector2
@@ -254,11 +255,13 @@ class LogotWidget:
 		in_group_name: String = "",
 		in_group_priority: int = 0,
 		in_default_minimum_size: Vector2 = Vector2.ZERO,
-		in_display_label: String = ""
+		in_display_label: String = "",
+		in_display_order: int = 0
 	):
 		scene_or_path = in_scene_or_path
 		description = in_description
 		display_label = in_display_label.strip_edges()
+		display_order = in_display_order
 		group_name = in_group_name.strip_edges()
 		group_priority = in_group_priority if not group_name.is_empty() else 0
 		default_minimum_size = in_default_minimum_size
@@ -6837,6 +6840,12 @@ func _build_tier_match_data(tier_text: String, score: int, prefix: String) -> Di
 		"disabled": _is_command_path_disabled(tier_text),
 		"keyboard_shortcut": _get_command_keyboard_shortcut(resolved_tier),
 	}
+	if has_widget:
+		var widget = _get_widget_data(resolved_tier)
+		if widget is LogotWidget:
+			match_data["display_order"] = widget.display_order
+		elif widget is Dictionary:
+			match_data["display_order"] = int(widget.get("display_order", 0))
 	var orderable_data := _get_command_orderable_data(resolved_tier)
 	if not orderable_data.is_empty():
 		match_data["draggable"] = true
