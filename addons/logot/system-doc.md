@@ -57,3 +57,11 @@ Both the runtime submission path in `logot.gd` and the editor submission path in
 `tests/logot_external_test_case_adapter_test.gd` is the process-local headless regression test. It verifies refresh persistence, real manager execution and result reporting, unregister refusal, synchronous and deferred completion, and the missing-body failure. Run it with `godot --headless --path <logot-checkout> --script res://tests/logot_external_test_case_adapter_test.gd` after the project has completed its normal import scan.
 
 The deterministic behavior suite is `/test/logot_performance_sources`; it verifies registration, shared widget lifecycle, top-ten calculations, graph behavior, snapshots, and top-right pins. `/test/logot_performance_sources_visual` captures the three-widget layout, while `/test/logot_performance_sources_native` validates live bridge collection and must run with a rendering-capable profiler-enabled Godot build.
+
+### Host presentation theme
+
+The runtime Logot node accepts a nullable exported `presentation_theme`. When supplied, the in-game UI instance receives it before entering the display tree and before display initialization captures base font sizes. Null preserves the existing vendor and editor presentation. This is a host configuration seam, with no project-specific default or branch. Input-method percentages, persisted settings, command palette, history and full log formatting retain their existing ownership.
+
+### Responsive console footer
+
+The scene-owned footer keeps the native input HBox and its existing action controls, with the collapsed-filter VBox as a separate sibling. Its generated filter row uses native HFlowContainer layout, preserving all seven original levels, order and handlers while wrapping at the available width. Input remains independently usable as filter counts grow. No polling, manual viewport geometry, hidden controls or font-size workaround is added. Both runtime and editor display composition retain the input-row API and palette/history ownership. The responsive_console_input test exercises 780/520 resizing, keyboard/touch modes, filter cycling, focus/caret, history and palette.

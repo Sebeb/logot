@@ -230,6 +230,8 @@ var _debugger_connected := false
 # =============================================================================
 # EXISTING CONSOLE PROPERTIES
 # =============================================================================
+@export var presentation_theme: Theme
+
 var enabled := true
 var enable_on_release_build := false : set = set_enable_on_release_build
 var pause_enabled := false
@@ -2971,6 +2973,8 @@ func _setup_game_ui() -> void:
 	_logot_ui = LOGOT_UI_SCENE.instantiate()
 	_logot_ui.name = "LogotUI"
 	_logot_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	if presentation_theme != null:
+		_logot_ui.theme = presentation_theme
 	_display.add_child(_logot_ui)
 
 	# Configure the display base
@@ -5643,7 +5647,7 @@ func _refresh_current_git_branch_remote_status() -> void:
 	_current_git_branch_ahead = 0
 	_current_git_branch_behind = 0
 	_current_git_branch_uncommitted_files = 0
-	if _get_current_git_branch() == _UNKNOWN_GIT_BRANCH:
+	if OS.has_feature("web") or _get_current_git_branch() == _UNKNOWN_GIT_BRANCH:
 		return
 
 	var command_output: Array = []
@@ -5677,6 +5681,9 @@ func _refresh_current_git_branch_remote_status() -> void:
 
 
 func _resolve_current_git_branch() -> String:
+	if OS.has_feature("web"):
+		return ""
+
 	var command_output: Array = []
 	var status := OS.execute("git", ["rev-parse", "--abbrev-ref", "HEAD"], command_output, true)
 	if status == OK and not command_output.is_empty():

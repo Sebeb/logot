@@ -2149,7 +2149,7 @@ var _sidebar  # LogotSidebar - type removed to avoid circular dependency
 var _sidebar_toggle_btn: Button
 var _clear_btn: Button
 var _collapsed_level_buttons_container: VBoxContainer
-var _collapsed_level_buttons_row: HBoxContainer
+var _collapsed_level_buttons_row: HFlowContainer
 var _main_container: Control
 var _logot_container: VBoxContainer
 var _input_row: HBoxContainer
@@ -3664,6 +3664,8 @@ func _setup_ui_nodes() -> void:
 			_sidebar_toggle_btn = _input_row.get_node("SidebarToggleButton")
 		if _input_row.has_node("CollapsedLevelButtons"):
 			_collapsed_level_buttons_container = _input_row.get_node("CollapsedLevelButtons") as VBoxContainer
+	if _logot_container and _logot_container.has_node("VBoxContainer/CollapsedLevelButtons"):
+		_collapsed_level_buttons_container = _logot_container.get_node("VBoxContainer/CollapsedLevelButtons") as VBoxContainer
 	if _main_container and _main_container.has_node("Sidebar"):
 		_sidebar = _main_container.get_node("Sidebar")
 
@@ -3953,10 +3955,11 @@ func _setup_collapsed_level_buttons() -> void:
 	for child in _collapsed_level_buttons_container.get_children():
 		child.queue_free()
 	_collapsed_level_buttons.clear()
-	_collapsed_level_buttons_row = HBoxContainer.new()
+	_collapsed_level_buttons_row = HFlowContainer.new()
 	_collapsed_level_buttons_row.name = "ButtonsRow"
 	_collapsed_level_buttons_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_collapsed_level_buttons_row.add_theme_constant_override("separation", 4)
+	_collapsed_level_buttons_row.add_theme_constant_override("h_separation", 4)
+	_collapsed_level_buttons_row.add_theme_constant_override("v_separation", 4)
 	_collapsed_level_buttons_container.add_child(_collapsed_level_buttons_row)
 
 	for level in LOG_LEVELS:
@@ -4906,7 +4909,7 @@ func _layout_pinned_overlay_corner_columns(corner: String, rows: Array) -> void:
 	for row in rows:
 		if not (row is Control):
 			continue
-		var row_height := ceil((row as Control).get_combined_minimum_size().y)
+		var row_height := ceilf((row as Control).get_combined_minimum_size().y)
 		if not current_column.is_empty() and current_height + row_height > max_column_height:
 			columns.append(current_column)
 			current_column = []
@@ -7789,7 +7792,7 @@ func _is_command_path_disabled(command_path: String) -> bool:
 
 
 func _get_command_display_label(command_name: String) -> String:
-	var command_data := _get_command_data(command_name)
+	var command_data: Variant = _get_command_data(command_name)
 	if command_data is LogotCommand:
 		return str((command_data as LogotCommand).display_label)
 	if command_data is Dictionary:
@@ -7798,7 +7801,7 @@ func _get_command_display_label(command_name: String) -> String:
 
 
 func _get_command_icon(command_name: String) -> Texture2D:
-	var command_data := _get_command_data(command_name)
+	var command_data: Variant = _get_command_data(command_name)
 	if command_data is LogotCommand:
 		return (command_data as LogotCommand).icon
 	if command_data is Dictionary:
