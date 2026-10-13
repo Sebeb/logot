@@ -1,0 +1,38 @@
+{
+  "addons/logot/logot_display.gd": {
+    "exists": true,
+    "sha256": "bfaa1e179ae34b14e78239b531e3f0efdac36f426b5994186e702d450b3f6b80"
+  },
+  "addons/logot/system-doc.md": {
+    "exists": true,
+    "sha256": "a847f0f317f6cb72197afe6f918e1cb3c1e3ce9ffdf08edf417b4c521059c6cc"
+  },
+  "tests/private_pinned_layout/README.md": {
+    "exists": true,
+    "sha256": "24249623ce2bbf7db2addb220b62ba6ed4551a01dfc06f17c4da8bd5b2c6794f"
+  },
+  "tests/private_pinned_layout/pinned_display_responsive_layout_test.gd": {
+    "exists": true,
+    "sha256": "0e0bba9206c03559ee406fe0c7847c7213ac70ba94c0d0e5331b030d2e0ba226"
+  },
+  "tests/private_pinned_layout/prepare.py": {
+    "exists": true,
+    "sha256": "2ecf28d2687864209d912754d51e829121a1179024f2712d014160a05f0c2fef"
+  },
+  "tests/private_pinned_layout/run.py": {
+    "exists": true,
+    "sha256": "21fef868ab6aef1b09087e400e8aa33566f0038f0e4a61f8701f443fe793c7ff"
+  },
+  "tests/private_pinned_layout/runner.gd": {
+    "exists": true,
+    "sha256": "3f318564810643b22d4f87a9aa67089b5c76d5bd18b52cf5414af953d85a4812"
+  },
+  "tests/private_pinned_layout/snapshot.py": {
+    "exists": true,
+    "sha256": "cf9caeedcbbaccbde6a57762ea81862f4869e42783d34345d117d70bb331fd90"
+  },
+  "tests/private_pinned_layout/userdata_proof.gd": {
+    "exists": true,
+    "sha256": "85dc49f90bfe27faa5211e36bb92444611f958d818619264a3b27ec7217e7f91"
+  }
+}

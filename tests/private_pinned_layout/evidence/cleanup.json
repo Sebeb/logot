@@ -1,0 +1,19 @@
+{
+  "before": {
+    "path": "/Users/seb/Library/Application Support/logot-pinned-private-1147da4f00bd4ceaae8998322918e2ac-before",
+    "existed": true,
+    "files": [
+      "logs/godot2026-10-13T02.26.08.log",
+      "logs/godot.log"
+    ]
+  },
+  "after": {
+    "path": "/Users/seb/Library/Application Support/logot-pinned-private-c904cd522ec74105b8aaafd04786f1ef-after",
+    "existed": true,
+    "files": [
+      "logs/godot2026-10-13T02.26.32.log",
+      "logs/godot.log"
+    ]
+  },
+  "remaining_fixture_processes": []
+}

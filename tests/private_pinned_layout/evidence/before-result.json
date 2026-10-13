@@ -1,0 +1,847 @@
+{
+	"checks": [
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained default CSS360 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text default CSS360 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS360 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded default CSS360 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (583.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained default CSS360 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "60fps",
+			"label": "complete text default CSS360 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS360 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded default CSS360 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (583.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap default CSS360 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (201.0, 161.0), S: (500.0, 79.0)]",
+			"label": "contained default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "21 unseen · 21 need manual verificationsummary",
+			"label": "complete text default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 79.0) content_height=79",
+			"label": "wrapped height allocated default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (201.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (583.0, 120.0), S: (118.0, 41.0)] vs [P: (201.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS360 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained default CSS360 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text default CSS360 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS360 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded default CSS360 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained default CSS360 ratio1.0 dev/performance/fps",
+			"passed": false
+		},
+		{
+			"details": "60fps",
+			"label": "complete text default CSS360 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS360 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded default CSS360 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap default CSS360 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "contained default CSS360 ratio1.0 changelog/summary",
+			"passed": false
+		},
+		{
+			"details": "21 unseen · 21 need manual verificationsummary",
+			"label": "complete text default CSS360 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 79.0) content_height=79",
+			"label": "wrapped height allocated default CSS360 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded default CSS360 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS360 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS360 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained default CSS390 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text default CSS390 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS390 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded default CSS390 ratio0.5 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained default CSS390 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "60fps",
+			"label": "complete text default CSS390 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS390 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded default CSS390 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap default CSS390 ratio0.5 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (261.0, 161.0), S: (500.0, 79.0)]",
+			"label": "contained default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "21 unseen · 21 need manual verificationsummary",
+			"label": "complete text default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 79.0) content_height=79",
+			"label": "wrapped height allocated default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS390 ratio0.5 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained default CSS390 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text default CSS390 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS390 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded default CSS390 ratio1.0 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained default CSS390 ratio1.0 dev/performance/fps",
+			"passed": false
+		},
+		{
+			"details": "60fps",
+			"label": "complete text default CSS390 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated default CSS390 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded default CSS390 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap default CSS390 ratio1.0 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "contained default CSS390 ratio1.0 changelog/summary",
+			"passed": false
+		},
+		{
+			"details": "21 unseen · 21 need manual verificationsummary",
+			"label": "complete text default CSS390 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 79.0) content_height=79",
+			"label": "wrapped height allocated default CSS390 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded default CSS390 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS390 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 79.0)]",
+			"label": "no overlap default CSS390 ratio1.0 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "60fps",
+			"label": "complete text resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "contained resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "summary:\n\t123 unseen · 456 need manual verification\nEvery count and this explicit second line must remain visible.",
+			"label": "complete text resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 231.0) content_height=231",
+			"label": "wrapped height allocated resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained resize 360 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text resize 360 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 360 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded resize 360 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained resize 360 dev/performance/fps",
+			"passed": false
+		},
+		{
+			"details": "60fps",
+			"label": "complete text resize 360 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 360 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded resize 360 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap resize 360 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "contained resize 360 changelog/summary",
+			"passed": false
+		},
+		{
+			"details": "summary:\n\t123 unseen · 456 need manual verification\nEvery count and this explicit second line must remain visible.",
+			"label": "complete text resize 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 231.0) content_height=231",
+			"label": "wrapped height allocated resize 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded resize 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 360 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 360 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 360 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained resize 390 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text resize 390 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 390 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded resize 390 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained resize 390 dev/performance/fps",
+			"passed": false
+		},
+		{
+			"details": "60fps",
+			"label": "complete text resize 390 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 390 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded resize 390 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap resize 390 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "contained resize 390 changelog/summary",
+			"passed": false
+		},
+		{
+			"details": "summary:\n\t123 unseen · 456 need manual verification\nEvery count and this explicit second line must remain visible.",
+			"label": "complete text resize 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 231.0) content_height=231",
+			"label": "wrapped height allocated resize 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded resize 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 390 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 390 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 390 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded resize 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "60fps",
+			"label": "complete text resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (643.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap resize 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "contained resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "summary:\n\t123 unseen · 456 need manual verification\nEvery count and this explicit second line must remain visible.",
+			"label": "complete text resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 231.0) content_height=231",
+			"label": "wrapped height allocated resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (643.0, 120.0), S: (118.0, 41.0)] vs [P: (261.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap resize 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "row identity retained 780 changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)]",
+			"label": "contained four corners dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "version:0.0.1-32",
+			"label": "complete text four corners dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "size=(254.0, 41.0) content_height=41",
+			"label": "wrapped height allocated four corners dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "content=229 size=254.0",
+			"label": "rendered content width bounded four corners dev/build/version",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "contained four corners dev/performance/fps",
+			"passed": false
+		},
+		{
+			"details": "60fps",
+			"label": "complete text four corners dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "size=(118.0, 41.0) content_height=41",
+			"label": "wrapped height allocated four corners dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "content=94 size=118.0",
+			"label": "rendered content width bounded four corners dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (397.0, 120.0), S: (118.0, 41.0)]",
+			"label": "no overlap four corners dev/performance/fps",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "contained four corners changelog/summary",
+			"passed": false
+		},
+		{
+			"details": "summary:\n\t123 unseen · 456 need manual verification\nEvery count and this explicit second line must remain visible.",
+			"label": "complete text four corners changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 231.0) content_height=231",
+			"label": "wrapped height allocated four corners changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded four corners changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap four corners changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 161.0), S: (500.0, 231.0)]",
+			"label": "no overlap four corners changelog/summary",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 1086.0), S: (500.0, 193.0)]",
+			"label": "contained four corners bottom/left",
+			"passed": false
+		},
+		{
+			"details": "left:\n\tBottom left paragraph with every word preserved through wrapping and value refresh.",
+			"label": "complete text four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 193.0) content_height=193",
+			"label": "wrapped height allocated four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 1086.0), S: (500.0, 193.0)]",
+			"label": "no overlap four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 1086.0), S: (500.0, 193.0)]",
+			"label": "no overlap four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 231.0)] vs [P: (15.0, 1086.0), S: (500.0, 193.0)]",
+			"label": "no overlap four corners bottom/left",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 1124.0), S: (500.0, 155.0)]",
+			"label": "contained four corners bottom/right",
+			"passed": false
+		},
+		{
+			"details": "right:\n\tBottom right first line\nsecond line with preserved counts 789 and 987.",
+			"label": "complete text four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "size=(500.0, 155.0) content_height=155",
+			"label": "wrapped height allocated four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "content=500 size=500.0",
+			"label": "rendered content width bounded four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 120.0), S: (254.0, 41.0)] vs [P: (15.0, 1124.0), S: (500.0, 155.0)]",
+			"label": "no overlap four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "[P: (397.0, 120.0), S: (118.0, 41.0)] vs [P: (15.0, 1124.0), S: (500.0, 155.0)]",
+			"label": "no overlap four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 161.0), S: (500.0, 231.0)] vs [P: (15.0, 1124.0), S: (500.0, 155.0)]",
+			"label": "no overlap four corners bottom/right",
+			"passed": true
+		},
+		{
+			"details": "[P: (15.0, 1086.0), S: (500.0, 193.0)] vs [P: (15.0, 1124.0), S: (500.0, 155.0)]",
+			"label": "no overlap four corners bottom/right",
+			"passed": false
+		},
+		{
+			"details": "",
+			"label": "widget control identity preserved",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "widget draft and caret preserved",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "widget focus preserved",
+			"passed": false
+		},
+		{
+			"details": "",
+			"label": "user corner preferences preserved",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "user pin order preserved",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "overflow retains complete text",
+			"passed": true
+		}
+	],
+	"collected": 168,
+	"failed": 14,
+	"passed": 154
+}

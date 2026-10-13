@@ -1,0 +1,17 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PINNED_RESULT collected=168 failed=14
+FAIL contained default CSS360 ratio1.0 dev/performance/fps: [P: (397.0, 120.0), S: (118.0, 41.0)]
+FAIL contained default CSS360 ratio1.0 changelog/summary: [P: (15.0, 161.0), S: (500.0, 79.0)]
+FAIL contained default CSS390 ratio1.0 dev/performance/fps: [P: (397.0, 120.0), S: (118.0, 41.0)]
+FAIL contained default CSS390 ratio1.0 changelog/summary: [P: (15.0, 161.0), S: (500.0, 79.0)]
+FAIL contained resize 360 dev/performance/fps: [P: (397.0, 120.0), S: (118.0, 41.0)]
+FAIL contained resize 360 changelog/summary: [P: (15.0, 161.0), S: (500.0, 231.0)]
+FAIL contained resize 390 dev/performance/fps: [P: (397.0, 120.0), S: (118.0, 41.0)]
+FAIL contained resize 390 changelog/summary: [P: (15.0, 161.0), S: (500.0, 231.0)]
+FAIL contained four corners dev/performance/fps: [P: (397.0, 120.0), S: (118.0, 41.0)]
+FAIL contained four corners changelog/summary: [P: (15.0, 161.0), S: (500.0, 231.0)]
+FAIL contained four corners bottom/left: [P: (15.0, 1086.0), S: (500.0, 193.0)]
+FAIL contained four corners bottom/right: [P: (15.0, 1124.0), S: (500.0, 155.0)]
+FAIL no overlap four corners bottom/right: [P: (15.0, 1086.0), S: (500.0, 193.0)] vs [P: (15.0, 1124.0), S: (500.0, 155.0)]
+FAIL widget focus preserved: 

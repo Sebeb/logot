@@ -3441,9 +3441,21 @@ func _apply_pinned_variable_width_cap(row: RichTextLabel, plain_text: String = "
 		content_width = maxf(content_width, _measure_pinned_variable_text_width(row, plain_text))
 	if content_width <= 0.0:
 		content_width = PINNED_OVERLAY_MAX_VARIABLE_WIDTH
-	var capped_width := minf(ceil(content_width + PINNED_OVERLAY_VARIABLE_WIDTH_PADDING), PINNED_OVERLAY_MAX_VARIABLE_WIDTH)
+	var capped_width := minf(ceil(content_width + PINNED_OVERLAY_VARIABLE_WIDTH_PADDING), _get_pinned_variable_width_budget(row))
 	row.custom_minimum_size.x = capped_width
 	row.size.x = capped_width
+	row.custom_minimum_size.y = ceilf(row.get_content_height())
+	row.size.y = row.custom_minimum_size.y
+
+
+func _get_pinned_overlay_usable_rect() -> Rect2:
+	var origin := Vector2(PINNED_OVERLAY_MARGIN + _ingame_overlay_left_edge_override, PINNED_OVERLAY_MARGIN + _ingame_overlay_top_edge_override)
+	var end := get_viewport_rect().size - Vector2(PINNED_OVERLAY_MARGIN + _ingame_overlay_right_edge_override, PINNED_OVERLAY_MARGIN + _ingame_overlay_bottom_edge_override)
+	return Rect2(origin, Vector2(maxf(1.0, end.x - origin.x), maxf(1.0, end.y - origin.y)))
+
+
+func _get_pinned_variable_width_budget(row: RichTextLabel) -> float:
+	return maxf(1.0, minf(PINNED_OVERLAY_MAX_VARIABLE_WIDTH, minf(_get_pinned_overlay_usable_rect().size.x, float(row.get_meta("logot_pin_width_budget", PINNED_OVERLAY_MAX_VARIABLE_WIDTH)))))
 
 
 func _append_pinned_display_variable_value(row: RichTextLabel, value_text: String, value_color: Color, value_items: Array = []) -> void:
@@ -3494,13 +3506,15 @@ func _should_stack_pinned_display_variable_value(row: RichTextLabel, display_add
 		return true
 	if _pinned_display_variable_value_has_line_break(value_text, value_items):
 		return true
-	var usable_width := PINNED_OVERLAY_MAX_VARIABLE_WIDTH - PINNED_OVERLAY_VARIABLE_WIDTH_PADDING
+	var usable_width := maxf(1.0, _get_pinned_variable_width_budget(row) - PINNED_OVERLAY_VARIABLE_WIDTH_PADDING)
 	var title_width := _measure_pinned_variable_text_width(row, "%s:" % display_address)
 	if title_width > usable_width:
 		return true
 	var value_width := _measure_pinned_variable_text_width(row, _get_pinned_display_variable_value_plain_text(value_text, value_items))
 	var inline_value_width := maxf(1.0, usable_width - title_width)
-	return ceili(value_width / inline_value_width) > 2
+	# Intrinsic table cells can overflow even when the table's Control is bounded.
+	# Keep the original compact table only when both cells fit on one line.
+	return value_width > inline_value_width
 
 
 func _append_pinned_display_variable_row_text(row: RichTextLabel, display_address: String, value_text: String, value_color: Color, align_right: bool, value_items: Array = [], wrap_value: bool = false) -> void:
@@ -3509,19 +3523,14 @@ func _append_pinned_display_variable_row_text(row: RichTextLabel, display_addres
 	row.push_bgcolor(PINNED_OVERLAY_ROW_BG_COLOR)
 	var stack_value := _should_stack_pinned_display_variable_value(row, display_address, value_text, value_items, wrap_value)
 	row.set_meta("logot_pin_stacked_value", stack_value)
-	row.push_table(1 if stack_value else 2)
 	if stack_value:
-		row.set_table_column_expand(0, true)
-		row.push_cell()
+		# Ordinary paragraphs wrap long words too; an intrinsic table cell does not.
 		row.add_text("%s:" % display_address)
 		row.newline()
-		row.push_indent(1)
 		_append_pinned_display_variable_value(row, value_text, value_color, value_items)
 		row.pop()
-		row.pop()
-		row.pop()
-		row.pop()
 		return
+	row.push_table(2)
 	if align_right:
 		row.set_table_column_expand(0, true)
 		row.set_table_column_expand(1, false)
@@ -4858,17 +4867,39 @@ func _update_pinned_widget_headers_in_row(node: Node, align_right: bool, base_na
 		_update_pinned_widget_headers_in_row(child, align_right, base_name_counts)
 
 
+func _get_pinned_row_natural_width(row: Control) -> float:
+	if row is RichTextLabel:
+		var address := str(row.get_meta("logot_pin_address", ""))
+		var snapshot: Dictionary = _pinned_row_render_snapshots.get(address, {})
+		var label := str(snapshot.get("display_label", ""))
+		if label.is_empty():
+			label = _get_pinned_item_display_address(address)
+		var text := "%s: %s" % [label, _get_pinned_display_variable_value_plain_text(str(snapshot.get("text", "")), snapshot.get("items", []))]
+		return minf(PINNED_OVERLAY_MAX_VARIABLE_WIDTH, ceilf(_measure_pinned_variable_text_width(row, text) + PINNED_OVERLAY_VARIABLE_WIDTH_PADDING))
+	return row.get_combined_minimum_size().x
+
+
+func _set_pinned_rows_width(rows: Array, width: float, base_name_counts: Dictionary) -> void:
+	for row in rows:
+		if row is RichTextLabel:
+			row.set_meta("logot_pin_width_budget", maxf(1.0, floorf(width)))
+			_apply_pinned_display_variable_row_snapshot(str(row.get_meta("logot_pin_address", "")), base_name_counts)
+
+
+func _get_pinned_rows_height(rows: Array) -> float:
+	var height := 0.0
+	for row in rows:
+		height += ceilf((row as Control).get_combined_minimum_size().y)
+	return height
+
+
 func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 	var rows_by_corner: Dictionary = {}
+	var widths: Dictionary = {}
+	var focused := get_viewport().gui_get_focus_owner()
 	for corner in PINNED_OVERLAY_CORNERS:
-		var container := _get_pinned_overlay_container(corner)
-		if container != null:
-			rows_by_corner[corner] = []
-			for column in container.get_children():
-				for child in column.get_children():
-					column.remove_child(child)
-				container.remove_child(column)
-				column.free()
+		rows_by_corner[corner] = []
+		widths[corner] = 0.0
 
 	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 	var placed_row_ids: Dictionary = {}
@@ -4876,53 +4907,124 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 		var row = _pinned_overlay_rows.get(address, null)
 		if not (row is Control) or not is_instance_valid(row):
 			continue
-		var row_id := int((row as Node).get_instance_id())
+		var row_id := int(row.get_instance_id())
 		if placed_row_ids.has(row_id):
 			continue
 		placed_row_ids[row_id] = true
-		var effective_corner := _get_effective_pinned_corner_for_address(address)
-		if not rows_by_corner.has(effective_corner):
-			continue
-		var parent := (row as Node).get_parent()
-		if parent != null:
-			(parent as Node).remove_child(row)
-		var align_right: bool = effective_corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or effective_corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
-		var horizontal_alignment := HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT
-		if row is Control:
-			(row as Control).size_flags_horizontal = Control.SIZE_SHRINK_END if align_right else Control.SIZE_SHRINK_BEGIN
-		if _has_display_variable(address):
-			_apply_pinned_display_variable_row_snapshot(address, base_name_counts, false)
-		_apply_pinned_overlay_row_alignment(row, horizontal_alignment, align_right)
-		_update_pinned_widget_headers_in_row(row as Node, align_right, base_name_counts)
-		(rows_by_corner[effective_corner] as Array).append(row)
+		var corner := _get_effective_pinned_corner_for_address(address)
+		row.set_meta("logot_pin_address", address)
+		var align_right: bool = corner in [PINNED_OVERLAY_CORNER_TOP_RIGHT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT]
+		row.size_flags_horizontal = Control.SIZE_SHRINK_END if align_right else Control.SIZE_SHRINK_BEGIN
+		_apply_pinned_overlay_row_alignment(row, HORIZONTAL_ALIGNMENT_RIGHT if align_right else HORIZONTAL_ALIGNMENT_LEFT, align_right)
+		_update_pinned_widget_headers_in_row(row, align_right, base_name_counts)
+		(rows_by_corner[corner] as Array).append(row)
+		widths[corner] = maxf(float(widths[corner]), _get_pinned_row_natural_width(row))
 
+	var usable := _get_pinned_overlay_usable_rect().size
+	# Allocate width only when opposing demand cannot fit. Small diagnostics keep
+	# their natural width and leave the remaining space to prose on the other side.
+	for pair in [[PINNED_OVERLAY_CORNER_TOP_LEFT, PINNED_OVERLAY_CORNER_TOP_RIGHT], [PINNED_OVERLAY_CORNER_BOTTOM_LEFT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT]]:
+		var left: String = pair[0]
+		var right: String = pair[1]
+		var left_width := float(widths[left])
+		var right_width := float(widths[right])
+		var available := maxf(1.0, usable.x - (PINNED_OVERLAY_COLUMN_SEPARATION if left_width > 0.0 and right_width > 0.0 else 0.0))
+		if left_width + right_width > available:
+			var half := floorf(available * 0.5)
+			if left_width <= half:
+				right_width = available - left_width
+			elif right_width <= half:
+				left_width = available - right_width
+			else:
+				left_width = half
+				right_width = available - half
+		widths[left] = minf(usable.x, left_width)
+		widths[right] = minf(usable.x, right_width)
 	for corner in PINNED_OVERLAY_CORNERS:
-		_layout_pinned_overlay_corner_columns(corner, rows_by_corner.get(corner, []) as Array)
+		_set_pinned_rows_width(rows_by_corner[corner], float(widths[corner]), base_name_counts)
+
+	var heights: Dictionary = {}
+	for corner in PINNED_OVERLAY_CORNERS:
+		heights[corner] = usable.y
+	# Reserve vertical space for any bottom group whose horizontal span intersects
+	# a top group, including diagonally opposed wide corners.
+	for top in [PINNED_OVERLAY_CORNER_TOP_LEFT, PINNED_OVERLAY_CORNER_TOP_RIGHT]:
+		for bottom in [PINNED_OVERLAY_CORNER_BOTTOM_LEFT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT]:
+			var top_rows: Array = rows_by_corner[top]
+			var bottom_rows: Array = rows_by_corner[bottom]
+			if top_rows.is_empty() or bottom_rows.is_empty():
+				continue
+			var same_side: bool = str(top).ends_with("left") == str(bottom).ends_with("left")
+			if not same_side and float(widths[top]) + float(widths[bottom]) + PINNED_OVERLAY_COLUMN_SEPARATION <= usable.x:
+				continue
+			var top_height := _get_pinned_rows_height(top_rows)
+			var bottom_height := _get_pinned_rows_height(bottom_rows)
+			var available := maxf(1.0, usable.y - PINNED_OVERLAY_COLUMN_SEPARATION)
+			if top_height + bottom_height > available:
+				var top_budget := minf(top_height, available * 0.5)
+				var bottom_budget := minf(bottom_height, available - top_budget)
+				top_budget = available - bottom_budget
+				heights[top] = minf(float(heights[top]), top_budget)
+				heights[bottom] = minf(float(heights[bottom]), bottom_budget)
+
+	# Keep the row and widget instances, including edit drafts. Only disposable
+	# column containers are rebuilt, and focus is restored after reparenting.
+	for corner in PINNED_OVERLAY_CORNERS:
+		var container := _get_pinned_overlay_container(corner)
+		if container == null:
+			continue
+		for column in container.get_children():
+			for row in column.get_children():
+				row.reparent(_pinned_overlay_root)
+			container.remove_child(column)
+			column.free()
+	for corner in PINNED_OVERLAY_CORNERS:
+		_layout_pinned_overlay_corner_columns(corner, rows_by_corner[corner], float(widths[corner]), float(heights[corner]), base_name_counts)
+	if is_instance_valid(focused) and focused.is_inside_tree() and focused.is_visible_in_tree():
+		focused.grab_focus()
 
 
-func _layout_pinned_overlay_corner_columns(corner: String, rows: Array) -> void:
+func _pack_pinned_overlay_columns(rows: Array, max_height: float) -> Array[Array]:
+	var columns: Array[Array] = []
+	var current: Array = []
+	var height := 0.0
+	for row in rows:
+		var row_height := ceilf((row as Control).get_combined_minimum_size().y)
+		if not current.is_empty() and height + row_height > max_height:
+			columns.append(current)
+			current = []
+			height = 0.0
+		current.append(row)
+		height += row_height
+	if not current.is_empty():
+		columns.append(current)
+	return columns
+
+
+func _layout_pinned_overlay_corner_columns(corner: String, rows: Array, width_budget: float = -1.0, height_budget: float = -1.0, base_name_counts: Dictionary = {}) -> void:
 	var container := _get_pinned_overlay_container(corner)
 	if container == null or rows.is_empty():
 		return
-	var viewport_height := get_viewport_rect().size.y
-	var max_column_height := maxf(1.0, viewport_height - PINNED_OVERLAY_MARGIN * 2.0 - _ingame_overlay_top_edge_override - _ingame_overlay_bottom_edge_override)
-	var columns: Array[Array] = []
-	var current_column: Array = []
-	var current_height := 0.0
-	for row in rows:
-		if not (row is Control):
-			continue
-		var row_height := ceilf((row as Control).get_combined_minimum_size().y)
-		if not current_column.is_empty() and current_height + row_height > max_column_height:
-			columns.append(current_column)
-			current_column = []
-			current_height = 0.0
-		current_column.append(row)
-		current_height += row_height
-	if not current_column.is_empty():
-		columns.append(current_column)
+	var usable := _get_pinned_overlay_usable_rect().size
+	var max_height := usable.y if height_budget < 0.0 else maxf(1.0, height_budget)
+	var max_width := usable.x if width_budget < 0.0 else maxf(1.0, width_budget)
+	var columns := _pack_pinned_overlay_columns(rows, max_height)
+	# Width changes alter wrapped heights. Try bounded column allocations instead
+	# of adding unbounded horizontal columns to an already full viewport.
+	var column_count := columns.size()
+	while column_count > 1 and column_count <= rows.size():
+		var width := maxf(1.0, floorf((max_width - PINNED_OVERLAY_COLUMN_SEPARATION * (column_count - 1)) / column_count))
+		_set_pinned_rows_width(rows, width, base_name_counts)
+		columns = _pack_pinned_overlay_columns(rows, max_height)
+		if columns.size() <= column_count:
+			break
+		column_count = columns.size()
+		if column_count == rows.size():
+			_set_pinned_rows_width(rows, maxf(1.0, (max_width - PINNED_OVERLAY_COLUMN_SEPARATION * (column_count - 1)) / column_count), base_name_counts)
+			columns = _pack_pinned_overlay_columns(rows, max_height)
+			break
 
-	var align_right := corner == PINNED_OVERLAY_CORNER_TOP_RIGHT or corner == PINNED_OVERLAY_CORNER_BOTTOM_RIGHT
+	var align_right := corner in [PINNED_OVERLAY_CORNER_TOP_RIGHT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT]
 	if align_right:
 		columns.reverse()
 	for column_rows in columns:
@@ -4932,7 +5034,10 @@ func _layout_pinned_overlay_corner_columns(corner: String, rows: Array) -> void:
 		column.add_theme_constant_override("separation", 0)
 		container.add_child(column)
 		for row in column_rows:
-			column.add_child(row)
+			if row.get_parent() == null:
+				column.add_child(row)
+			else:
+				row.reparent(column)
 
 
 func _refresh_pinned_display_variables() -> void:
@@ -5131,6 +5236,7 @@ func _apply_pinned_display_variable_row_snapshot(address: String, base_name_coun
 		"align_right": align_right,
 		"inline_color": (snapshot.get("inline_color", Color.TRANSPARENT) as Color).to_html(true),
 		"wrap_value": bool(snapshot.get("wrap_value", false)),
+		"width_budget": _get_pinned_variable_width_budget(row),
 	})
 	if force or _pinned_row_render_cache.get(address, "") != signature:
 		var value_text := str(snapshot.get("text", ""))

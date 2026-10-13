@@ -1,0 +1,38 @@
+{
+  "addons/logot/logot_display.gd": {
+    "exists": true,
+    "sha256": "d5bfaa9ae0b11e1b062fe9b85dd101deb1f3c13e860aa908972eaef46c7ab483"
+  },
+  "addons/logot/system-doc.md": {
+    "exists": true,
+    "sha256": "8ebf593d8d19874a58418caf374df47b9ee16168768ca19cde3f98b13738e955"
+  },
+  "tests/private_pinned_layout/README.md": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/pinned_display_responsive_layout_test.gd": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/prepare.py": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/run.py": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/runner.gd": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/snapshot.py": {
+    "exists": false,
+    "sha256": null
+  },
+  "tests/private_pinned_layout/userdata_proof.gd": {
+    "exists": false,
+    "sha256": null
+  }
+}
