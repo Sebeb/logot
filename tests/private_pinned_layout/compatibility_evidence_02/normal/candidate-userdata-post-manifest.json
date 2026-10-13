@@ -1,0 +1,42 @@
+{
+  "artifacts/tests/command_palette_pinned_variables/20261013_031028_480.tres": {
+    "bytes": 9981,
+    "sha256": "71c4b24bdea8b4442f11a33b3b2b94423ae5f90b6441c28d15e331f46cdee678"
+  },
+  "artifacts/tests/registered_pin_compatibility/20261013_031030_531.tres": {
+    "bytes": 19234,
+    "sha256": "b5c419a2952c1461150d925ea37a20361905e635d4a521b71631fed4917f3ab9"
+  },
+  "artifacts/tests/render_scale_settings/20261013_031029_532.tres": {
+    "bytes": 6190,
+    "sha256": "20ac1d12730d79baf7e2bd78a5e2fc9790d51e99b4f08b4fe5717e71969011ff"
+  },
+  "console_filters.cfg": {
+    "bytes": 620,
+    "sha256": "76c9bf2b036180e1d1e26dc9765440e8b296ae6ed99424c33b1630cc7facf153"
+  },
+  "console_history.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "logs/godot.log": {
+    "bytes": 759,
+    "sha256": "afb8c17429a14e55abf98def589e493d216f91fb73f1daaa011c05ee3738231b"
+  },
+  "logs/godot2026-10-13T03.10.26.log": {
+    "bytes": 198,
+    "sha256": "0ea15a99f90ab3f7ba6ff3f90c140f281c22f93726b17ec99d19e679418cc7df"
+  },
+  "logs/godot2026-10-13T03.10.27.log": {
+    "bytes": 198,
+    "sha256": "0ea15a99f90ab3f7ba6ff3f90c140f281c22f93726b17ec99d19e679418cc7df"
+  },
+  "logs/godot2026-10-13T03.10.28.log": {
+    "bytes": 198,
+    "sha256": "0ea15a99f90ab3f7ba6ff3f90c140f281c22f93726b17ec99d19e679418cc7df"
+  },
+  "logs/godot2026-10-13T03.10.29.log": {
+    "bytes": 198,
+    "sha256": "0ea15a99f90ab3f7ba6ff3f90c140f281c22f93726b17ec99d19e679418cc7df"
+  }
+}

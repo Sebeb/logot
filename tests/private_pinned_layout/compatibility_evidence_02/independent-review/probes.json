@@ -1,0 +1,38 @@
+{
+  "candidate": "a32b7f3c5d15d4fbc8fffdd0052aa0966fcc80e1",
+  "previous": "990128557eb1a7d647f949412c4a021b2aacff9c",
+  "freeze_hash_verified": true,
+  "artifact_hashes_verified": 8,
+  "three_pinned_source_hashes_verified": true,
+  "production_patch_exact": true,
+  "public_signatures_unchanged": true,
+  "fixture_manifests": [
+    {
+      "group": "normal",
+      "stage": "candidate",
+      "source_files": 53
+    },
+    {
+      "group": "normal",
+      "stage": "base",
+      "source_files": 53
+    },
+    {
+      "group": "focus",
+      "stage": "after",
+      "source_files": 12
+    },
+    {
+      "group": "focus",
+      "stage": "before",
+      "source_files": 12
+    }
+  ],
+  "registered_case_identical_between_fresh_base_and_candidate": true,
+  "success_process_bounds_seconds": 331,
+  "failure_base_path_process_bounds_seconds": 290,
+  "grant_seconds": 360,
+  "success_residual_seconds": 29,
+  "runtime_tests_run": false,
+  "limits": "Read-only hashes and static source comparison; no engines/browser/source writes. Process timeout sums exclude Python manifest/capture/cleanup overhead; no total wall-clock guarantee inferred."
+}

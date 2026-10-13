@@ -1,0 +1,28 @@
+{
+  "base": "622f2288155b5a88fbbf950bde6aa21eb023b395",
+  "source": {
+    "addons/logot/logot_display.gd": "892050a9ccc41390f7c5fcd99e65281c5d7f053bceff145eb719d5c79291f974",
+    "addons/logot/log_level.gd": "bde1256f9028e32b744c993f6e4ccd7b8cf7a60aba057663f819834590c3e3bf",
+    "addons/logot/testing/logot_test_case.gd": "3aa8bc4d620e01e70315e9fac98033ee94718df293ee2e0ee5a4b3803bfec665",
+    "addons/logot/assets/channel_visible.svg": "82dfd568e0ec75374fc8d90e3c2c6d13dedc93b52a33a9b165656f74a1f3a250",
+    "addons/logot/assets/channel_hidden.svg": "373958d817c35e809f66d304230983e720e2fdd5d8c80374f13f04bffed1fcaa",
+    "addons/logot/assets/channel_off.svg": "482ab728c058311a53b96f0ddca13d32a6720f21fbbae4764dec581ea317dd0f",
+    "tests/private_pinned_layout/pinned_display_responsive_layout_test.gd": "0e0bba9206c03559ee406fe0c7847c7213ac70ba94c0d0e5331b030d2e0ba226",
+    "tests/private_pinned_layout/runner.gd": "3f318564810643b22d4f87a9aa67089b5c76d5bd18b52cf5414af953d85a4812",
+    "tests/private_pinned_layout/userdata_proof.gd": "85dc49f90bfe27faa5211e36bb92444611f958d818619264a3b27ec7217e7f91"
+  },
+  "font_source": "/Users/seb/.paseo/worktrees/0rv157fi/m1-mobile-polish/Ad Inf Godot/UI Elements/rainyhearts.ttf",
+  "font_sha256": "268e13c6353b2555355160f4f74e4c9c35e0c1155a8d6c85dc2c194381829c2b",
+  "fixtures": {
+    "before": {
+      "path": "/private/tmp/logot-pinned-minimum-reservation-freeze-02/focus/before",
+      "token": "logot-pinned-private-6f06fa1b38844f8d95d734cab0341413-before",
+      "manifest_sha256": "a4ce2655092fd4900feb36a158fe2199df3bbc970f4034fd689faa16d739f4a8"
+    },
+    "after": {
+      "path": "/private/tmp/logot-pinned-minimum-reservation-freeze-02/focus/after",
+      "token": "logot-pinned-private-bc3bf7b14150484d9077223fb70769d7-after",
+      "manifest_sha256": "d6dedc04b33cef1e7b4edd598e5174d3bb7f69d643ab8d23c291650c7f4267d9"
+    }
+  }
+}

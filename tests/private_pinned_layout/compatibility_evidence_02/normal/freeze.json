@@ -1,0 +1,47 @@
+{
+  "candidate_commit": "a32b7f3c5d15d4fbc8fffdd0052aa0966fcc80e1",
+  "base": "622f2288155b5a88fbbf950bde6aa21eb023b395",
+  "expected": {
+    "command_palette_pinned_variables": {
+      "code": 24,
+      "visual": 1,
+      "headless_visual_skipped": 1
+    },
+    "render_scale_settings": {
+      "code": 20,
+      "visual": 0
+    },
+    "registered_pin_compatibility": {
+      "code": 79,
+      "visual": 0
+    }
+  },
+  "cases": [
+    "command_palette_pinned_variables",
+    "render_scale_settings",
+    "registered_pin_compatibility"
+  ],
+  "source_mapping": {
+    "tests/private_pinned_layout/registered_pin_compatibility_test.gd": "tests/logot_cases/registered_pin_compatibility_test.gd",
+    "tests/private_pinned_layout/userdata_proof.gd": "tests/private_pinned_layout/userdata_proof.gd"
+  },
+  "fixtures": {
+    "candidate": {
+      "path": "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+      "token": "logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate",
+      "manifest_sha256": "d9b4c4568b71468df35e33b88afe1f4f4537ebba14fe084419e0f7f747d4ac44",
+      "sources": 53
+    },
+    "base": {
+      "path": "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/base",
+      "token": "logot-pinned-private-e780759ddd054909b0c702ac439d117b-compat-base",
+      "manifest_sha256": "f4f7a7cf77a643f02c4ce1db7b09ad5e30d48cfdec486107fcbf65ab55490698",
+      "sources": 53
+    }
+  },
+  "tooling_sha256": {
+    "tests/private_pinned_layout/prepare_compatibility.py": "4e8c94e552047dd2a8ae8ff8c43d51f1ba14e5e0b3619a81aa698d47ef28b71f",
+    "tests/private_pinned_layout/run_compatibility.py": "ca6b7d1c57dda86d0d26d5d23b1c094e761163c35bfbc6a2d18b6ddfb9d625ec",
+    "tests/private_pinned_layout/registered_pin_compatibility_test.gd": "9be490e95d63e9c0f43f91970eb237c2a4d63a29203af318e386d03f83aab823"
+  }
+}

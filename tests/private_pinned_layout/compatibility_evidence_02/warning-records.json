@@ -1,0 +1,62 @@
+[
+  {
+    "log": "normal/candidate-04-parse-normal-runner.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf"
+  },
+  {
+    "log": "normal/candidate-04-parse-normal-runner.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg"
+  },
+  {
+    "log": "normal/candidate-04-parse-normal-runner.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg"
+  },
+  {
+    "log": "normal/candidate-06-command_palette_pinned_variables-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf"
+  },
+  {
+    "log": "normal/candidate-06-command_palette_pinned_variables-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg"
+  },
+  {
+    "log": "normal/candidate-06-command_palette_pinned_variables-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg"
+  },
+  {
+    "log": "normal/candidate-08-render_scale_settings-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf"
+  },
+  {
+    "log": "normal/candidate-08-render_scale_settings-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg"
+  },
+  {
+    "log": "normal/candidate-08-render_scale_settings-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg"
+  },
+  {
+    "log": "normal/candidate-10-registered_pin_compatibility-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf"
+  },
+  {
+    "log": "normal/candidate-10-registered_pin_compatibility-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg"
+  },
+  {
+    "log": "normal/candidate-10-registered_pin_compatibility-normal-case-and-teardown.stderr.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg"
+  },
+  {
+    "log": "normal/candidate-private-userdata-logs/godot.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf"
+  },
+  {
+    "log": "normal/candidate-private-userdata-logs/godot.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg"
+  },
+  {
+    "log": "normal/candidate-private-userdata-logs/godot.log",
+    "warning": "WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "addons/logot/logot_display.gd": "892050a9ccc41390f7c5fcd99e65281c5d7f053bceff145eb719d5c79291f974",
+  "addons/logot/system-doc.md": "f60072687b3ba2477ceb0cd939b6aa0b81b787e5417a48bc42abda15d59b4d52",
+  "tests/private_pinned_layout/registered_pin_compatibility_test.gd": "9be490e95d63e9c0f43f91970eb237c2a4d63a29203af318e386d03f83aab823",
+  "tests/private_pinned_layout/prepare_compatibility.py": "4e8c94e552047dd2a8ae8ff8c43d51f1ba14e5e0b3619a81aa698d47ef28b71f",
+  "tests/private_pinned_layout/run_compatibility.py": "ca6b7d1c57dda86d0d26d5d23b1c094e761163c35bfbc6a2d18b6ddfb9d625ec",
+  "tests/private_pinned_layout/prepare.py": "2ecf28d2687864209d912754d51e829121a1179024f2712d014160a05f0c2fef",
+  "tests/private_pinned_layout/run.py": "21fef868ab6aef1b09087e400e8aa33566f0038f0e4a61f8701f443fe793c7ff",
+  "tests/private_pinned_layout/pinned_display_responsive_layout_test.gd": "0e0bba9206c03559ee406fe0c7847c7213ac70ba94c0d0e5331b030d2e0ba226"
+}

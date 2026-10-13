@@ -1,0 +1,18 @@
+{
+  "candidate": "a32b7f3c5d15d4fbc8fffdd0052aa0966fcc80e1",
+  "concrete_blockers": [],
+  "disposition": "No demonstrated source defect; proposed scoped gate sufficient with external timing/cleanup discipline",
+  "evidence": [
+    "addons/logot/logot_display.gd:4924-4927,4947-4957",
+    "tests/private_pinned_layout/registered_pin_compatibility_test.gd:57-72,108-123,155-190",
+    "tests/private_pinned_layout/run_compatibility.py:131-159"
+  ],
+  "gate_success_engine_bounds_seconds": 331,
+  "gate_failure_engine_bounds_seconds": 290,
+  "runtime_acceptance": false,
+  "limits": [
+    "No engine/tests/browser run",
+    "No universal fit or host acceptance claim",
+    "Cleanup overhead excluded from process bound"
+  ]
+}

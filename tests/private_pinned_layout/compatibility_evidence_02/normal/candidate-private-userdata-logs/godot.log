@@ -1,0 +1,9 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf
+   at: load (scene/resources/resource_format_text.cpp:501)
+WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg
+   at: load (scene/resources/resource_format_text.cpp:501)
+WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg
+   at: load (scene/resources/resource_format_text.cpp:501)
+PASS registered_pin_compatibility

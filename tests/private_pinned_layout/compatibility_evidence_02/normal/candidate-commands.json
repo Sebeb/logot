@@ -1,0 +1,179 @@
+{
+  "slot": "20261013T021011Z-seven-minutes",
+  "total_seconds": 6.126,
+  "limits": {
+    "proof": 10,
+    "import": 30,
+    "parse": 15,
+    "case": 30
+  },
+  "records": [
+    {
+      "label": "userdata-proof",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/private_pinned_layout/userdata_proof.gd"
+      ],
+      "limit_seconds": 10,
+      "seconds": 0.404,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nUSERDATA_PROOF=/Users/seb/Library/Application Support/logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate\n",
+      "stderr": ""
+    },
+    {
+      "label": "cold-import",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--editor",
+        "--import"
+      ],
+      "limit_seconds": 30,
+      "seconds": 1.969,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\n[   0% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Started Project initialization (5 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Scanning file structure...\u001b[39m\u001b[0m\n[  16% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Loading global class names...\u001b[39m\u001b[0m\n[  33% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Verifying GDExtensions...\u001b[39m\u001b[0m\n[  50% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Creating autoload scripts...\u001b[39m\u001b[0m\n[  66% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Initializing plugins...\u001b[39m\u001b[0m\n[  83% ] \u001b[90m\u001b[1mfirst_scan_filesystem\u001b[22m | Starting file scan...\u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1mfirst_scan_filesystem\u001b[22m\n\u001b[0m\n[   0% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | Started Registering global classes... (22 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestCheckResult\u001b[39m\u001b[0m\n[   4% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestLogRecord\u001b[39m\u001b[0m\n[   8% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestRunResult\u001b[39m\u001b[0m\n[  13% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestVisualResult\u001b[39m\u001b[0m\n[  17% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestCase\u001b[39m\u001b[0m\n[  21% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestContext\u001b[39m\u001b[0m\n[  26% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestManager\u001b[39m\u001b[0m\n[  30% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotTestPanel\u001b[39m\u001b[0m\n[  34% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  39% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  43% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  47% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  52% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotCommandInput\u001b[39m\u001b[0m\n[  56% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotDisplay\u001b[39m\u001b[0m\n[  60% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogotSidebar\u001b[39m\u001b[0m\n[  65% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | LogLevel\u001b[39m\u001b[0m\n[  69% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  73% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  78% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  82% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  86% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n[  91% ] \u001b[90m\u001b[1mupdate_scripts_classes\u001b[22m | \u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1mupdate_scripts_classes\u001b[22m\n\u001b[0m\n[   0% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | Started Scanning actions... (7 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | AnimationFilter.svg\u001b[39m\u001b[0m\n[  12% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | channel_hidden.svg\u001b[39m\u001b[0m\n[  25% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | channel_mixed.svg\u001b[39m\u001b[0m\n[  37% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | channel_off.svg\u001b[39m\u001b[0m\n[  50% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | channel_visible.svg\u001b[39m\u001b[0m\n[  62% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | Clear.svg\u001b[39m\u001b[0m\n[  75% ] \u001b[90m\u001b[1m_update_scan_actions\u001b[22m | IBMPlexMono-Regular.ttf\u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1m_update_scan_actions\u001b[22m\n\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | Started (Re)Importing Assets (7 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  12% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  25% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  37% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  50% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  62% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[  75% ] \u001b[90m\u001b[1mreimport\u001b[22m | Preparing files to reimport...\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | Executing pre-reimport operations...\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | IBMPlexMono-Regular.ttf\u001b[39m\u001b[0m\n[  12% ] \u001b[90m\u001b[1mreimport\u001b[22m | IBMPlexMono-Regular.ttf\u001b[39m\u001b[0m\n[  25% ] \u001b[90m\u001b[1mreimport\u001b[22m | AnimationFilter.svg\u001b[39m\u001b[0m\n[  37% ] \u001b[90m\u001b[1mreimport\u001b[22m | channel_hidden.svg\u001b[39m\u001b[0m\n[  50% ] \u001b[90m\u001b[1mreimport\u001b[22m | channel_mixed.svg\u001b[39m\u001b[0m\n[  62% ] \u001b[90m\u001b[1mreimport\u001b[22m | channel_off.svg\u001b[39m\u001b[0m\n[  75% ] \u001b[90m\u001b[1mreimport\u001b[22m | channel_visible.svg\u001b[39m\u001b[0m\n[  87% ] \u001b[90m\u001b[1mreimport\u001b[22m | Finalizing Asset Import...\u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1mreimport\u001b[22m\n\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | Started (Re)Importing Assets (7 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mreimport\u001b[22m | Executing post-reimport operations...\u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1mreimport\u001b[22m\n\u001b[0m\n[   0% ] \u001b[90m\u001b[1mloading_editor_layout\u001b[22m | Started Loading editor (5 steps)\u001b[39m\u001b[0m\n[   0% ] \u001b[90m\u001b[1mloading_editor_layout\u001b[22m | Loading editor layout...\u001b[39m\u001b[0m\n[  16% ] \u001b[90m\u001b[1mloading_editor_layout\u001b[22m | Loading docks...\u001b[39m\u001b[0m\n\u001b[92m[ DONE ]\u001b[39m \u001b[1mloading_editor_layout\u001b[22m\n\u001b[0m\n",
+      "stderr": ""
+    },
+    {
+      "label": "userdata-proof",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/private_pinned_layout/userdata_proof.gd"
+      ],
+      "limit_seconds": 10,
+      "seconds": 0.144,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nUSERDATA_PROOF=/Users/seb/Library/Application Support/logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate\n",
+      "stderr": ""
+    },
+    {
+      "label": "parse-normal-runner",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--check-only",
+        "--script",
+        "res://tests/run_logot_test.gd"
+      ],
+      "limit_seconds": 15,
+      "seconds": 0.355,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\n",
+      "stderr": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\n"
+    },
+    {
+      "label": "userdata-proof",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/private_pinned_layout/userdata_proof.gd"
+      ],
+      "limit_seconds": 10,
+      "seconds": 0.144,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nUSERDATA_PROOF=/Users/seb/Library/Application Support/logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate\n",
+      "stderr": ""
+    },
+    {
+      "label": "command_palette_pinned_variables-normal-case-and-teardown",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/run_logot_test.gd",
+        "--",
+        "command_palette_pinned_variables"
+      ],
+      "limit_seconds": 30,
+      "seconds": 1.04,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nPASS command_palette_pinned_variables\n",
+      "stderr": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\n"
+    },
+    {
+      "label": "userdata-proof",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/private_pinned_layout/userdata_proof.gd"
+      ],
+      "limit_seconds": 10,
+      "seconds": 0.14,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nUSERDATA_PROOF=/Users/seb/Library/Application Support/logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate\n",
+      "stderr": ""
+    },
+    {
+      "label": "render_scale_settings-normal-case-and-teardown",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/run_logot_test.gd",
+        "--",
+        "render_scale_settings"
+      ],
+      "limit_seconds": 30,
+      "seconds": 0.64,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nPASS render_scale_settings\n",
+      "stderr": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\n"
+    },
+    {
+      "label": "userdata-proof",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/private_pinned_layout/userdata_proof.gd"
+      ],
+      "limit_seconds": 10,
+      "seconds": 0.145,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nUSERDATA_PROOF=/Users/seb/Library/Application Support/logot-pinned-private-12ba35a4f183466681211eee809bc015-compat-candidate\n",
+      "stderr": ""
+    },
+    {
+      "label": "registered_pin_compatibility-normal-case-and-teardown",
+      "command": [
+        "/opt/homebrew/bin/godot",
+        "--headless",
+        "--path",
+        "/private/tmp/logot-pinned-minimum-reservation-freeze-02/normal/candidate",
+        "--script",
+        "res://tests/run_logot_test.gd",
+        "--",
+        "registered_pin_compatibility"
+      ],
+      "limit_seconds": 30,
+      "seconds": 1.129,
+      "exit": 0,
+      "stdout": "Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org\n\nPASS registered_pin_compatibility\n",
+      "stderr": "WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\nWARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg\n     at: load (scene/resources/resource_format_text.cpp:501)\n"
+    }
+  ]
+}

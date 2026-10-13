@@ -1,0 +1,25 @@
+{
+  "candidate_commit": "a32b7f3c5d15d4fbc8fffdd0052aa0966fcc80e1",
+  "previous_candidate": "990128557eb1a7d647f949412c4a021b2aacff9c",
+  "expected_normal_cases": 3,
+  "expected_normal_code_assertions": 123,
+  "expected_explicit_headless_visual_skips": 1,
+  "expected_additional_unchanged_focus_assertions": 168,
+  "maximum_candidate_path_seconds": 331,
+  "maximum_failure_matching_base_path_seconds": 290,
+  "requested_gate_seconds_including_cleanup": 360,
+  "no_engine_run_for_this_candidate": true,
+  "artifacts": {
+    "normal/freeze.json": "9894796f013bf3cfbd54343458a6aa8ba49b964a775b2adeabad74dd1333fad4",
+    "normal/candidate-source-manifest.json": "d9b4c4568b71468df35e33b88afe1f4f4537ebba14fe084419e0f7f747d4ac44",
+    "normal/base-source-manifest.json": "f4f7a7cf77a643f02c4ce1db7b09ad5e30d48cfdec486107fcbf65ab55490698",
+    "focus/freeze.json": "74348c762b9e7dd495134b0d496e877feb748a561e2fc3fbd8dd5e0508fe1e00",
+    "focus/after-source-manifest.json": "d6dedc04b33cef1e7b4edd598e5174d3bb7f69d643ab8d23c291650c7f4267d9",
+    "focus/before-source-manifest.json": "a4ce2655092fd4900feb36a158fe2199df3bbc970f4034fd689faa16d739f4a8",
+    "production.patch": "63751d0f511f179abedecbcfc33bcb57c12bc15cb2e5afa46de5ba6d83e512a9",
+    "owned-source-manifest.json": "42ad8671ec28538b58423a0b1cbd2063f45436dfec32d5c7bf115abc694c05ce"
+  },
+  "source_sha256": "892050a9ccc41390f7c5fcd99e65281c5d7f053bceff145eb719d5c79291f974",
+  "registered_case_sha256": "9be490e95d63e9c0f43f91970eb237c2a4d63a29203af318e386d03f83aab823",
+  "focus_case_sha256": "0e0bba9206c03559ee406fe0c7847c7213ac70ba94c0d0e5331b030d2e0ba226"
+}
