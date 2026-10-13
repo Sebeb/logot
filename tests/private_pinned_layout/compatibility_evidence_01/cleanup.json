@@ -1,0 +1,11 @@
+{
+  "candidate": {
+    "private_userdata_path": "/Users/seb/Library/Application Support/logot-pinned-private-c66177443c46479cb3658c368d5f598f-compat-candidate",
+    "exists_after_cleanup": false
+  },
+  "base": {
+    "private_userdata_path": "/Users/seb/Library/Application Support/logot-pinned-private-67338a740f1f49aebd033f69721f8904-compat-base",
+    "exists_after_cleanup": false
+  },
+  "remaining_fixture_processes": []
+}

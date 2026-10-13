@@ -10,7 +10,7 @@ import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASE = "622f2288155b5a88fbbf950bde6aa21eb023b395"
-CANDIDATE = "da5f0fcb63ef245e20b031c282e88fcde6ef359e"
+CANDIDATE = "HEAD"
 RUNTIME = ["logot.gd", "logot_display.gd", "logot_command_input.gd", "log_level.gd", "logot_sidebar.gd", "performance_source_monitor.gd", "logot.tscn", "logot_sidebar.tscn", "logot_theme.tres", "IBMPlexMono-Regular.ttf"]
 RUNTIME += ["widgets/" + name for name in ["performance_widget_base.gd", "performance_overview_widget.gd", "performance_source_graph_widget.gd", "performance_overview_widget.tscn", "performance_source_graph_widget.tscn"]]
 RUNTIME += ["testing/" + name for name in ["logot_test_case.gd", "logot_test_context.gd", "logot_test_manager.gd", "logot_test_panel.gd"]]
@@ -20,7 +20,7 @@ RUNTIME = ["addons/logot/" + name for name in RUNTIME]
 RUNTIME += [name + ".uid" for name in list(RUNTIME) if name.endswith(".gd") and (ROOT / (name + ".uid")).is_file()]
 ORIGINAL = ["Main.tscn", "tests/run_logot_test.gd", "tests/logot_cases/command_palette_pinned_variables_test.gd", "tests/logot_cases/render_scale_settings_test.gd"]
 TOOLING = {"tests/private_pinned_layout/registered_pin_compatibility_test.gd": "tests/logot_cases/registered_pin_compatibility_test.gd", "tests/private_pinned_layout/userdata_proof.gd": "tests/private_pinned_layout/userdata_proof.gd"}
-EXPECTED = {"command_palette_pinned_variables": {"code": 24, "visual": 1, "headless_visual_skipped": 1}, "render_scale_settings": {"code": 20, "visual": 0}, "registered_pin_compatibility": {"code": 73, "visual": 0}}
+EXPECTED = {"command_palette_pinned_variables": {"code": 24, "visual": 1, "headless_visual_skipped": 1}, "render_scale_settings": {"code": 20, "visual": 0}, "registered_pin_compatibility": {"code": 79, "visual": 0}}
 
 
 def digest(path):
@@ -30,13 +30,15 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("destination", type=pathlib.Path)
+    parser.add_argument("--candidate-ref", default=CANDIDATE)
     args = parser.parse_args()
+    candidate = subprocess.check_output(["git", "rev-parse", args.candidate_ref], cwd=ROOT, text=True).strip()
     destination = args.destination.resolve()
     if destination.exists():
         raise SystemExit("Use a new destination; never rewrite frozen evidence")
     destination.mkdir(parents=True)
-    freeze = {"candidate_commit": CANDIDATE, "base": BASE, "expected": EXPECTED, "cases": list(EXPECTED), "source_mapping": TOOLING, "fixtures": {}}
-    for stage, ref in [("candidate", CANDIDATE), ("base", BASE)]:
+    freeze = {"candidate_commit": candidate, "base": BASE, "expected": EXPECTED, "cases": list(EXPECTED), "source_mapping": TOOLING, "fixtures": {}}
+    for stage, ref in [("candidate", candidate), ("base", BASE)]:
         target = destination / stage
         token = "logot-pinned-private-" + uuid.uuid4().hex + "-compat-" + stage
         for name in RUNTIME + ORIGINAL:

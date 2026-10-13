@@ -85,6 +85,7 @@ func run(ctx) -> void:
 	console.remove_widget(widget_address)
 	console.unpin_display_variable(prose_address)
 	console.remove_display_variable(prose_address)
+	await _check_unfit_minima(ctx, console, display, window, packed)
 	await _check_finite_columns(ctx, console, display, window)
 	window.size = previous_size
 	await ctx.wait_frames(3)
@@ -103,6 +104,24 @@ func _settle(ctx, display: LogotDisplay) -> void:
 	for frame in range(6):
 		await ctx.wait_frames(1)
 		display._poll_visible_pinned_display_variable_rows(0.016)
+
+func _check_unfit_minima(ctx, console: Node, display: LogotDisplay, window: Window, packed: PackedScene) -> void:
+	var left := PREFIX + "overflow-left"
+	var right := PREFIX + "overflow-right"
+	console.add_widget(left, packed, "", "", 0, Vector2(240, 40), "Left")
+	console.add_widget(right, packed, "", "", 0, Vector2(240, 40), "Right")
+	console.pin_display_variable(left, "top_left")
+	console.pin_display_variable(right, "top_right")
+	window.size = Vector2i(390, 900)
+	await _settle(ctx, display)
+	ctx.check("opposing unfit minima retain both pins", console.is_display_variable_pinned(left) and console.is_display_variable_pinned(right))
+	ctx.check("unfit left widget is not shrunk", display._pinned_overlay_rows[left].get_combined_minimum_size().x >= 240.0)
+	ctx.check("unfit right widget is not shrunk", display._pinned_overlay_rows[right].get_combined_minimum_size().x >= 240.0)
+	ctx.check("unfit minima retain requested corners", display.get_pinned_display_variable_corner(left) == "top_left" and display.get_pinned_display_variable_corner(right) == "top_right")
+	for address in [left, right]:
+		console.unpin_display_variable(address)
+		console.remove_widget(address)
+
 
 func _check_finite_columns(ctx, console: Node, display: LogotDisplay, window: Window) -> void:
 	var template := ColorRect.new()
@@ -133,6 +152,25 @@ func _check_finite_columns(ctx, console: Node, display: LogotDisplay, window: Wi
 	for address in addresses:
 		console.unpin_display_variable(address)
 		console.remove_widget(address)
+	# Removing the last pin returns before column reconstruction. Confirm the
+	# stale empty-column state that made the original helper check count three.
+	await ctx.wait_frames(3)
+	var stale_column_counts: Array[int] = []
+	for column in container.get_children():
+		stale_column_counts.append(column.get_child_count())
+	var stale_precondition := container.get_child_count() == 1 and stale_column_counts == [0]
+	ctx.check("legacy original corner retains one empty column after last unpin", stale_precondition, str(stale_column_counts))
+	if not stale_precondition:
+		return
+	# The helper appends columns by contract. Give it a genuinely fresh container
+	# rather than changing production cleanup semantics to satisfy this test.
+	var original_container := container
+	container = HBoxContainer.new()
+	container.alignment = BoxContainer.ALIGNMENT_END
+	container.add_theme_constant_override("separation", LogotDisplay.PINNED_OVERLAY_COLUMN_SEPARATION)
+	display._pinned_overlay_root.add_child(container)
+	display._pinned_overlay_corner_containers["top_right"] = container
+	ctx.check("legacy helper fixture container starts genuinely empty", container.get_child_count() == 0)
 	# Exercise the old helper signature directly with supported Control-only rows.
 	var legacy_rows: Array = []
 	for index in range(3):
@@ -147,7 +185,6 @@ func _check_finite_columns(ctx, console: Node, display: LogotDisplay, window: Wi
 	ctx.check("legacy adjacent column contains final control", container.get_child(0).get_children() == legacy_rows.slice(2))
 	for index in range(legacy_rows.size()):
 		ctx.check("legacy Control row is contained %s" % index, display.get_viewport_rect().grow(-7).encloses(legacy_rows[index].get_global_rect()), str(legacy_rows[index].get_global_rect()))
-	for column in container.get_children():
-		container.remove_child(column)
-		column.queue_free()
+	display._pinned_overlay_corner_containers["top_right"] = original_container
+	container.queue_free()
 	await ctx.wait_frames(3)

@@ -1,0 +1,15 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+WARNING: res://addons/logot/logot.tscn:4 - ext_resource, invalid UID: uid://pxnt2b4qpq77 - using text path instead: res://addons/logot/IBMPlexMono-Regular.ttf
+   at: load (scene/resources/resource_format_text.cpp:501)
+WARNING: res://addons/logot/logot.tscn:6 - ext_resource, invalid UID: uid://dgiwvw51cqmap - using text path instead: res://addons/logot/assets/Clear.svg
+   at: load (scene/resources/resource_format_text.cpp:501)
+WARNING: res://addons/logot/logot.tscn:7 - ext_resource, invalid UID: uid://b7t5sxvs2wtei - using text path instead: res://addons/logot/assets/AnimationFilter.svg
+   at: load (scene/resources/resource_format_text.cpp:501)
+ERROR: FAIL: 73 code checks, 0 visual checks, 1 logs
+   at: push_error (core/variant/variant_utility.cpp:1023)
+   GDScript backtrace (most recent call first):
+       [0] _run (res://tests/run_logot_test.gd:47)
+       [1] _run_test_case_async (res://addons/logot/testing/logot_test_manager.gd:309)
+       [2] run (res://tests/logot_cases/registered_pin_compatibility_test.gd:90)
+       [3] wait_frames (res://addons/logot/testing/logot_test_context.gd:58)

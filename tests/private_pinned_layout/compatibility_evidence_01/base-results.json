@@ -1,0 +1,376 @@
+{
+  "registered_pin_compatibility": {
+    "passed": false,
+    "checks": {
+      "code": [
+        {
+          "serialized_id": "Resource_75t10",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_75t10\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"actual runtime display exists\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_o3k5t",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_o3k5t\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered LineEdit scene packs\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_s8iuo",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_s8iuo\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered widget produced a pin row\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_cbbgv",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_cbbgv\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin contains actual registered LineEdit instance\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_od8gv",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_od8gv\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered editor initially owns focus\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_qx4od",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_qx4od\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registry identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_e8kml",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_e8kml\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin row identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3b02p",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3b02p\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"editor identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_le5wq",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_le5wq\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"draft and caret 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dirx0",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dirx0\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"focus across resize 640\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_kuwci",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_kuwci\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"requested corners 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5bjtp",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5bjtp\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin order 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fein2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fein2\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"complete opposite prose 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_smqq5",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_smqq5\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"widget contained when its minimum fits 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_luu0t",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_luu0t\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"prose contained when mixed content fits 640\"\npassed = true\ndetails = \"[P: (132.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5jrkj",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5jrkj\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered widget and prose do not overlap 640\"\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (132.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_nj1w0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_nj1w0\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registry identity 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_sqdwu",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_sqdwu\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin row identity 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fxu3g",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fxu3g\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"editor identity 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_j33ag",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_j33ag\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"draft and caret 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_7u1hl",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_7u1hl\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"focus across resize 390\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dycse",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dycse\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"requested corners 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_qdy7e",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_qdy7e\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin order 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_iooxx",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_iooxx\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"complete opposite prose 390\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_0njol",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_0njol\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"widget contained when its minimum fits 390\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_khwol",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_khwol\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"prose contained when mixed content fits 390\"\ndetails = \"[P: (8.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fwcvq",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fwcvq\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered widget and prose do not overlap 390\"\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (8.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_thxnr",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_thxnr\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registry identity 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_cxvxr",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_cxvxr\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin row identity 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_sallu",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_sallu\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"editor identity 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_2prq8",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_2prq8\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"draft and caret 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_q32c1",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_q32c1\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"focus across resize 360\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_tk170",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_tk170\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"requested corners 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_52cyb",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_52cyb\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin order 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_51gcu",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_51gcu\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"complete opposite prose 360\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_70b18",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_70b18\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"widget contained when its minimum fits 360\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6c0q4",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6c0q4\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"prose contained when mixed content fits 360\"\ndetails = \"[P: (8.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_v4h78",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_v4h78\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered widget and prose do not overlap 360\"\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (8.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_icsly",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_icsly\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registry identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6co0n",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6co0n\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin row identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_8odl1",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_8odl1\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"editor identity 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6nc21",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6nc21\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"draft and caret 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_1b2qr",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_1b2qr\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"focus across resize 640\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_s124c",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_s124c\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"requested corners 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fca50",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fca50\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin order 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_wmuuh",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_wmuuh\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"complete opposite prose 640\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ks6m7",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ks6m7\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"widget contained when its minimum fits 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_kgexh",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_kgexh\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"prose contained when mixed content fits 640\"\npassed = true\ndetails = \"[P: (132.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_cpyue",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_cpyue\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registered widget and prose do not overlap 640\"\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (132.0, 8.0), S: (500.0, 95.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ca7fr",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ca7fr\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"registry retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_8ogl5",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_8ogl5\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"row retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_t3tkb",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_t3tkb\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"control retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_8n1jd",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_8n1jd\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"draft caret retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_xm5bf",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_xm5bf\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"focus retained on pin rearrangement\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_xx31a",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_xx31a\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"explicit user corner change honored\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ypqab",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ypqab\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"pin rearrangement preserves order\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_02xxj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_02xxj\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"prose getter update complete\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6jpwi",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6jpwi\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite column widget scene packs\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dei6x",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dei6x\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite registered pins make exactly two columns\"\npassed = true\ndetails = \"2\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dgk5l",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dgk5l\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"first two pins stay nearest requested right corner\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_mj5ce",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_mj5ce\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"third pin flows to adjacent left column\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_exs6h",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_exs6h\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite column row contained 0\"\npassed = true\ndetails = \"[P: (500.0, 8.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6pfse",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6pfse\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite column row contained 1\"\npassed = true\ndetails = \"[P: (500.0, 114.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_yrg6x",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_yrg6x\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite columns do not overlap 1 0\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_vddt1",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_vddt1\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite column row contained 2\"\npassed = true\ndetails = \"[P: (402.0, 8.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_binhp",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_binhp\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite columns do not overlap 2 0\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3xit4",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3xit4\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"finite columns do not overlap 2 1\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_4ykru",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_4ykru\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy two-argument helper still creates two columns\"\ndetails = \"3\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_wnnvs",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_wnnvs\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy right column contains first two controls\"\npassed = true\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_pkcjq",
+          "passed": false,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_pkcjq\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy adjacent column contains final control\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_tquk7",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_tquk7\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy Control row is contained 0\"\npassed = true\ndetails = \"[P: (308.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_m06br",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_m06br\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy Control row is contained 1\"\npassed = true\ndetails = \"[P: (308.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ei0nn",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ei0nn\"]\nscript = ExtResource(\"1_rodr1\")\nname = \"legacy Control row is contained 2\"\npassed = true\ndetails = \"[P: (308.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 02:48:00\"\n\n"
+        }
+      ],
+      "visual": []
+    },
+    "artifact": "/Users/seb/Library/Application Support/logot-pinned-private-67338a740f1f49aebd033f69721f8904-compat-base/artifacts/tests/registered_pin_compatibility/20261013_024800_494.tres"
+  }
+}

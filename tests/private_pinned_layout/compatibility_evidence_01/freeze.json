@@ -1,0 +1,47 @@
+{
+  "candidate_commit": "da5f0fcb63ef245e20b031c282e88fcde6ef359e",
+  "base": "622f2288155b5a88fbbf950bde6aa21eb023b395",
+  "expected": {
+    "command_palette_pinned_variables": {
+      "code": 24,
+      "visual": 1,
+      "headless_visual_skipped": 1
+    },
+    "render_scale_settings": {
+      "code": 20,
+      "visual": 0
+    },
+    "registered_pin_compatibility": {
+      "code": 73,
+      "visual": 0
+    }
+  },
+  "cases": [
+    "command_palette_pinned_variables",
+    "render_scale_settings",
+    "registered_pin_compatibility"
+  ],
+  "source_mapping": {
+    "tests/private_pinned_layout/registered_pin_compatibility_test.gd": "tests/logot_cases/registered_pin_compatibility_test.gd",
+    "tests/private_pinned_layout/userdata_proof.gd": "tests/private_pinned_layout/userdata_proof.gd"
+  },
+  "fixtures": {
+    "candidate": {
+      "path": "/private/tmp/logot-pinned-compatibility-freeze-01/candidate",
+      "token": "logot-pinned-private-c66177443c46479cb3658c368d5f598f-compat-candidate",
+      "manifest_sha256": "5a59cc2144cd0971c15e3dd8f4cd688d17d6c9e9aee7845e1961b47ae275286e",
+      "sources": 53
+    },
+    "base": {
+      "path": "/private/tmp/logot-pinned-compatibility-freeze-01/base",
+      "token": "logot-pinned-private-67338a740f1f49aebd033f69721f8904-compat-base",
+      "manifest_sha256": "39742fa96080814bc1e069074be22b65297d6e377a083f4974c78b483e54363f",
+      "sources": 53
+    }
+  },
+  "tooling_sha256": {
+    "tests/private_pinned_layout/prepare_compatibility.py": "5dc069743ddaa2f174a252a282f3cba40ebbcfd0e73a67ad1c47a2fe49977360",
+    "tests/private_pinned_layout/run_compatibility.py": "ca6b7d1c57dda86d0d26d5d23b1c094e761163c35bfbc6a2d18b6ddfb9d625ec",
+    "tests/private_pinned_layout/registered_pin_compatibility_test.gd": "1e6b5d6bc285bcd8955837a1798b953533e9938d77a3e6b2b3d2538d4ebedb3c"
+  }
+}

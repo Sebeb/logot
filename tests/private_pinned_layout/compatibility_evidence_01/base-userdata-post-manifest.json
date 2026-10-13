@@ -1,0 +1,22 @@
+{
+  "artifacts/tests/registered_pin_compatibility/20261013_024800_494.tres": {
+    "bytes": 17718,
+    "sha256": "13c132bc3d025b0e851e2a49a20622c35890b16457a11e69efb16354edb48591"
+  },
+  "console_filters.cfg": {
+    "bytes": 620,
+    "sha256": "76c9bf2b036180e1d1e26dc9765440e8b296ae6ed99424c33b1630cc7facf153"
+  },
+  "console_history.txt": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "logs/godot.log": {
+    "bytes": 1180,
+    "sha256": "5fb5c6117ca5773825408e1c3007446ce067905c732982c65c335d411050277b"
+  },
+  "logs/godot2026-10-13T02.47.59.log": {
+    "bytes": 193,
+    "sha256": "0e6733c2647d44c2064574c70d3057d047073bc1f87747cb1f300b92fa0b61c1"
+  }
+}

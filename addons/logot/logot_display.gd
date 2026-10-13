@@ -4896,10 +4896,12 @@ func _get_pinned_rows_height(rows: Array) -> float:
 func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 	var rows_by_corner: Dictionary = {}
 	var widths: Dictionary = {}
+	var minimum_widths: Dictionary = {}
 	var focused := get_viewport().gui_get_focus_owner()
 	for corner in PINNED_OVERLAY_CORNERS:
 		rows_by_corner[corner] = []
 		widths[corner] = 0.0
+		minimum_widths[corner] = 0.0
 
 	var base_name_counts := _get_visible_pinned_item_base_name_counts()
 	var placed_row_ids: Dictionary = {}
@@ -4919,6 +4921,10 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 		_update_pinned_widget_headers_in_row(row, align_right, base_name_counts)
 		(rows_by_corner[corner] as Array).append(row)
 		widths[corner] = maxf(float(widths[corner]), _get_pinned_row_natural_width(row))
+		# Display-variable paragraphs can wrap. Native widget controls cannot
+		# give up their minimum width just because opposite text wants a lane.
+		if not row is RichTextLabel:
+			minimum_widths[corner] = maxf(float(minimum_widths[corner]), row.get_combined_minimum_size().x)
 
 	var usable := _get_pinned_overlay_usable_rect().size
 	# Allocate width only when opposing demand cannot fit. Small diagnostics keep
@@ -4938,6 +4944,16 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 			else:
 				left_width = half
 				right_width = available - half
+		var left_minimum := float(minimum_widths[left])
+		var right_minimum := float(minimum_widths[right])
+		if left_minimum + right_minimum <= available:
+			left_width = maxf(left_minimum, minf(left_width, available - right_minimum))
+			right_width = maxf(right_minimum, minf(right_width, available - left_width))
+		else:
+			# No finite fit exists at these native minima. Retain both widgets
+			# and their requested corners, following the existing overflow policy.
+			left_width = maxf(left_width, left_minimum)
+			right_width = maxf(right_width, right_minimum)
 		widths[left] = minf(usable.x, left_width)
 		widths[right] = minf(usable.x, right_width)
 	for corner in PINNED_OVERLAY_CORNERS:

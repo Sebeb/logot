@@ -1,0 +1,477 @@
+[gd_resource type="Resource" script_class="LogotTestRunResult" format=3]
+
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_check_result.gd" id="1_rodr1"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_log_record.gd" id="2_mgngy"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_run_result.gd" id="3_7ja5w"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_visual_result.gd" id="4_7ckpt"]
+
+[sub_resource type="Resource" id="Resource_75t10"]
+script = ExtResource("1_rodr1")
+name = "actual runtime display exists"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_o3k5t"]
+script = ExtResource("1_rodr1")
+name = "registered LineEdit scene packs"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_s8iuo"]
+script = ExtResource("1_rodr1")
+name = "registered widget produced a pin row"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_cbbgv"]
+script = ExtResource("1_rodr1")
+name = "pin contains actual registered LineEdit instance"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_od8gv"]
+script = ExtResource("1_rodr1")
+name = "registered editor initially owns focus"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_qx4od"]
+script = ExtResource("1_rodr1")
+name = "registry identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_e8kml"]
+script = ExtResource("1_rodr1")
+name = "pin row identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_3b02p"]
+script = ExtResource("1_rodr1")
+name = "editor identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_le5wq"]
+script = ExtResource("1_rodr1")
+name = "draft and caret 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_dirx0"]
+script = ExtResource("1_rodr1")
+name = "focus across resize 640"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_kuwci"]
+script = ExtResource("1_rodr1")
+name = "requested corners 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_5bjtp"]
+script = ExtResource("1_rodr1")
+name = "pin order 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_fein2"]
+script = ExtResource("1_rodr1")
+name = "complete opposite prose 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_smqq5"]
+script = ExtResource("1_rodr1")
+name = "widget contained when its minimum fits 640"
+passed = true
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_luu0t"]
+script = ExtResource("1_rodr1")
+name = "prose contained when mixed content fits 640"
+passed = true
+details = "[P: (132.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_5jrkj"]
+script = ExtResource("1_rodr1")
+name = "registered widget and prose do not overlap 640"
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (132.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_nj1w0"]
+script = ExtResource("1_rodr1")
+name = "registry identity 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_sqdwu"]
+script = ExtResource("1_rodr1")
+name = "pin row identity 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_fxu3g"]
+script = ExtResource("1_rodr1")
+name = "editor identity 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_j33ag"]
+script = ExtResource("1_rodr1")
+name = "draft and caret 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_7u1hl"]
+script = ExtResource("1_rodr1")
+name = "focus across resize 390"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_dycse"]
+script = ExtResource("1_rodr1")
+name = "requested corners 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_qdy7e"]
+script = ExtResource("1_rodr1")
+name = "pin order 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_iooxx"]
+script = ExtResource("1_rodr1")
+name = "complete opposite prose 390"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_0njol"]
+script = ExtResource("1_rodr1")
+name = "widget contained when its minimum fits 390"
+passed = true
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_khwol"]
+script = ExtResource("1_rodr1")
+name = "prose contained when mixed content fits 390"
+details = "[P: (8.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_fwcvq"]
+script = ExtResource("1_rodr1")
+name = "registered widget and prose do not overlap 390"
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (8.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_thxnr"]
+script = ExtResource("1_rodr1")
+name = "registry identity 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_cxvxr"]
+script = ExtResource("1_rodr1")
+name = "pin row identity 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_sallu"]
+script = ExtResource("1_rodr1")
+name = "editor identity 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_2prq8"]
+script = ExtResource("1_rodr1")
+name = "draft and caret 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_q32c1"]
+script = ExtResource("1_rodr1")
+name = "focus across resize 360"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_tk170"]
+script = ExtResource("1_rodr1")
+name = "requested corners 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_52cyb"]
+script = ExtResource("1_rodr1")
+name = "pin order 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_51gcu"]
+script = ExtResource("1_rodr1")
+name = "complete opposite prose 360"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_70b18"]
+script = ExtResource("1_rodr1")
+name = "widget contained when its minimum fits 360"
+passed = true
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_6c0q4"]
+script = ExtResource("1_rodr1")
+name = "prose contained when mixed content fits 360"
+details = "[P: (8.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_v4h78"]
+script = ExtResource("1_rodr1")
+name = "registered widget and prose do not overlap 360"
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (8.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_icsly"]
+script = ExtResource("1_rodr1")
+name = "registry identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_6co0n"]
+script = ExtResource("1_rodr1")
+name = "pin row identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_8odl1"]
+script = ExtResource("1_rodr1")
+name = "editor identity 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_6nc21"]
+script = ExtResource("1_rodr1")
+name = "draft and caret 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_1b2qr"]
+script = ExtResource("1_rodr1")
+name = "focus across resize 640"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_s124c"]
+script = ExtResource("1_rodr1")
+name = "requested corners 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_fca50"]
+script = ExtResource("1_rodr1")
+name = "pin order 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_wmuuh"]
+script = ExtResource("1_rodr1")
+name = "complete opposite prose 640"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_ks6m7"]
+script = ExtResource("1_rodr1")
+name = "widget contained when its minimum fits 640"
+passed = true
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_kgexh"]
+script = ExtResource("1_rodr1")
+name = "prose contained when mixed content fits 640"
+passed = true
+details = "[P: (132.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_cpyue"]
+script = ExtResource("1_rodr1")
+name = "registered widget and prose do not overlap 640"
+details = "[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (132.0, 8.0), S: (500.0, 95.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_ca7fr"]
+script = ExtResource("1_rodr1")
+name = "registry retained on pin rearrangement"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_8ogl5"]
+script = ExtResource("1_rodr1")
+name = "row retained on pin rearrangement"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_t3tkb"]
+script = ExtResource("1_rodr1")
+name = "control retained on pin rearrangement"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_8n1jd"]
+script = ExtResource("1_rodr1")
+name = "draft caret retained on pin rearrangement"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_xm5bf"]
+script = ExtResource("1_rodr1")
+name = "focus retained on pin rearrangement"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_xx31a"]
+script = ExtResource("1_rodr1")
+name = "explicit user corner change honored"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_ypqab"]
+script = ExtResource("1_rodr1")
+name = "pin rearrangement preserves order"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_02xxj"]
+script = ExtResource("1_rodr1")
+name = "prose getter update complete"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_6jpwi"]
+script = ExtResource("1_rodr1")
+name = "finite column widget scene packs"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_dei6x"]
+script = ExtResource("1_rodr1")
+name = "finite registered pins make exactly two columns"
+passed = true
+details = "2"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_dgk5l"]
+script = ExtResource("1_rodr1")
+name = "first two pins stay nearest requested right corner"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_mj5ce"]
+script = ExtResource("1_rodr1")
+name = "third pin flows to adjacent left column"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_exs6h"]
+script = ExtResource("1_rodr1")
+name = "finite column row contained 0"
+passed = true
+details = "[P: (500.0, 8.0), S: (92.0, 106.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_6pfse"]
+script = ExtResource("1_rodr1")
+name = "finite column row contained 1"
+passed = true
+details = "[P: (500.0, 114.0), S: (92.0, 106.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_yrg6x"]
+script = ExtResource("1_rodr1")
+name = "finite columns do not overlap 1 0"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_vddt1"]
+script = ExtResource("1_rodr1")
+name = "finite column row contained 2"
+passed = true
+details = "[P: (402.0, 8.0), S: (92.0, 106.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_binhp"]
+script = ExtResource("1_rodr1")
+name = "finite columns do not overlap 2 0"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_3xit4"]
+script = ExtResource("1_rodr1")
+name = "finite columns do not overlap 2 1"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_4ykru"]
+script = ExtResource("1_rodr1")
+name = "legacy two-argument helper still creates two columns"
+details = "3"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_wnnvs"]
+script = ExtResource("1_rodr1")
+name = "legacy right column contains first two controls"
+passed = true
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_pkcjq"]
+script = ExtResource("1_rodr1")
+name = "legacy adjacent column contains final control"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_tquk7"]
+script = ExtResource("1_rodr1")
+name = "legacy Control row is contained 0"
+passed = true
+details = "[P: (308.0, 8.0), S: (90.0, 80.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_m06br"]
+script = ExtResource("1_rodr1")
+name = "legacy Control row is contained 1"
+passed = true
+details = "[P: (308.0, 8.0), S: (90.0, 80.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_ei0nn"]
+script = ExtResource("1_rodr1")
+name = "legacy Control row is contained 2"
+passed = true
+details = "[P: (308.0, 8.0), S: (90.0, 80.0)]"
+timestamp = "2026-10-13 02:48:00"
+
+[sub_resource type="Resource" id="Resource_enibl"]
+script = ExtResource("2_mgngy")
+level = 16
+channel = "Tests"
+timestamp = "02:48:00"
+message = "[color=cyan]Running test:[/color] Registered Pin Compatibility"
+formatted = "[table=3][cell expand=0 shrink=true][url=collapse:0][color=dim_gray]02:48:00[/color][/url] [/cell][cell expand=0 shrink=true][url=collapse:0][color=#ffffff][Tests][/color][/url][/cell][cell expand=1 shrink=false][url=collapse:0][color=#ffffff][color=cyan]Running test:[/color] Registered Pin Compatibility[/color][/url][/cell][/table]"
+stack_trace = "GDScript backtrace (most recent call first):
+    [1] _print_line (res://addons/logot/testing/logot_test_manager.gd:807)
+    [2] _run_test_case_async (res://addons/logot/testing/logot_test_manager.gd:276)"
+
+[resource]
+script = ExtResource("3_7ja5w")
+run_id = "20261013_024800_494"
+test_id = "registered_pin_compatibility"
+display_name = "Registered Pin Compatibility"
+scene_path = "res://Main.tscn"
+started_at = "2026-10-13 02:48:00"
+completed_at = "2026-10-13 02:48:00"
+artifact_path = "user://artifacts/tests/registered_pin_compatibility/20261013_024800_494.tres"
+artifact_directory = "user://artifacts/tests/registered_pin_compatibility"
+visual_directory = "user://artifacts/tests/registered_pin_compatibility/20261013_024800_494/visuals"
+summary = "FAIL: 73 code checks, 0 visual checks, 1 logs"
+code_checks = Array[ExtResource("1_rodr1")]([SubResource("Resource_75t10"), SubResource("Resource_o3k5t"), SubResource("Resource_s8iuo"), SubResource("Resource_cbbgv"), SubResource("Resource_od8gv"), SubResource("Resource_qx4od"), SubResource("Resource_e8kml"), SubResource("Resource_3b02p"), SubResource("Resource_le5wq"), SubResource("Resource_dirx0"), SubResource("Resource_kuwci"), SubResource("Resource_5bjtp"), SubResource("Resource_fein2"), SubResource("Resource_smqq5"), SubResource("Resource_luu0t"), SubResource("Resource_5jrkj"), SubResource("Resource_nj1w0"), SubResource("Resource_sqdwu"), SubResource("Resource_fxu3g"), SubResource("Resource_j33ag"), SubResource("Resource_7u1hl"), SubResource("Resource_dycse"), SubResource("Resource_qdy7e"), SubResource("Resource_iooxx"), SubResource("Resource_0njol"), SubResource("Resource_khwol"), SubResource("Resource_fwcvq"), SubResource("Resource_thxnr"), SubResource("Resource_cxvxr"), SubResource("Resource_sallu"), SubResource("Resource_2prq8"), SubResource("Resource_q32c1"), SubResource("Resource_tk170"), SubResource("Resource_52cyb"), SubResource("Resource_51gcu"), SubResource("Resource_70b18"), SubResource("Resource_6c0q4"), SubResource("Resource_v4h78"), SubResource("Resource_icsly"), SubResource("Resource_6co0n"), SubResource("Resource_8odl1"), SubResource("Resource_6nc21"), SubResource("Resource_1b2qr"), SubResource("Resource_s124c"), SubResource("Resource_fca50"), SubResource("Resource_wmuuh"), SubResource("Resource_ks6m7"), SubResource("Resource_kgexh"), SubResource("Resource_cpyue"), SubResource("Resource_ca7fr"), SubResource("Resource_8ogl5"), SubResource("Resource_t3tkb"), SubResource("Resource_8n1jd"), SubResource("Resource_xm5bf"), SubResource("Resource_xx31a"), SubResource("Resource_ypqab"), SubResource("Resource_02xxj"), SubResource("Resource_6jpwi"), SubResource("Resource_dei6x"), SubResource("Resource_dgk5l"), SubResource("Resource_mj5ce"), SubResource("Resource_exs6h"), SubResource("Resource_6pfse"), SubResource("Resource_yrg6x"), SubResource("Resource_vddt1"), SubResource("Resource_binhp"), SubResource("Resource_3xit4"), SubResource("Resource_4ykru"), SubResource("Resource_wnnvs"), SubResource("Resource_pkcjq"), SubResource("Resource_tquk7"), SubResource("Resource_m06br"), SubResource("Resource_ei0nn")])
+logs = Array[ExtResource("2_mgngy")]([SubResource("Resource_enibl")])
