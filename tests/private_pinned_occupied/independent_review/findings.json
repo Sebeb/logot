@@ -1,0 +1,42 @@
+{
+  "candidate": "bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256",
+  "published_base": "3af9ab9ea324cb36bc640c42ae52ddc627b6389f",
+  "runtime_test_pins": [
+    {
+      "path": "addons/logot/logot_display.gd",
+      "git_blob": "889ce49a31c6da185a57a2c93dabc2ff4dcb82ed",
+      "sha256": "9d6e92639c846b07453e2c1cfa4325451ba0e10d601530f458b97b095dc9356e"
+    },
+    {
+      "path": "addons/logot/logot.gd",
+      "git_blob": "0ffe096f1c534f27a46d515ab0f0f9dcb4920a84",
+      "sha256": "0b101aca64c0506ff715352136af18e6b7e0952698fd01d6777a5564d48c06c2"
+    },
+    {
+      "path": "tests/private_pinned_occupied/case.gd",
+      "git_blob": "143721e1cf1219b5c9b149150b74d1c4f9d8fdab",
+      "sha256": "bbfdadd037d6fab7a8fad28be0ce17cb255721b927fb5d4c4376d9864db3a655"
+    },
+    {
+      "path": "tests/private_pinned_occupied/runner.gd",
+      "git_blob": "0e1d5fd5d71e1b69fed5910b0972814be0a8a1be",
+      "sha256": "2bc6aceca641b9ccd404a4ee4d1507b1b73630ced8affc82f83d7c51b8b416cc"
+    }
+  ],
+  "concrete_findings": [],
+  "disposition": "No demonstrated introduced blocker; normal291 compatibility and host visual gates remain",
+  "evidence": [
+    "addons/logot/logot_display.gd:3255-3378",
+    "addons/logot/logot.gd:2288-2342",
+    "tests/private_pinned_occupied/case.gd:101-116,209-218"
+  ],
+  "owner_results": "Source05 identical72 case: faulty64pass/8exactfail, corrected72pass; inspected not rerun;3 knownUID fallback warnings each qualified",
+  "residuals": [
+    "Normal291 not rerun",
+    "Actual runtime Console/Main forwarding and host visual integration remain",
+    "Performance and adversarial listener reentrancy unmeasured",
+    "Preparation-era readiness text needs evidence reconciliation before publication"
+  ],
+  "runtime_operations": [],
+  "restart": "None for review; adoption/export/activation rootowned"
+}

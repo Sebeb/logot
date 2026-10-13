@@ -1,0 +1,20 @@
+diff --git a/addons/logot/logot_display.gd b/addons/logot/logot_display.gd
+index 1010245..889ce49 100644
+--- a/addons/logot/logot_display.gd
++++ b/addons/logot/logot_display.gd
+@@ -3285,8 +3285,13 @@ class PinnedOccupiedTransformObserver extends Node2D:
+ 		set_notify_transform(true)
+ 
+ 	func _notification(what: int) -> void:
+-		if what == NOTIFICATION_TRANSFORM_CHANGED and invalidated.is_valid():
+-			invalidated.call()
++		if what == NOTIFICATION_TRANSFORM_CHANGED and is_inside_tree() and not is_queued_for_deletion():
++			# Notification delivery does not resolve CanvasItem's dirty cache.
++			# Read this observer's transform so the next inherited change queues
++			# another notification, including after row reparent/re-entry.
++			get_global_transform()
++			if invalidated.is_valid():
++				invalidated.call()
+ 
+ 
+ func _watch_pinned_occupied_row(row: Control) -> void:

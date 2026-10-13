@@ -1,0 +1,367 @@
+{
+	"checks": [
+		{
+			"details": "",
+			"label": "display exposes new occupied geometry capability",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "Console exposes runtime occupied geometry capability",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "detached display has empty/null availability",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "unbound Console has empty/null availability",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (8.0, 8.0), S: (374.0, 208.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (8.0, 8.0), S: (374.0, 208.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "initial wrapped row equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "owning SubViewport is explicit",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "Console forwards runtime snapshot",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "snapshot dictionary mutation cannot mutate cache",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "coalesced no-op invalidations emit nothing",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "settle callback disconnects after finite work",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (8.0, 8.0), S: (374.0, 728.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (8.0, 8.0), S: (374.0, 728.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "wrapped grow equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "wrapped value growth changes occupied height",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "wrapped shrink equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "wrapped value shrink reduces occupied height",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (52.0, 8.0), S: (330.0, 104.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (52.0, 8.0), S: (330.0, 104.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "corner top_right equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "effective corner is occupied top_right",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (8.0, 732.0), S: (354.0, 104.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (8.0, 732.0), S: (354.0, 104.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "corner bottom_left equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "effective corner is occupied bottom_left",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (52.0, 732.0), S: (330.0, 104.0)] } expected { \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (52.0, 732.0), S: (330.0, 104.0)] }",
+			"label": "corner bottom_right equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "effective corner is occupied bottom_right",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "corner top_left equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "effective corner is occupied top_left",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (8.0, 8.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "viewport resize equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (25.0, 128.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (25.0, 128.0), S: (354.0, 104.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "inset update equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "insets move actual occupied origin",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (25.0, 128.0), S: (500.0, 208.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (25.0, 128.0), S: (500.0, 208.0)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "render scale equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-3.003859, 120.8578), S: (651.6306, 213.0882)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-3.003859, 120.8578), S: (651.6306, 213.0882)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "CanvasLayer rotation scale translation equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "viewport canvas transform equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "same-viewport host inverse conversion contains actual row",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-16.99949, 148.3436), S: (506.2946, 312.1573)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-16.99949, 148.3436), S: (506.2946, 312.1573)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "individual row transform equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent toward original fixture retains requested transform",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (11.35043, 148.3436), S: (494.9834, 254.8417)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (11.35043, 148.3436), S: (494.9834, 254.8417)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "independent toward original equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent toward original publishes exactly one changed geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent return original fixture retains requested transform",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "independent return original equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent return original publishes exactly one changed geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent subsequent rotation fixture retains requested transform",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-13.28545, 148.3436), S: (505.4404, 304.8937)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-13.28545, 148.3436), S: (505.4404, 304.8937)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "independent subsequent rotation equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent subsequent rotation publishes exactly one changed geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "hidden row reports empty",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "shown row equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "suppressed overlay reports empty",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "unsuppressed overlay equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "user-hidden overlay reports empty",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "user-shown overlay equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-2.346775, 148.3436), S: (512.0668, 416.1208)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-2.346775, 148.3436), S: (512.0668, 416.1208)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "multiple rows union equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "last additional pin removed equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-2301.719, 148.3436), S: (2811.439, 18315.91)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-2301.719, 148.3436), S: (2811.439, 18315.91)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "retained oversized paragraph equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "overflow bounds are not clipped to viewport",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "unchanged geometry never duplicates publications",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "removed registry entry reports empty",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "registry re-registration equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "removed row queued for deletion",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "queued-free row excluded safely",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "old display is occupied before replacement",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "replacement first publishes empty/null",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "replacement explicitly supplies its coordinate owner",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "replaced display actually publishes suppressed empty geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "replaced display cannot notify Console",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "display exit listeners observe empty/null synchronously",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "Console exit listeners observe empty/null synchronously",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "late settle callback cancelled on exit",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "display re-entry restores coordinate availability",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "real registry fixture permits visible pins",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "re-entry retains observed row identity",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "re-entry fixture retains requested transform",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (-0.114632, 148.3436), S: (500.8618, 278.53)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-0.114632, 148.3436), S: (500.8618, 278.53)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "independent rotation after re-entry equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "independent rotation after re-entry publishes once",
+			"passed": true
+		},
+		{
+			"details": "{ \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (217.3121, 173.2055), S: (512.0668, 416.1208)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"top_right\": [P: (217.3121, 173.2055), S: (512.0668, 416.1208)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+			"label": "real Console registration equals visible row geometry",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "Console registered row occupies requested corner",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "real Console registry removal becomes empty",
+			"passed": true
+		},
+		{
+			"details": "",
+			"label": "Console never falls back to registered external display",
+			"passed": true
+		}
+	],
+	"collected": 72,
+	"failed": 0,
+	"passed": 72
+}

@@ -1,0 +1,699 @@
+{
+  "command_palette_pinned_variables": {
+    "passed": true,
+    "checks": {
+      "code": [
+        {
+          "serialized_id": "Resource_faptb",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_faptb\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"active display exists\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_87fwi",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_87fwi\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned variable is absent from root autocomplete\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_2lnu2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_2lnu2\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned variable appears directly under pins\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_hoavs",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_hoavs\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned variable group is prioritized\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_vcweu",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_vcweu\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"command palette opened command entry mode\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_w61y1",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_w61y1\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"command palette hides log body\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5hi30",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5hi30\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"command palette is not in touch mode\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ba3no",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ba3no\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned variables show with command palette only\"\npassed = true\ndetails = \"root=PinnedDisplayVariables:<Control#42362472273> visible=true\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ejcn0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ejcn0\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned variable row is visible\"\npassed = true\ndetails = \"rows=[\\\"dev/performance/fps\\\", \\\"tests/command_palette_pin\\\", \\\"tests/command_palette_long_value\\\", \\\"tests/command_palette_long_label\\\", \\\"tests/command_palette_multiline_value\\\", \\\"tests/command_palette_wrapping_value\\\", \\\"tests/command_palette_rich_text_value\\\"]\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ig32e",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ig32e\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"long pinned values move beneath their title\"\npassed = true\ndetails = \"row=short label:\nvalue value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value \"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_rvqp6",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_rvqp6\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"wrapping pinned titles move their value beneath them\"\npassed = true\ndetails = \"row=long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label:\nvisible\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fypak",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fypak\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"multiline pinned values retain their line breaks beneath the title\"\npassed = true\ndetails = \"row=command_palette_multiline_value:\nfirst line\nsecond line\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_4mpy5",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_4mpy5\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"declared-wrapping pinned values move beneath their title\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_61wda",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_61wda\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"non-declaring display variables remain compact\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_kdgh2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_kdgh2\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"declared-wrapping snapshot exposes its declaration\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_bmdfq",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_bmdfq\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"declared-wrapping column value uses N-line measured height\"\npassed = true\ndetails = \"height=128.0 rows=[{ \\\"label\\\": \\\"compact before\\\", \\\"value_text\\\": \\\"one\\\", \\\"measured_value_width\\\": 40 }, { \\\"label\\\": \\\"wrapped prose\\\", \\\"value_text\\\": \\\"This declared prose value needs several measured lines in the narrow test column.\\\", \\\"wrap_value\\\": true, \\\"measured_value_width\\\": 400, \\\"wrapped_value_lines\\\": [\\\"This declared prose value\\\", \\\"needs several measured lines\\\", \\\"in the narrow test column.\\\"], \\\"row_height_multiplier\\\": 4.0, \\\"two_line\\\": false }, { \\\"label\\\": \\\"compact after\\\", \\\"value_text\\\": \\\"two\\\", \\\"measured_value_width\\\": 40 }]\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_yaffr",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_yaffr\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"non-declaring column rows retain one-line height\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_pcuf0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_pcuf0\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"mixed-height hit-testing resolves the row after wrapped prose\"\npassed = true\ndetails = \"y=289.0 prefix=[0.0, 32.0, 160.0, 192.0]\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_0qdvf",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_0qdvf\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"pinned custom values parse BBCode\"\npassed = true\ndetails = \"row=command_palette_rich_text_value:\nGeneration Cells\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_oeiwf",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_oeiwf\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"command palette draws above the pinned variables\"\npassed = true\ndetails = \"palette_z=202 pinned_z=200\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5fd4x",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5fd4x\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"resize handle draws above the pinned variables\"\npassed = true\ndetails = \"handle_z=203 pinned_z=200\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_tb7i3",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_tb7i3\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"palette overlays share the pinned variables canvas\"\npassed = true\ndetails = \"palette_canvas=RID(128849018881) pinned_canvas=RID(128849018881)\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dabxw",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dabxw\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"touch command palette still suppresses pinned variables\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ml8ax",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ml8ax\"]\nscript = ExtResource(\"1_y1k86\")\nname = \"leaving touch mode restores command palette pins\"\npassed = true\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        }
+      ],
+      "visual": [
+        {
+          "serialized_id": "Resource_010dw",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_010dw\"]\nscript = ExtResource(\"4_rvqv1\")\nname = \"declared_wrapping_column_and_overlay\"\npassed = true\ndetails = \"Skipped: screenshot capture is not available in headless mode.\"\ntimestamp = \"2026-10-13 05:57:16\"\n\n"
+        }
+      ]
+    },
+    "artifact": "/Users/seb/Library/Application Support/logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal/artifacts/tests/command_palette_pinned_variables/20261013_055715_492.tres"
+  },
+  "render_scale_settings": {
+    "passed": true,
+    "checks": {
+      "code": [
+        {
+          "serialized_id": "Resource_orbgk",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_orbgk\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"active display exists\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3hfss",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3hfss\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"console root command is in the console group\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_outk8",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_outk8\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"pins root command is in the console group\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_wlptp",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_wlptp\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"render scale commands have no group\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_w676h",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_w676h\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"render scale commands have no group\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_x3syy",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_x3syy\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"render scale commands have no group\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ecyl0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ecyl0\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"keyboard log defaults to 100\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_4b12i",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_4b12i\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"keyboard command palette defaults to 100\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_7lsf0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_7lsf0\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"keyboard pinned variables defaults to 100\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_xk01j",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_xk01j\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"controller log defaults to 120\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_t2wok",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_t2wok\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"controller command palette defaults to 120\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_mvb8r",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_mvb8r\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"controller pinned variables defaults to 100\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_irbbl",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_irbbl\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"touch log defaults to 125\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_87ug2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_87ug2\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"touch command palette defaults to 135\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ingjg",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ingjg\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"touch pinned variables defaults to 110\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_rpjlb",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_rpjlb\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"controller log setting updates\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_mc0tp",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_mc0tp\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"current input method switches to controller\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_xaho8",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_xaho8\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"current input method switches to touch\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_s27fo",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_s27fo\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"touch input disables pinned corner side swapping\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_sjcv4",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_sjcv4\"]\nscript = ExtResource(\"1_g56cs\")\nname = \"current input method switches to keyboard\"\npassed = true\ntimestamp = \"2026-10-13 05:57:17\"\n\n"
+        }
+      ],
+      "visual": []
+    },
+    "artifact": "/Users/seb/Library/Application Support/logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal/artifacts/tests/render_scale_settings/20261013_055717_496.tres"
+  },
+  "registered_pin_compatibility": {
+    "passed": true,
+    "checks": {
+      "code": [
+        {
+          "serialized_id": "Resource_jm3g3",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_jm3g3\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"actual runtime display exists\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_hess2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_hess2\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered LineEdit scene packs\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_vjlqd",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_vjlqd\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered widget produced a pin row\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_x18rk",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_x18rk\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin contains actual registered LineEdit instance\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_menjj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_menjj\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered editor initially owns focus\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_w70y0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_w70y0\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registry identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_7smhy",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_7smhy\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin row identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5w6sm",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5w6sm\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"editor identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_7pbou",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_7pbou\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"draft and caret 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_gulsj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_gulsj\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"focus across resize 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dj3um",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dj3um\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"requested corners 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_wrv6v",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_wrv6v\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin order 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_em27h",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_em27h\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"complete opposite prose 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_vqb7n",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_vqb7n\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"widget contained when its minimum fits 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_b6siw",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_b6siw\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"prose contained when mixed content fits 640\"\npassed = true\ndetails = \"[P: (256.0, 8.0), S: (376.0, 92.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_njjtc",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_njjtc\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered widget and prose do not overlap 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (256.0, 8.0), S: (376.0, 92.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_0br5g",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_0br5g\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registry identity 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_m47fs",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_m47fs\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin row identity 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_dxocg",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_dxocg\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"editor identity 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_pa8ew",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_pa8ew\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"draft and caret 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5unea",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5unea\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"focus across resize 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_jif1k",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_jif1k\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"requested corners 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_2cl41",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_2cl41\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin order 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_te2rm",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_te2rm\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"complete opposite prose 390\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_hey4c",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_hey4c\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"widget contained when its minimum fits 390\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3y72q",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3y72q\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"prose contained when mixed content fits 390\"\npassed = true\ndetails = \"[P: (256.0, 8.0), S: (126.0, 253.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_hx0bv",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_hx0bv\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered widget and prose do not overlap 390\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (256.0, 8.0), S: (126.0, 253.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_6waf4",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_6waf4\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registry identity 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_o1nhc",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_o1nhc\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin row identity 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_mnxcj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_mnxcj\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"editor identity 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_60ajk",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_60ajk\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"draft and caret 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_q1xsg",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_q1xsg\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"focus across resize 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_aym52",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_aym52\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"requested corners 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5b1d3",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5b1d3\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin order 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_thslj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_thslj\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"complete opposite prose 360\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_opl3u",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_opl3u\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"widget contained when its minimum fits 360\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_x2djw",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_x2djw\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"prose contained when mixed content fits 360\"\npassed = true\ndetails = \"[P: (256.0, 8.0), S: (96.0, 322.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_15ivv",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_15ivv\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered widget and prose do not overlap 360\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (256.0, 8.0), S: (96.0, 322.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_fvnbx",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_fvnbx\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registry identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_37mc0",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_37mc0\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin row identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_7njqp",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_7njqp\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"editor identity 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_1td0j",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_1td0j\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"draft and caret 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_4u4m2",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_4u4m2\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"focus across resize 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_73msl",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_73msl\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"requested corners 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_8qf4p",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_8qf4p\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin order 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_f64lf",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_f64lf\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"complete opposite prose 640\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_u23cr",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_u23cr\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"widget contained when its minimum fits 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_t5vli",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_t5vli\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"prose contained when mixed content fits 640\"\npassed = true\ndetails = \"[P: (256.0, 8.0), S: (376.0, 92.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_juaad",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_juaad\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registered widget and prose do not overlap 640\"\npassed = true\ndetails = \"[P: (8.0, 8.0), S: (242.0, 66.0)] vs [P: (256.0, 8.0), S: (376.0, 92.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_u0f0v",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_u0f0v\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"registry retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ac0r1",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ac0r1\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"row retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_qlbva",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_qlbva\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"control retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_u226o",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_u226o\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"draft caret retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_yh0qa",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_yh0qa\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"focus retained on pin rearrangement\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3ap65",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3ap65\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"explicit user corner change honored\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_y4wo4",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_y4wo4\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"pin rearrangement preserves order\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_uogjl",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_uogjl\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"prose getter update complete\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_valvm",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_valvm\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"opposing unfit minima retain both pins\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_wo2j8",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_wo2j8\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"unfit left widget is not shrunk\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_1ujqi",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_1ujqi\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"unfit right widget is not shrunk\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_e2o41",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_e2o41\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"unfit minima retain requested corners\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_aw3c3",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_aw3c3\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite column widget scene packs\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_x8dum",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_x8dum\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite registered pins make exactly two columns\"\npassed = true\ndetails = \"2\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_quoub",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_quoub\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"first two pins stay nearest requested right corner\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5ijip",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5ijip\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"third pin flows to adjacent left column\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3e4fo",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3e4fo\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite column row contained 0\"\npassed = true\ndetails = \"[P: (500.0, 8.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_3jtbv",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_3jtbv\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite column row contained 1\"\npassed = true\ndetails = \"[P: (500.0, 114.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_lhntj",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_lhntj\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite columns do not overlap 1 0\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_agq8n",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_agq8n\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite column row contained 2\"\npassed = true\ndetails = \"[P: (402.0, 8.0), S: (92.0, 106.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_0hrhl",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_0hrhl\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite columns do not overlap 2 0\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_m0q4v",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_m0q4v\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"finite columns do not overlap 2 1\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_rj0nx",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_rj0nx\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy original corner retains one empty column after last unpin\"\npassed = true\ndetails = \"[0]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_exw5x",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_exw5x\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy helper fixture container starts genuinely empty\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_d8436",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_d8436\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy two-argument helper still creates two columns\"\npassed = true\ndetails = \"2\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_1nses",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_1nses\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy right column contains first two controls\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_tk0ax",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_tk0ax\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy adjacent column contains final control\"\npassed = true\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_kclwg",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_kclwg\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy Control row is contained 0\"\npassed = true\ndetails = \"[P: (406.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_oeko5",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_oeko5\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy Control row is contained 1\"\npassed = true\ndetails = \"[P: (406.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_r1ihx",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_r1ihx\"]\nscript = ExtResource(\"1_gj15j\")\nname = \"legacy Control row is contained 2\"\npassed = true\ndetails = \"[P: (406.0, 8.0), S: (90.0, 80.0)]\"\ntimestamp = \"2026-10-13 05:57:18\"\n\n"
+        }
+      ],
+      "visual": []
+    },
+    "artifact": "/Users/seb/Library/Application Support/logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal/artifacts/tests/registered_pin_compatibility/20261013_055718_493.tres"
+  },
+  "occupied_bounds_runtime_bridge": {
+    "passed": true,
+    "checks": {
+      "code": [
+        {
+          "serialized_id": "Resource_e7vrt",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_e7vrt\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"real Console ready in Main context\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_5poqk",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_5poqk\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"runtime public coordinate owner is Main viewport\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_cjnfk",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_cjnfk\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"live value registered through public Console\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_ubnqh",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_ubnqh\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"runtime public bounds include live visible registration\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_vol41",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_vol41\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"runtime public signal forwards settled live geometry\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_lvm4c",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_lvm4c\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"runtime public snapshot is detached\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_gm17k",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_gm17k\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"public registry removal clears runtime occupied bounds\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        },
+        {
+          "serialized_id": "Resource_hrva7",
+          "passed": true,
+          "serialized": "[sub_resource type=\"Resource\" id=\"Resource_hrva7\"]\nscript = ExtResource(\"1_bg0qp\")\nname = \"runtime public signal publishes removal geometry\"\npassed = true\ntimestamp = \"2026-10-13 05:57:19\"\n\n"
+        }
+      ],
+      "visual": []
+    },
+    "artifact": "/Users/seb/Library/Application Support/logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal/artifacts/tests/occupied_bounds_runtime_bridge/20261013_055719_482.tres"
+  }
+}

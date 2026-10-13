@@ -252,7 +252,10 @@ signal timer_paused(key: String, name: String, elapsed_text: String)
 signal timer_resumed(key: String, name: String)
 signal timer_stopped(key: String, name: String, elapsed_text: String)
 signal performance_fps_changed()
+signal pinned_overlay_occupied_rects_changed()
 signal pinned_display_variables_visibility_changed(visible: bool)
+
+var _pinned_occupied_runtime_display: WeakRef
 
 var control: Control
 var rich_label: RichTextLabel
@@ -2282,6 +2285,63 @@ func _get_known_timer_key_options() -> Array:
 	return keys
 
 
+## Runtime display only. External/editor hosts query their explicit LogotDisplay.
+func get_pinned_overlay_occupied_rects() -> Dictionary[String, Rect2]:
+	var display := _get_pinned_occupied_runtime_display()
+	if display != null:
+		return display.get_pinned_overlay_occupied_rects()
+	var result: Dictionary[String, Rect2] = {}
+	for corner in LogotDisplay.PINNED_OVERLAY_CORNERS:
+		result[corner] = Rect2()
+	return result
+
+
+func get_pinned_overlay_viewport() -> Viewport:
+	var display := _get_pinned_occupied_runtime_display()
+	return display.get_pinned_overlay_viewport() if display != null else null
+
+
+func _get_pinned_occupied_runtime_display() -> LogotDisplay:
+	var display = _pinned_occupied_runtime_display.get_ref() if _pinned_occupied_runtime_display != null else null
+	if not is_instance_valid(display) or display.is_queued_for_deletion():
+		return null
+	return display as LogotDisplay
+
+
+func _bind_pinned_occupied_runtime_display(display: LogotDisplay) -> void:
+	var previous = _pinned_occupied_runtime_display.get_ref() if _pinned_occupied_runtime_display != null else null
+	if not is_instance_valid(previous):
+		previous = null
+	if previous == display and (display != null or _pinned_occupied_runtime_display == null):
+		return
+	if previous != null:
+		if previous.pinned_overlay_occupied_rects_changed.is_connected(_on_pinned_occupied_rects_changed):
+			previous.pinned_overlay_occupied_rects_changed.disconnect(_on_pinned_occupied_rects_changed)
+		if previous.tree_exiting.is_connected(_on_pinned_occupied_display_exiting):
+			previous.tree_exiting.disconnect(_on_pinned_occupied_display_exiting)
+	_pinned_occupied_runtime_display = null
+	if previous != null:
+		pinned_overlay_occupied_rects_changed.emit()
+	if display != null:
+		_pinned_occupied_runtime_display = weakref(display)
+		display.pinned_overlay_occupied_rects_changed.connect(_on_pinned_occupied_rects_changed)
+		display.tree_exiting.connect(_on_pinned_occupied_display_exiting)
+		pinned_overlay_occupied_rects_changed.emit()
+
+
+func _on_pinned_occupied_rects_changed() -> void:
+	var display := _get_pinned_occupied_runtime_display()
+	if display == null or display.get_pinned_overlay_viewport() == null:
+		_bind_pinned_occupied_runtime_display(null)
+		return
+	pinned_overlay_occupied_rects_changed.emit()
+
+
+func _on_pinned_occupied_display_exiting() -> void:
+	# Disconnect before notifying, even while the old display is still in the tree.
+	_bind_pinned_occupied_runtime_display(null)
+
+
 func register_external_display(display: LogotDisplay) -> void:
 	if display == null:
 		return
@@ -2987,6 +3047,7 @@ func _setup_game_ui() -> void:
 	_display.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas_layer.add_child(_display)
+	_bind_pinned_occupied_runtime_display(_display)
 
 	# Instantiate the logot UI scene as a child of display
 	_logot_ui = LOGOT_UI_SCENE.instantiate()
@@ -4103,6 +4164,7 @@ func _on_channel_deleted(channel: String) -> void:
 
 
 func _exit_tree() -> void:
+	_bind_pinned_occupied_runtime_display(null)
 	# Remove engine logger
 	if _engine_logger != null:
 		OS.remove_logger(_engine_logger)

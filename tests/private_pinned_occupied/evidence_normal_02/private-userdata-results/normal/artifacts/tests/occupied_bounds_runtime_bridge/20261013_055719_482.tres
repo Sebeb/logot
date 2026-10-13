@@ -1,0 +1,81 @@
+[gd_resource type="Resource" script_class="LogotTestRunResult" format=3]
+
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_check_result.gd" id="1_bg0qp"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_log_record.gd" id="2_8uvfq"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_run_result.gd" id="3_s4vyw"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_visual_result.gd" id="4_u43bf"]
+
+[sub_resource type="Resource" id="Resource_e7vrt"]
+script = ExtResource("1_bg0qp")
+name = "real Console ready in Main context"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_5poqk"]
+script = ExtResource("1_bg0qp")
+name = "runtime public coordinate owner is Main viewport"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_cjnfk"]
+script = ExtResource("1_bg0qp")
+name = "live value registered through public Console"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_ubnqh"]
+script = ExtResource("1_bg0qp")
+name = "runtime public bounds include live visible registration"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_vol41"]
+script = ExtResource("1_bg0qp")
+name = "runtime public signal forwards settled live geometry"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_lvm4c"]
+script = ExtResource("1_bg0qp")
+name = "runtime public snapshot is detached"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_gm17k"]
+script = ExtResource("1_bg0qp")
+name = "public registry removal clears runtime occupied bounds"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_hrva7"]
+script = ExtResource("1_bg0qp")
+name = "runtime public signal publishes removal geometry"
+passed = true
+timestamp = "2026-10-13 05:57:19"
+
+[sub_resource type="Resource" id="Resource_gm4fq"]
+script = ExtResource("2_8uvfq")
+level = 16
+channel = "Tests"
+timestamp = "05:57:19"
+message = "[color=cyan]Running test:[/color] Occupied Bounds Runtime Bridge"
+formatted = "[table=3][cell expand=0 shrink=true][url=collapse:0][color=dim_gray]05:57:19[/color][/url] [/cell][cell expand=0 shrink=true][url=collapse:0][color=#ffffff][Tests][/color][/url][/cell][cell expand=1 shrink=false][url=collapse:0][color=#ffffff][color=cyan]Running test:[/color] Occupied Bounds Runtime Bridge[/color][/url][/cell][/table]"
+stack_trace = "GDScript backtrace (most recent call first):
+    [1] _print_line (res://addons/logot/testing/logot_test_manager.gd:807)
+    [2] _run_test_case_async (res://addons/logot/testing/logot_test_manager.gd:276)"
+
+[resource]
+script = ExtResource("3_s4vyw")
+run_id = "20261013_055719_482"
+test_id = "occupied_bounds_runtime_bridge"
+display_name = "Occupied Bounds Runtime Bridge"
+scene_path = "res://Main.tscn"
+started_at = "2026-10-13 05:57:19"
+completed_at = "2026-10-13 05:57:19"
+passed = true
+artifact_path = "user://artifacts/tests/occupied_bounds_runtime_bridge/20261013_055719_482.tres"
+artifact_directory = "user://artifacts/tests/occupied_bounds_runtime_bridge"
+visual_directory = "user://artifacts/tests/occupied_bounds_runtime_bridge/20261013_055719_482/visuals"
+summary = "PASS: 8 code checks, 0 visual checks, 1 logs"
+code_checks = Array[ExtResource("1_bg0qp")]([SubResource("Resource_e7vrt"), SubResource("Resource_5poqk"), SubResource("Resource_cjnfk"), SubResource("Resource_ubnqh"), SubResource("Resource_vol41"), SubResource("Resource_lvm4c"), SubResource("Resource_gm17k"), SubResource("Resource_hrva7")])
+logs = Array[ExtResource("2_8uvfq")]([SubResource("Resource_gm4fq")])

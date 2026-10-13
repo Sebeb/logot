@@ -1,0 +1,154 @@
+[gd_resource type="Resource" script_class="LogotTestRunResult" format=3]
+
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_check_result.gd" id="1_g56cs"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_log_record.gd" id="2_i3u4j"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_run_result.gd" id="3_vexka"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_visual_result.gd" id="4_o6glh"]
+
+[sub_resource type="Resource" id="Resource_orbgk"]
+script = ExtResource("1_g56cs")
+name = "active display exists"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_3hfss"]
+script = ExtResource("1_g56cs")
+name = "console root command is in the console group"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_outk8"]
+script = ExtResource("1_g56cs")
+name = "pins root command is in the console group"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_wlptp"]
+script = ExtResource("1_g56cs")
+name = "render scale commands have no group"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_w676h"]
+script = ExtResource("1_g56cs")
+name = "render scale commands have no group"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_x3syy"]
+script = ExtResource("1_g56cs")
+name = "render scale commands have no group"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_ecyl0"]
+script = ExtResource("1_g56cs")
+name = "keyboard log defaults to 100"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_4b12i"]
+script = ExtResource("1_g56cs")
+name = "keyboard command palette defaults to 100"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_7lsf0"]
+script = ExtResource("1_g56cs")
+name = "keyboard pinned variables defaults to 100"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_xk01j"]
+script = ExtResource("1_g56cs")
+name = "controller log defaults to 120"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_t2wok"]
+script = ExtResource("1_g56cs")
+name = "controller command palette defaults to 120"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_mvb8r"]
+script = ExtResource("1_g56cs")
+name = "controller pinned variables defaults to 100"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_irbbl"]
+script = ExtResource("1_g56cs")
+name = "touch log defaults to 125"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_87ug2"]
+script = ExtResource("1_g56cs")
+name = "touch command palette defaults to 135"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_ingjg"]
+script = ExtResource("1_g56cs")
+name = "touch pinned variables defaults to 110"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_rpjlb"]
+script = ExtResource("1_g56cs")
+name = "controller log setting updates"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_mc0tp"]
+script = ExtResource("1_g56cs")
+name = "current input method switches to controller"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_xaho8"]
+script = ExtResource("1_g56cs")
+name = "current input method switches to touch"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_s27fo"]
+script = ExtResource("1_g56cs")
+name = "touch input disables pinned corner side swapping"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_sjcv4"]
+script = ExtResource("1_g56cs")
+name = "current input method switches to keyboard"
+passed = true
+timestamp = "2026-10-13 05:57:17"
+
+[sub_resource type="Resource" id="Resource_h7hpq"]
+script = ExtResource("2_i3u4j")
+level = 16
+channel = "Tests"
+timestamp = "05:57:17"
+message = "[color=cyan]Running test:[/color] Render Scale Settings"
+formatted = "[table=3][cell expand=0 shrink=true][url=collapse:0][color=dim_gray]05:57:17[/color][/url] [/cell][cell expand=0 shrink=true][url=collapse:0][color=#ffffff][Tests][/color][/url][/cell][cell expand=1 shrink=false][url=collapse:0][color=#ffffff][color=cyan]Running test:[/color] Render Scale Settings[/color][/url][/cell][/table]"
+stack_trace = "GDScript backtrace (most recent call first):
+    [1] _print_line (res://addons/logot/testing/logot_test_manager.gd:807)
+    [2] _run_test_case_async (res://addons/logot/testing/logot_test_manager.gd:276)"
+
+[resource]
+script = ExtResource("3_vexka")
+run_id = "20261013_055717_496"
+test_id = "render_scale_settings"
+display_name = "Render Scale Settings"
+scene_path = "res://Main.tscn"
+started_at = "2026-10-13 05:57:17"
+completed_at = "2026-10-13 05:57:17"
+fail_fast = true
+passed = true
+artifact_path = "user://artifacts/tests/render_scale_settings/20261013_055717_496.tres"
+artifact_directory = "user://artifacts/tests/render_scale_settings"
+visual_directory = "user://artifacts/tests/render_scale_settings/20261013_055717_496/visuals"
+summary = "PASS: 20 code checks, 0 visual checks, 1 logs"
+code_checks = Array[ExtResource("1_g56cs")]([SubResource("Resource_orbgk"), SubResource("Resource_3hfss"), SubResource("Resource_outk8"), SubResource("Resource_wlptp"), SubResource("Resource_w676h"), SubResource("Resource_x3syy"), SubResource("Resource_ecyl0"), SubResource("Resource_4b12i"), SubResource("Resource_7lsf0"), SubResource("Resource_xk01j"), SubResource("Resource_t2wok"), SubResource("Resource_mvb8r"), SubResource("Resource_irbbl"), SubResource("Resource_87ug2"), SubResource("Resource_ingjg"), SubResource("Resource_rpjlb"), SubResource("Resource_mc0tp"), SubResource("Resource_xaho8"), SubResource("Resource_s27fo"), SubResource("Resource_sjcv4")])
+logs = Array[ExtResource("2_i3u4j")]([SubResource("Resource_h7hpq")])

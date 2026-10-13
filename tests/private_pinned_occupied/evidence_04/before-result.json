@@ -1,0 +1,17 @@
+{
+	"checks": [
+		{
+			"details": "",
+			"label": "display exposes new occupied geometry capability",
+			"passed": false
+		},
+		{
+			"details": "",
+			"label": "Console exposes runtime occupied geometry capability",
+			"passed": false
+		}
+	],
+	"collected": 2,
+	"failed": 2,
+	"passed": 0
+}

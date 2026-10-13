@@ -1,0 +1,27 @@
+# Normal lifecycle compatibility: prepared, unrun
+
+The observer correction passed its released focused72 gate on tested runtime commit bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256. The independent source review found no demonstrated introduced blocker; this compatibility gate remains pending. No publication, push or repin is authorized. This plan prepares source only and runs no engine.
+
+The normal fixture reuses the exact explicit runtime/import dependency list from unchanged tests/private_pinned_layout/prepare_compatibility.py. Runtime files come from the tested commit, whose LogotDisplay hash is 9d6e92639c846b07453e2c1cfa4325451ba0e10d601530f458b97b095dc9356e and Console hash is 0b101aca64c0506ff715352136af18e6b7e0952698fd01d6777a5564d48c06c2. Main.tscn and tests/run_logot_test.gd remain byte-identical. The real runner constructs Console and executes its _enter_tree/_ready, runtime display creation/binding, test manager/context and Main scene, rather than the manually bound focused fixture. Normal teardown also exercises Console/display exit and observer cleanup; parser/runtime/resource-leak diagnostics fail the gate.
+
+The unchanged normal cases collect 24 command_palette_pinned_variables checks, 20 render_scale_settings checks and 79 registered_pin_compatibility checks. The latter retains native widget minima, real registry/control/focus/draft/caret coverage, the fresh empty legacy two-argument helper premise, two-column packing and irreducible-minimum overflow retention. No test or assertion is rewritten. The pinned-variable visual checkpoint must be explicitly skipped by the actual manager because headless screenshots are unavailable, with the original skip reason retained. No rendered visual acceptance is claimed.
+
+Only after those 123 unchanged code checks and the separate8 bridge checks succeed may the separate unchanged pinned_display_responsive_layout case collect all 168 code checks. Its original hash stays 0e0bba9206c03559ee406fe0c7847c7213ac70ba94c0d0e5331b030d2e0ba226. The accepted rainyhearts font is copied as a single explicit read-only dependency from an existing owned isolated fixture, with SHA-256 268e13c6353b2555355160f4f74e4c9c35e0c1155a8d6c85dc2c194381829c2b. No primary cache, vault, host project, userdata or normal preferences are copied. The unchanged success subtotal is 291 code assertions and one explicitly skipped visual checkpoint. A separately counted 8-check occupied_bounds_runtime_bridge case asserts the new public viewport owner and nonempty/live registered bounds through actual Console/Main startup, signal forwarding, detached snapshots and registry removal. It never manually binds a display. The new exact total is 299 code assertions: unchanged123 + bridge8 + unchanged168; the older291 claim remains separately identifiable.
+
+Each new actual project.godot has its own fresh relative custom-userdata token, no autoloads and no enabled editor plugins. No override.cfg or XDG isolation is used. The normal fixture has the unchanged real Main reference; the focused fixture has the original private runner/theme and explicit font. Cold import/proofs start no autoload or plugin. Frozen manifests record every exact source, case, runner and dependency byte.
+
+Source-only preparation:
+
+```sh
+python3 tests/private_pinned_occupied/prepare_normal.py /tmp/logot-occupied-normal-NEW --font /private/tmp/logot-pinned-minimum-reservation-freeze-02/focus/after/fixture_font.ttf
+```
+
+Proposed future grant: eight minutes, 480 seconds, inclusive of all execution, owned cleanup, boundary/source postflight and immediate RELEASE. A separate exact exclusive START is required. The held command is:
+
+```sh
+python3 tests/private_pinned_occupied/run_normal_gate.py /private/tmp/logot-occupied-normal-NEW --root-start EXACT_NEW_START --deadline-epoch EXACT_NEW_DEADLINE
+```
+
+Normal proof/import/parse/case limits are 10/30/15/30 seconds. Six separate actual OS proofs plus one import, one parse and four case processes total at most 225 seconds. Focus proof/import/parse/case limits are 12/45/20/45 seconds, totaling 146 seconds. Engine limits sum to 371 seconds. Boundary preflight is limited to 10 seconds; the launcher reserves 50 seconds for owned cleanup/postflight and overhead, refusing less than 431 seconds at initial entry. It starts no focused operation unless at least 196 seconds remain: full146 plus50 reserve. Every nonproof engine invocation follows a fresh independent actual OS proof, including all four normal cases. The sole binary is /opt/homebrew/bin/godot; proof output must contain the 4.7.2 banner and exact expected OS directory.
+
+Any unexpected diagnostic, import/parser/runtime/leak/timeout, failed or incomplete assertion collection, wrong visual qualification, source mismatch or cleanup failure stops immediately. No fallback baseline, extra suite, retry or relaxed oracle runs. Each invocation has an owned process group; survivors are killed and fail the gate. The owner preserves serialized normal results even on an assertion-error path, all process output, private userdata inventories/logs, focus JSON and boundary manifests, then removes only exact fresh proved tokens. Cleanup is bounded at 20 seconds and boundary postflight at 10 seconds within the same slot. Canonical .godot, icon smol.png and normal Logot/Adventure Infinitum userdata must match exactly before/after, as must frozen sources. No post-deadline root cleanup is part of acceptance.

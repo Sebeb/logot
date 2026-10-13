@@ -1,0 +1,44 @@
+{
+  "logot-pinned-private-occupied-4b7ecf089a1742169b799a8663f22c5e-before": {
+    "proved": true,
+    "existed": true,
+    "removed": true,
+    "files": {
+      "logs/godot.log": {
+        "bytes": 1297,
+        "sha256": "bc74315cef73009392e087c881e5cb95ccfe623f8020a75db396f08d11ddaabc"
+      },
+      "logs/godot2026-10-13T05.39.40.log": {
+        "bytes": 197,
+        "sha256": "825d7e8fa3c6f4ad02d3a44a893521974007afb91a24261e7a268bcd32e4f019"
+      },
+      "occupied-test.cfg": {
+        "bytes": 581,
+        "sha256": "9cac50cff4ec5d3425d8464dbd682f064963e5805f32cdc84ceab7f43984c96e"
+      }
+    }
+  },
+  "logot-pinned-private-occupied-1ca4dade11d24b4e8616e0e36ef66678-after": {
+    "proved": true,
+    "existed": true,
+    "removed": true,
+    "files": {
+      "logs/godot.log": {
+        "bytes": 1297,
+        "sha256": "17b6610be3522d79ea3d8b3f63c5e7de67890ecaa64b8d5df0e5054187924c93"
+      },
+      "logs/godot2026-10-13T05.39.44.log": {
+        "bytes": 196,
+        "sha256": "5c51a3c94aa9b9f10a9e8b9df1cfa7f0018f09d7d342c2c49116ad518cb79a2a"
+      },
+      "logs/godot2026-10-13T05.39.45.log": {
+        "bytes": 196,
+        "sha256": "5c51a3c94aa9b9f10a9e8b9df1cfa7f0018f09d7d342c2c49116ad518cb79a2a"
+      },
+      "occupied-test.cfg": {
+        "bytes": 581,
+        "sha256": "9cac50cff4ec5d3425d8464dbd682f064963e5805f32cdc84ceab7f43984c96e"
+      }
+    }
+  }
+}

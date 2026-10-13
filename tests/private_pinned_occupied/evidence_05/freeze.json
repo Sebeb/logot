@@ -1,0 +1,27 @@
+{
+  "base": "cac17e49da86f99ca8c7f556f67f7330044fe2d5",
+  "candidate_parent": "c4ee75c5bd357fda41dbe88ada83dd13c8d1dbb9",
+  "boundary_script_sha256": "cf9caeedcbbaccbde6a57762ea81862f4869e42783d34345d117d70bb331fd90",
+  "fixtures": {
+    "before": {
+      "path": "/private/tmp/logot-pinned-occupied-source-05/before",
+      "token": "logot-pinned-private-occupied-4b7ecf089a1742169b799a8663f22c5e-before",
+      "manifest_sha256": "1161055c685e35f1b8267db7bc36c8c392596b10378950bf462c50fe5883de12"
+    },
+    "after": {
+      "path": "/private/tmp/logot-pinned-occupied-source-05/after",
+      "token": "logot-pinned-private-occupied-1ca4dade11d24b4e8616e0e36ef66678-after",
+      "manifest_sha256": "5e2ef6d738dfd568cda1ccde3f016fad8e744c14277477ad4ec329ded53fb023"
+    }
+  },
+  "tooling": {
+    "tests/private_pinned_occupied/README.md": "cd92250bb0889de73cf8fde55f3cca516e98c9ae86e1956a3c39b36dcafb544a",
+    "tests/private_pinned_occupied/case.gd": "bbfdadd037d6fab7a8fad28be0ce17cb255721b927fb5d4c4376d9864db3a655",
+    "tests/private_pinned_occupied/diagnosis.md": "3796619acc01b3ef257dcb838bc029b55b5defcde241dd13f73766969ac129a6",
+    "tests/private_pinned_occupied/postflight.py": "dae45b3d75ff1d5885fc582ca9c012758a12f0af4970ada5b6459dc3e9e4bb7b",
+    "tests/private_pinned_occupied/preflight.md": "8d83c3fb07dfb3e87d7e8f982fbc151315f2ccac9ac0f6405904758516fc07c3",
+    "tests/private_pinned_occupied/prepare.py": "c143b8706767b663c1a8c14fac92497feb046e7ed6de845e100559b508c93cdf",
+    "tests/private_pinned_occupied/run_gate.py": "f2ed8eb9f38ad5fade05aa697d53bdad2ba20a00de2c87b449f18af331e880ea",
+    "tests/private_pinned_occupied/runner.gd": "2bc6aceca641b9ccd404a4ee4d1507b1b73630ced8affc82f83d7c51b8b416cc"
+  }
+}

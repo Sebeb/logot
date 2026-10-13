@@ -1,0 +1,52 @@
+{
+  "tested_runtime_commit": "bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256",
+  "expected": {
+    "command_palette_pinned_variables": {
+      "code": 24,
+      "visual": 1,
+      "headless_visual_skipped": 1
+    },
+    "render_scale_settings": {
+      "code": 20,
+      "visual": 0
+    },
+    "registered_pin_compatibility": {
+      "code": 79,
+      "visual": 0
+    },
+    "occupied_bounds_runtime_bridge": {
+      "code": 8,
+      "visual": 0
+    }
+  },
+  "cases": [
+    "command_palette_pinned_variables",
+    "render_scale_settings",
+    "registered_pin_compatibility",
+    "occupied_bounds_runtime_bridge"
+  ],
+  "font_read_only_source": "/private/tmp/logot-pinned-minimum-reservation-freeze-02/focus/after/fixture_font.ttf",
+  "font_sha256": "268e13c6353b2555355160f4f74e4c9c35e0c1155a8d6c85dc2c194381829c2b",
+  "fixtures": {
+    "normal": {
+      "path": "/private/tmp/logot-occupied-normal-source-02/normal",
+      "token": "logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal",
+      "manifest_sha256": "e669a2c7e988b6ee68467e2e992f4d98c9b9e6e0f28b6f1a421d006ecffbbf6d"
+    },
+    "focus": {
+      "path": "/private/tmp/logot-occupied-normal-source-02/focus",
+      "token": "logot-pinned-private-occupied-compat-f97d3d57d5854fa2b3ff2ac01fc5139b-focus",
+      "manifest_sha256": "db99f425c836aa68fde83b91f3a3a76ae9a2923a4cce2e4b7c6ec831f853d7a9"
+    }
+  },
+  "boundary_script_sha256": "cf9caeedcbbaccbde6a57762ea81862f4869e42783d34345d117d70bb331fd90",
+  "result_parser_sha256": "ca6b7d1c57dda86d0d26d5d23b1c094e761163c35bfbc6a2d18b6ddfb9d625ec",
+  "tooling": {
+    "tests/private_pinned_occupied/prepare_normal.py": "afd724b89827566db7d6b74a8c639d79962d770101d1d34271dd8c1c2db23730",
+    "tests/private_pinned_occupied/run_normal_gate.py": "de494783fc167edc0c5a746a9ac42bc27f17c9138a9f5f7c49ca99d937b60fd5",
+    "tests/private_pinned_occupied/postflight.py": "dae45b3d75ff1d5885fc582ca9c012758a12f0af4970ada5b6459dc3e9e4bb7b",
+    "tests/private_pinned_occupied/postflight_normal.py": "cabce91508330fca4cf2620b63563cd9fc5a52d85115ddaf34416bf2e7364ff5",
+    "tests/private_pinned_occupied/normal-plan.md": "e8a243acf1dd2d4bea43b25fab835decab87457846e40bb8f34f0e8ebab513ba",
+    "tests/private_pinned_occupied/normal_runtime_bridge.gd": "3f7a55eb0c0cd56398bd422097a25b4249b155a9a6fbcf067c1f2a4c25a675b1"
+  }
+}

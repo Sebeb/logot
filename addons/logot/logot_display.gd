@@ -20,6 +20,7 @@ signal cleared()
 signal level_visibility_changed(level: int, mode: int)
 signal channel_visibility_changed(channel: String, mode: int)
 signal channel_deleted(channel: String)
+signal pinned_overlay_occupied_rects_changed()
 signal display_rebuilt()  # Emitted after display is rebuilt, for external stats updates
 
 # =============================================================================
@@ -2259,6 +2260,14 @@ var _root_command_selection_reset_pending := false
 # Display variables
 var _pinned_display_variables: Array[String] = []
 var _transient_pinned_display_variables: Dictionary = {}
+# Public snapshots contain values only, never row nodes.
+var _pinned_occupied_rects: Dictionary[String, Rect2] = {}
+var _pinned_occupied_available := false
+var _pinned_occupied_viewport_id := 0
+var _pinned_occupied_pending := false
+var _pinned_occupied_frames_remaining := 0
+var _pinned_occupied_tree: SceneTree
+var _pinned_occupied_transform := Transform2D.IDENTITY
 var _pinned_overlay_root: Control
 var _pinned_overlay_corner_containers: Dictionary = {}
 var _pinned_overlay_rows: Dictionary = {}
@@ -3241,6 +3250,132 @@ func get_enabled_pinned_corners() -> Array[String]:
 
 func get_effective_pinned_display_variable_corner(address: String) -> String:
 	return _get_effective_pinned_corner_for_address(address)
+
+
+## Last settled visible row AABBs in the owning Viewport's coordinates.
+## All four effective corners are present. Empty/hidden corners are Rect2().
+## The detached dictionary and Rect2 values are safe for caller mutation.
+## Includes overflow, excludes queued deletion; does not describe glyph ink.
+func get_pinned_overlay_occupied_rects() -> Dictionary[String, Rect2]:
+	if get_pinned_overlay_viewport() == null:
+		return _empty_pinned_occupied_rects()
+	return _pinned_occupied_rects.duplicate()
+
+
+## Coordinate owner, including SubViewports. Never infer screen/CSS coordinates.
+func get_pinned_overlay_viewport() -> Viewport:
+	if not _pinned_occupied_available or not is_inside_tree() or is_queued_for_deletion():
+		return null
+	return get_viewport()
+
+
+func _empty_pinned_occupied_rects() -> Dictionary[String, Rect2]:
+	var result: Dictionary[String, Rect2] = {}
+	for corner in PINNED_OVERLAY_CORNERS:
+		result[corner] = Rect2()
+	return result
+
+
+# A nonvisual child observes inherited row transforms without replacing the
+# existing RichTextLabel/widget script or exposing row references publicly.
+class PinnedOccupiedTransformObserver extends Node2D:
+	var invalidated: Callable
+
+	func _enter_tree() -> void:
+		set_notify_transform(true)
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_TRANSFORM_CHANGED and is_inside_tree() and not is_queued_for_deletion():
+			# Notification delivery does not resolve CanvasItem's dirty cache.
+			# Read this observer's transform so the next inherited change queues
+			# another notification, including after row reparent/re-entry.
+			get_global_transform()
+			if invalidated.is_valid():
+				invalidated.call()
+
+
+func _watch_pinned_occupied_row(row: Control) -> void:
+	_watch_pinned_occupied_geometry(row)
+	if row.has_meta("logot_occupied_transform_observer"):
+		return
+	var observer := PinnedOccupiedTransformObserver.new()
+	observer.invalidated = _invalidate_pinned_occupied_rects
+	row.set_meta("logot_occupied_transform_observer", true)
+	row.add_child(observer)
+
+
+func _watch_pinned_occupied_geometry(control: Control) -> void:
+	var geometry_signals: Array[Signal] = [control.item_rect_changed, control.visibility_changed, control.minimum_size_changed, control.tree_entered, control.tree_exiting]
+	for geometry_signal in geometry_signals:
+		if not geometry_signal.is_connected(_invalidate_pinned_occupied_rects):
+			geometry_signal.connect(_invalidate_pinned_occupied_rects)
+	if control is Container and not (control as Container).sort_children.is_connected(_invalidate_pinned_occupied_rects):
+		(control as Container).sort_children.connect(_invalidate_pinned_occupied_rects)
+
+
+func _invalidate_pinned_occupied_rects() -> void:
+	if not _pinned_occupied_available or not is_inside_tree() or is_queued_for_deletion():
+		return
+	if _pinned_occupied_pending:
+		return
+	_pinned_occupied_pending = true
+	# Two frame boundaries allow the preceding idle container-sort queue to drain.
+	# New invalidations coalesce without resetting this finite deadline. Sampling
+	# never edits layout, so cannot create another sort/invalidation cycle.
+	_pinned_occupied_frames_remaining = 2
+	_pinned_occupied_tree = get_tree()
+	_pinned_occupied_tree.process_frame.connect(_settle_pinned_occupied_rects)
+
+
+func _cancel_pinned_occupied_sample() -> void:
+	if is_instance_valid(_pinned_occupied_tree) and _pinned_occupied_tree.process_frame.is_connected(_settle_pinned_occupied_rects):
+		_pinned_occupied_tree.process_frame.disconnect(_settle_pinned_occupied_rects)
+	_pinned_occupied_tree = null
+	_pinned_occupied_pending = false
+
+
+func _settle_pinned_occupied_rects() -> void:
+	_pinned_occupied_frames_remaining -= 1
+	if _pinned_occupied_frames_remaining > 0:
+		return
+	_cancel_pinned_occupied_sample()
+	if get_pinned_overlay_viewport() == null:
+		return
+	var result := _empty_pinned_occupied_rects()
+	if is_instance_valid(_pinned_overlay_root) and _pinned_overlay_root.is_visible_in_tree():
+		for address in _pinned_overlay_rows:
+			if not _pinned_display_variables.has(address) or not _is_pinned_item_available(address):
+				continue
+			var row = _pinned_overlay_rows[address]
+			if not is_instance_valid(row) or not row is Control:
+				continue
+			if row.is_queued_for_deletion() or not row.is_inside_tree() or not row.is_visible_in_tree() or row.get_viewport() != get_viewport():
+				continue
+			if not _pinned_overlay_root.is_ancestor_of(row) or row.size.x <= 0.0 or row.size.y <= 0.0:
+				continue
+			var corner := _get_effective_pinned_corner_for_address(str(address))
+			var transform: Transform2D = row.get_global_transform_with_canvas()
+			var rect := Rect2(transform * Vector2.ZERO, Vector2.ZERO)
+			for point in [Vector2(row.size.x, 0.0), row.size, Vector2(0.0, row.size.y)]:
+				rect = rect.expand(transform * point)
+			result[corner] = rect if result[corner] == Rect2() else result[corner].merge(rect)
+	var viewport_id := get_viewport().get_instance_id()
+	if result == _pinned_occupied_rects and viewport_id == _pinned_occupied_viewport_id:
+		return
+	_pinned_occupied_rects = result
+	_pinned_occupied_viewport_id = viewport_id
+	pinned_overlay_occupied_rects_changed.emit()
+
+
+func _release_pinned_occupied_rects() -> void:
+	_cancel_pinned_occupied_sample()
+	var was_available := _pinned_occupied_available
+	_pinned_occupied_available = false
+	_pinned_occupied_viewport_id = 0
+	_pinned_occupied_rects = _empty_pinned_occupied_rects()
+	if was_available:
+		# Getters already report empty/null during this synchronous notification.
+		pinned_overlay_occupied_rects_changed.emit()
 
 
 func set_pinned_display_variables_visible(visible: bool) -> void:
@@ -4237,10 +4372,29 @@ func _init_display() -> void:
 
 
 func _process(delta: float) -> void:
+	# Viewport canvas and CanvasLayer transforms have no shared changed signal.
+	# One transform comparison is constant cost; rows are scanned only on change.
+	if _pinned_occupied_available:
+		var transform := get_global_transform_with_canvas()
+		if transform != _pinned_occupied_transform:
+			_pinned_occupied_transform = transform
+			_invalidate_pinned_occupied_rects()
 	_poll_visible_display_variable_consumers(delta)
 
 
 func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_TREE:
+		_pinned_occupied_available = true
+		_pinned_occupied_rects = _empty_pinned_occupied_rects()
+		set_notify_transform(true)
+		if not tree_exiting.is_connected(_release_pinned_occupied_rects):
+			tree_exiting.connect(_release_pinned_occupied_rects)
+		_watch_pinned_occupied_geometry(self)
+		_invalidate_pinned_occupied_rects()
+	elif what == NOTIFICATION_EXIT_TREE:
+		_release_pinned_occupied_rects()
+	elif what == NOTIFICATION_TRANSFORM_CHANGED:
+		_invalidate_pinned_occupied_rects()
 	if what == NOTIFICATION_RESIZED:
 		refresh_safe_area_layout()
 
@@ -4479,6 +4633,7 @@ func _ensure_pinned_overlay() -> void:
 		return
 
 	_pinned_overlay_root = Control.new()
+	_watch_pinned_occupied_geometry(_pinned_overlay_root)
 	_pinned_overlay_root.name = "PinnedDisplayVariables"
 	_pinned_overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_pinned_overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4488,6 +4643,7 @@ func _ensure_pinned_overlay() -> void:
 
 	for corner in PINNED_OVERLAY_CORNERS:
 		var container := HBoxContainer.new()
+		_watch_pinned_occupied_geometry(container)
 		container.name = "PinnedDisplayVariables_%s" % corner
 		container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		container.alignment = BoxContainer.ALIGNMENT_END if corner in [PINNED_OVERLAY_CORNER_TOP_RIGHT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT] else BoxContainer.ALIGNMENT_BEGIN
@@ -4805,6 +4961,7 @@ func _is_pinned_item_available(address: String) -> bool:
 
 
 func _layout_pinned_overlay_containers() -> void:
+	_invalidate_pinned_occupied_rects()
 	if not _pinned_overlay_root:
 		return
 	_pinned_overlay_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4909,6 +5066,7 @@ func _layout_pinned_overlay_rows(visible_addresses: Array[String]) -> void:
 		var row = _pinned_overlay_rows.get(address, null)
 		if not (row is Control) or not is_instance_valid(row):
 			continue
+		_watch_pinned_occupied_row(row)
 		var row_id := int(row.get_instance_id())
 		if placed_row_ids.has(row_id):
 			continue
@@ -5045,6 +5203,7 @@ func _layout_pinned_overlay_corner_columns(corner: String, rows: Array, width_bu
 		columns.reverse()
 	for column_rows in columns:
 		var column := VBoxContainer.new()
+		_watch_pinned_occupied_geometry(column)
 		column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		column.alignment = BoxContainer.ALIGNMENT_END if corner in [PINNED_OVERLAY_CORNER_BOTTOM_LEFT, PINNED_OVERLAY_CORNER_BOTTOM_RIGHT] else BoxContainer.ALIGNMENT_BEGIN
 		column.add_theme_constant_override("separation", 0)
@@ -5060,6 +5219,7 @@ func _refresh_pinned_display_variables() -> void:
 	if _ui_update_batch_depth > 0:
 		_ui_update_pins_dirty = true
 		return
+	_invalidate_pinned_occupied_rects()
 	_debug_pinned_refresh_count += 1
 	if not _pinned_overlay_root:
 		return

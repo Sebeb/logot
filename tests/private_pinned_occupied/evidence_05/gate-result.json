@@ -1,0 +1,9 @@
+{
+  "gate_error": null,
+  "cleanup_errors": [],
+  "completed_before_deadline": true,
+  "proved_tokens": [
+    "logot-pinned-private-occupied-1ca4dade11d24b4e8616e0e36ef66678-after",
+    "logot-pinned-private-occupied-4b7ecf089a1742169b799a8663f22c5e-before"
+  ]
+}

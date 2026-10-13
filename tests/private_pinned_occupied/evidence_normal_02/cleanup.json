@@ -1,0 +1,68 @@
+{
+  "logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal": {
+    "proved": true,
+    "existed": true,
+    "removed": true,
+    "files": {
+      "artifacts/tests/command_palette_pinned_variables/20261013_055715_492.tres": {
+        "bytes": 9981,
+        "sha256": "d3580f7d9e2072097f05e31f87b77a616246277acb212c463dd147aaabf80942"
+      },
+      "artifacts/tests/occupied_bounds_runtime_bridge/20261013_055719_482.tres": {
+        "bytes": 3794,
+        "sha256": "f0923ecaebbfc2724876732469f194ceb8bec538c9d6498d1523b3774e49ad65"
+      },
+      "artifacts/tests/registered_pin_compatibility/20261013_055718_493.tres": {
+        "bytes": 19234,
+        "sha256": "2f6e1510448ec462ebf0f81f88975b61ad2613c04bf03973c44602e49afa03cd"
+      },
+      "artifacts/tests/render_scale_settings/20261013_055717_496.tres": {
+        "bytes": 6190,
+        "sha256": "19ea02a1f590455eb6b9d2fffe05b76018f3b61fb314481d1db8667d822bb8f1"
+      },
+      "console_filters.cfg": {
+        "bytes": 620,
+        "sha256": "76c9bf2b036180e1d1e26dc9765440e8b296ae6ed99424c33b1630cc7facf153"
+      },
+      "console_history.txt": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "logs/godot.log": {
+        "bytes": 761,
+        "sha256": "24f1b17ddbf493e9f6f7d94663c07a86e577678d4562620b0d79ff71a08b3c28"
+      },
+      "logs/godot2026-10-13T05.57.15.log": {
+        "bytes": 204,
+        "sha256": "ed7a80f03fa9adc7c6e3f469c8e52dfdb5ceafbd78ecb1593e4c10db50b38d2c"
+      },
+      "logs/godot2026-10-13T05.57.16.log": {
+        "bytes": 204,
+        "sha256": "ed7a80f03fa9adc7c6e3f469c8e52dfdb5ceafbd78ecb1593e4c10db50b38d2c"
+      },
+      "logs/godot2026-10-13T05.57.17.log": {
+        "bytes": 204,
+        "sha256": "ed7a80f03fa9adc7c6e3f469c8e52dfdb5ceafbd78ecb1593e4c10db50b38d2c"
+      },
+      "logs/godot2026-10-13T05.57.18.log": {
+        "bytes": 204,
+        "sha256": "ed7a80f03fa9adc7c6e3f469c8e52dfdb5ceafbd78ecb1593e4c10db50b38d2c"
+      }
+    }
+  },
+  "logot-pinned-private-occupied-compat-f97d3d57d5854fa2b3ff2ac01fc5139b-focus": {
+    "proved": true,
+    "existed": true,
+    "removed": true,
+    "files": {
+      "logs/godot.log": {
+        "bytes": 110,
+        "sha256": "22377ce1926239da547304e5810eb60be358d0ec5038a7f5ef8d9158b7568023"
+      },
+      "logs/godot2026-10-13T05.57.21.log": {
+        "bytes": 203,
+        "sha256": "a163e573c3554bfed6a57cd3077a16a8e08658fb4685149761b6a083c4ee39db"
+      }
+    }
+  }
+}

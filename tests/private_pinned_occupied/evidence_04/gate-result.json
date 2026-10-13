@@ -1,0 +1,9 @@
+{
+  "gate_error": "Unexpected assertion collection/failures/exit; stop",
+  "cleanup_errors": [],
+  "completed_before_deadline": true,
+  "proved_tokens": [
+    "logot-pinned-private-occupied-32f8b2c100794639ac81882bbce92004-after",
+    "logot-pinned-private-occupied-4191a8ffba344beeb31e6220070ff664-before"
+  ]
+}

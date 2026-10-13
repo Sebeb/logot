@@ -1,0 +1,13 @@
+# Released normal compatibility: 299 code checks passed
+
+Gate commit fe0619ebcfaf3c4bdb3c50c8613df8eda3a872a5; runtime exactly reviewed/tested bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256. Immutable original pair /private/tmp/logot-occupied-normal-source-02; freeze SHA-256 834ed756aa685e7e3d60da715f10cafab6554ec3a67eb92f0c6f0899d2745960.
+
+START 2026-10-13 04:56:58 UTC; hard deadline 05:04:58 UTC; RELEASE 04:57:33 UTC. No midgate source changes, retry, fallback, browser, export, host edit, publication, push or repin occurred.
+
+The unchanged real normal runner executed Console _enter_tree/_ready, its actual runtime display/binding, manager/context and Main scene. command_palette_pinned_variables passed24 code checks with one explicit manager headless-skipped visual checkpoint. render_scale_settings passed20; registered_pin_compatibility passed79, including native minima and legacy helper/focus/control lifetime assertions. The separately counted occupied_bounds_runtime_bridge passed8 public ownership/live-registry/signal/snapshot/removal checks after actual Console/Main startup, without manual binding. Normal131 success permitted the unchanged focused168 case, which passed168. Exact total299 code passes, zero failures, identifiable unchanged291 subtotal plus8 bridge. This is not rendered visual acceptance.
+
+Nine separate actual OS-userdata proof invocations and all18 engine invocations exited0. Every recorded owned group reported surviving_process_group=false. No parser/runtime/engine/resource-leak/timeout/teardown diagnostic occurred. Known three font/SVG invalid UID warnings occurred during normal runner parse and each of four normal cases: IBMPlexMono-Regular.ttf, Clear.svg and AnimationFilter.svg loaded by exact text paths. Full warnings are preserved; this was not warning-free. The normal visual result retains the exact skipped-screenshot reason.
+
+Gate error null, cleanup errors empty, completed before deadline true. Owner preserved all serialized normal TRES results, focused JSON, private userdata inventories/logs and process output, then removed only both exact proved fresh tokens. Canonical cache/icon/normal-userdata boundary manifests were byte-identical and all frozen source bytes matched postflight. Root independently verified counts, process records and boundaries after RELEASE.
+
+Raw copied evidence and its hash inventory are immutable. Source05 focused72 success and source04 failed59/58/1 evidence remain unchanged and separately identifiable. Independent review found no demonstrated introduced blocker. Publication, host adoption, Web export/reload and390/320 host acceptance remain root-owned and outside this package gate. Owner HOLD.

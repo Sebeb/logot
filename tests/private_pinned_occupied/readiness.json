@@ -1,0 +1,185 @@
+{
+  "status": "PACKAGE_GATES_COMPLETE_ROOT_PUBLICATION_HOST_ACCEPTANCE_HOLD",
+  "published_ancestor": "3af9ab9ea324cb36bc640c42ae52ddc627b6389f",
+  "faulty_baseline_commit": "cac17e49da86f99ca8c7f556f67f7330044fe2d5",
+  "source_prepared_commit": "c4ee75c5bd357fda41dbe88ada83dd13c8d1dbb9",
+  "fixed_source_relationship": "Only existing PinnedOccupiedTransformObserver callback differs from cac17e49 production; own get_global_transform before invalidation while inside tree/not queued; Console byte-identical",
+  "source_sha256": {
+    "addons/logot/logot_display.gd": "9d6e92639c846b07453e2c1cfa4325451ba0e10d601530f458b97b095dc9356e",
+    "addons/logot/logot.gd": "0b101aca64c0506ff715352136af18e6b7e0952698fd01d6777a5564d48c06c2",
+    "addons/logot/system-doc.md": "e4c1540e9ac46cd63e927751828f2542f48699f121eab7430b2e445e207c2bb5",
+    "tests/private_pinned_occupied/README.md": "cd92250bb0889de73cf8fde55f3cca516e98c9ae86e1956a3c39b36dcafb544a",
+    "tests/private_pinned_occupied/case.gd": "bbfdadd037d6fab7a8fad28be0ce17cb255721b927fb5d4c4376d9864db3a655",
+    "tests/private_pinned_occupied/diagnosis.md": "3796619acc01b3ef257dcb838bc029b55b5defcde241dd13f73766969ac129a6",
+    "tests/private_pinned_occupied/postflight.py": "dae45b3d75ff1d5885fc582ca9c012758a12f0af4970ada5b6459dc3e9e4bb7b",
+    "tests/private_pinned_occupied/preflight.md": "8d83c3fb07dfb3e87d7e8f982fbc151315f2ccac9ac0f6405904758516fc07c3",
+    "tests/private_pinned_occupied/prepare.py": "c143b8706767b663c1a8c14fac92497feb046e7ed6de845e100559b508c93cdf",
+    "tests/private_pinned_occupied/run_gate.py": "f2ed8eb9f38ad5fade05aa697d53bdad2ba20a00de2c87b449f18af331e880ea",
+    "tests/private_pinned_occupied/runner.gd": "2bc6aceca641b9ccd404a4ee4d1507b1b73630ced8affc82f83d7c51b8b416cc"
+  },
+  "prepared_pair": "/private/tmp/logot-pinned-occupied-source-05",
+  "fixture_freeze_sha256": "b7cfb465094f49adea0eb02f88c8a9d883ada5ac03c02007817c215af96de75b",
+  "fixtures": {
+    "before": {
+      "path": "/private/tmp/logot-pinned-occupied-source-05/before",
+      "token": "logot-pinned-private-occupied-4b7ecf089a1742169b799a8663f22c5e-before",
+      "manifest_sha256": "1161055c685e35f1b8267db7bc36c8c392596b10378950bf462c50fe5883de12"
+    },
+    "after": {
+      "path": "/private/tmp/logot-pinned-occupied-source-05/after",
+      "token": "logot-pinned-private-occupied-1ca4dade11d24b4e8616e0e36ef66678-after",
+      "manifest_sha256": "5e2ef6d738dfd568cda1ccde3f016fad8e744c14277477ad4ec329ded53fb023"
+    }
+  },
+  "expected_checks": {
+    "before": {
+      "collected": 72,
+      "passed": 64,
+      "failed": 8,
+      "qualification": "Observed exact source05 baseline72/64/8, declared labels, exit1"
+    },
+    "after": {
+      "collected": 72,
+      "passed": 72,
+      "failed": 0,
+      "qualification": "Observed corrected source05 72/72/0, exit0; focused package only"
+    }
+  },
+  "original59_semantics_preserved": true,
+  "tested_gate04": {
+    "commit": "cac17e49da86f99ca8c7f556f67f7330044fe2d5",
+    "freeze_sha256": "81ab1d91fe1eff75c699e98a23d12450d3f37875b9f94e5ae02cb580c996212b",
+    "before": {
+      "collected": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "after": {
+      "collected": 59,
+      "passed": 58,
+      "failed": 1
+    },
+    "accepted": false,
+    "UID_fallback_warnings": "font and two SVG dependencies per case, retained",
+    "cleanup_errors": [],
+    "boundary_manifests_identical": true,
+    "release_utc": "2026-10-13 04:27:04 UTC",
+    "archive": "tests/private_pinned_occupied/evidence_04",
+    "unchanged_original_pair": true
+  },
+  "source_preflight": {
+    "diff_check": "pass",
+    "Python_sources_compile": "pass",
+    "callback_only_production_delta": "pass",
+    "new_types": "explicit bool, Control, int, float, String; loop dictionaries are literals",
+    "signals": "unchanged audited typed Signal connections, no new signals",
+    "fixtures": "requested rotation/process-off premise, same row identity after re-entry, visibility restored before registry",
+    "hashes_and_identical_case_bytes": "pass",
+    "prior_private_files_byte_identical": 159,
+    "new_Godot_parser_engine_execution": "Completed released source05 focused72 and normal299 gates; no new runtime granted"
+  },
+  "engine_binary": "/opt/homebrew/bin/godot",
+  "engine_expected_banner": "4.7.2.stable.official.ed1daf0bf",
+  "proposed_exclusive_gate_seconds": 350,
+  "engine_process_limits_total_seconds": 292,
+  "boundary_preflight_limit_seconds": 10,
+  "owner_cleanup_postflight_reserved_seconds": 30,
+  "executed_gate05": {
+    "tested_commit": "bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256",
+    "freeze_sha256": "b7cfb465094f49adea0eb02f88c8a9d883ada5ac03c02007817c215af96de75b",
+    "start_utc": "2026-10-13 04:39:24 UTC",
+    "deadline_utc": "2026-10-13 04:45:14 UTC",
+    "release_utc": "2026-10-13 04:40:02 UTC",
+    "before": {
+      "collected": 72,
+      "passed": 64,
+      "failed": 8
+    },
+    "after": {
+      "collected": 72,
+      "passed": 72,
+      "failed": 0
+    },
+    "archive": "tests/private_pinned_occupied/evidence_05",
+    "warning_qualification": "Three known font/SVG UID text-path fallback warnings per case retained; not warning-free",
+    "cleanup_errors": [],
+    "boundary_manifests_equal": true,
+    "source_bytes_frozen": true
+  },
+  "independent_review": {
+    "disposition": "No demonstrated introduced blocker in bounded source/pure review; normal public-forwarding and host acceptance gates remain",
+    "archive": "tests/private_pinned_occupied/independent_review",
+    "runtime_pin": "bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256"
+  },
+  "normal_compatibility": {
+    "status": "EXECUTED_PASSED_299_CODE_ONE_EXPLICIT_HEADLESS_VISUAL_SKIP_RELEASED",
+    "pair": "/private/tmp/logot-occupied-normal-source-02",
+    "freeze_sha256": "834ed756aa685e7e3d60da715f10cafab6554ec3a67eb92f0c6f0899d2745960",
+    "fixtures": {
+      "normal": {
+        "path": "/private/tmp/logot-occupied-normal-source-02/normal",
+        "token": "logot-pinned-private-occupied-compat-c9418a0663744f8fa8f8decc9e7b0dcf-normal",
+        "manifest_sha256": "e669a2c7e988b6ee68467e2e992f4d98c9b9e6e0f28b6f1a421d006ecffbbf6d"
+      },
+      "focus": {
+        "path": "/private/tmp/logot-occupied-normal-source-02/focus",
+        "token": "logot-pinned-private-occupied-compat-f97d3d57d5854fa2b3ff2ac01fc5139b-focus",
+        "manifest_sha256": "db99f425c836aa68fde83b91f3a3a76ae9a2923a4cce2e4b7c6ec831f853d7a9"
+      }
+    },
+    "tooling_sha256": {
+      "tests/private_pinned_occupied/prepare_normal.py": "afd724b89827566db7d6b74a8c639d79962d770101d1d34271dd8c1c2db23730",
+      "tests/private_pinned_occupied/run_normal_gate.py": "de494783fc167edc0c5a746a9ac42bc27f17c9138a9f5f7c49ca99d937b60fd5",
+      "tests/private_pinned_occupied/postflight.py": "dae45b3d75ff1d5885fc582ca9c012758a12f0af4970ada5b6459dc3e9e4bb7b",
+      "tests/private_pinned_occupied/postflight_normal.py": "cabce91508330fca4cf2620b63563cd9fc5a52d85115ddaf34416bf2e7364ff5",
+      "tests/private_pinned_occupied/normal-plan.md": "e8a243acf1dd2d4bea43b25fab835decab87457846e40bb8f34f0e8ebab513ba",
+      "tests/private_pinned_occupied/normal_runtime_bridge.gd": "3f7a55eb0c0cd56398bd422097a25b4249b155a9a6fbcf067c1f2a4c25a675b1"
+    },
+    "expected_unchanged_normal": 123,
+    "expected_new_real_runtime_bridge": 8,
+    "expected_unchanged_focused": 168,
+    "unchanged_identifiable_subtotal": 291,
+    "new_total_code": 299,
+    "explicit_headless_visual_skips": 1,
+    "proposed_exclusive_seconds": 480,
+    "normal_process_bounds_total": 225,
+    "focused_process_bounds_total": 146,
+    "engine_process_bounds_total": 371,
+    "boundary_preflight_limit": 10,
+    "owner_cleanup_postflight_reserve": 50,
+    "focus_start_minimum_remaining": 196,
+    "candidate_runtime_is_exact_tested_bef": true,
+    "normal_Console_enter_ready_and_Main_path": true,
+    "executed_gate_commit": "fe0619ebcfaf3c4bdb3c50c8613df8eda3a872a5",
+    "start_utc": "2026-10-13 04:56:58 UTC",
+    "deadline_utc": "2026-10-13 05:04:58 UTC",
+    "release_utc": "2026-10-13 04:57:33 UTC",
+    "observed": {
+      "normal_code": 131,
+      "unchanged_normal": 123,
+      "real_runtime_bridge": 8,
+      "focused_code": 168,
+      "total_code": 299,
+      "passed": 299,
+      "failed": 0,
+      "explicit_headless_visual_skips": 1,
+      "OS_proofs": 9,
+      "engine_invocations": 18,
+      "all_exits": 0,
+      "surviving_groups": false,
+      "gate_error": null,
+      "cleanup_errors": [],
+      "boundaries_equal": true,
+      "proved_tokens_removed": true
+    },
+    "warning_qualification": "Known font and two SVG UID fallback warnings on normal runner parse and each four normal cases retained; not warning-free",
+    "archive": "tests/private_pinned_occupied/evidence_normal_02"
+  },
+  "current_documentation_sha256": {
+    "addons/logot/system-doc.md": "2fcd6dadeea859668140bd54d6112f62426c16e24d38c82f4b1955a576d91409",
+    "tests/private_pinned_occupied/README.md": "b8040e523e2e3ce40b6c199e8b0de1da98626248586d646dde6337ce0e0d6242",
+    "tests/private_pinned_occupied/diagnosis.md": "dfa1cf5ac10c588c761efe16ecd6970c370380e17da05c916454a5229d3f4f2a",
+    "tests/private_pinned_occupied/normal-plan.md": "e8a243acf1dd2d4bea43b25fab835decab87457846e40bb8f34f0e8ebab513ba"
+  },
+  "publication": "NOT performed; root-owned final hash review and host adoption/gates pending"
+}

@@ -1,0 +1,114 @@
+{
+  "candidate": "bef2b82c9c06f67ab0da9037bbf3e2a7b33a3256",
+  "published_base": "3af9ab9ea324cb36bc640c42ae52ddc627b6389f",
+  "source05_freeze_sha256": "b7cfb465094f49adea0eb02f88c8a9d883ada5ac03c02007817c215af96de75b",
+  "pinned_runtime_and_case": [
+    {
+      "path": "addons/logot/logot_display.gd",
+      "git_blob": "889ce49a31c6da185a57a2c93dabc2ff4dcb82ed",
+      "sha256": "9d6e92639c846b07453e2c1cfa4325451ba0e10d601530f458b97b095dc9356e"
+    },
+    {
+      "path": "addons/logot/logot.gd",
+      "git_blob": "0ffe096f1c534f27a46d515ab0f0f9dcb4920a84",
+      "sha256": "0b101aca64c0506ff715352136af18e6b7e0952698fd01d6777a5564d48c06c2"
+    },
+    {
+      "path": "tests/private_pinned_occupied/case.gd",
+      "git_blob": "143721e1cf1219b5c9b149150b74d1c4f9d8fdab",
+      "sha256": "bbfdadd037d6fab7a8fad28be0ce17cb255721b927fb5d4c4376d9864db3a655"
+    },
+    {
+      "path": "tests/private_pinned_occupied/runner.gd",
+      "git_blob": "0e1d5fd5d71e1b69fed5910b0972814be0a8a1be",
+      "sha256": "2bc6aceca641b9ccd404a4ee4d1507b1b73630ced8affc82f83d7c51b8b416cc"
+    }
+  ],
+  "fixture_manifests": [
+    {
+      "stage": "before",
+      "manifest_files": 51
+    },
+    {
+      "stage": "after",
+      "manifest_files": 51
+    }
+  ],
+  "same72_case_bytes": true,
+  "source05_results": {
+    "before": {
+      "collected": 72,
+      "passed": 64,
+      "failed": 8,
+      "failed_checks": [
+        {
+          "details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-16.99949, 148.3436), S: (506.2946, 312.1573)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+          "label": "individual row transform equals visible row geometry",
+          "passed": false
+        },
+        {
+          "details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (11.35043, 148.3436), S: (494.9834, 254.8417)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+          "label": "independent toward original equals visible row geometry",
+          "passed": false
+        },
+        {
+          "details": "",
+          "label": "independent toward original publishes exactly one changed geometry",
+          "passed": false
+        },
+        {
+          "details": "",
+          "label": "independent return original publishes exactly one changed geometry",
+          "passed": false
+        },
+        {
+          "details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-13.28545, 148.3436), S: (505.4404, 304.8937)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+          "label": "independent subsequent rotation equals visible row geometry",
+          "passed": false
+        },
+        {
+          "details": "",
+          "label": "independent subsequent rotation publishes exactly one changed geometry",
+          "passed": false
+        },
+        {
+          "details": "{ \"top_left\": [P: (20.99711, 148.3436), S: (488.7229, 234.3971)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] } expected { \"top_left\": [P: (-0.114632, 148.3436), S: (500.8618, 278.53)], \"top_right\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_left\": [P: (0.0, 0.0), S: (0.0, 0.0)], \"bottom_right\": [P: (0.0, 0.0), S: (0.0, 0.0)] }",
+          "label": "independent rotation after re-entry equals visible row geometry",
+          "passed": false
+        },
+        {
+          "details": "",
+          "label": "independent rotation after re-entry publishes once",
+          "passed": false
+        }
+      ]
+    },
+    "after": {
+      "collected": 72,
+      "passed": 72,
+      "failed": 0,
+      "failed_checks": []
+    }
+  },
+  "source04_result": {
+    "collected": 59,
+    "passed": 58,
+    "failed": 1
+  },
+  "source05_boundary_equal": true,
+  "Console_identical_to_faulty_source": true,
+  "observer_delta": "diff --git a/addons/logot/logot_display.gd b/addons/logot/logot_display.gd\nindex 1010245..889ce49 100644\n--- a/addons/logot/logot_display.gd\n+++ b/addons/logot/logot_display.gd\n@@ -3285,8 +3285,13 @@ class PinnedOccupiedTransformObserver extends Node2D:\n \t\tset_notify_transform(true)\n \n \tfunc _notification(what: int) -> void:\n-\t\tif what == NOTIFICATION_TRANSFORM_CHANGED and invalidated.is_valid():\n-\t\t\tinvalidated.call()\n+\t\tif what == NOTIFICATION_TRANSFORM_CHANGED and is_inside_tree() and not is_queued_for_deletion():\n+\t\t\t# Notification delivery does not resolve CanvasItem's dirty cache.\n+\t\t\t# Read this observer's transform so the next inherited change queues\n+\t\t\t# another notification, including after row reparent/re-entry.\n+\t\t\tget_global_transform()\n+\t\t\tif invalidated.is_valid():\n+\t\t\t\tinvalidated.call()\n \n \n func _watch_pinned_occupied_row(row: Control) -> void:\n",
+  "gate_result": {
+    "gate_error": null,
+    "cleanup_errors": [],
+    "completed_before_deadline": true,
+    "proved_tokens": [
+      "logot-pinned-private-occupied-1ca4dade11d24b4e8616e0e36ef66678-after",
+      "logot-pinned-private-occupied-4b7ecf089a1742169b799a8663f22c5e-before"
+    ]
+  },
+  "limits": "Read-only pinned hashes/source/evidence; no engine rerun or external engine-source lookup. Prior diagnosis references are owner source-backed inference, not independently instrumented here.",
+  "baseline_failure_labels_exact": true,
+  "published_prior_pinned_layout_files_unchanged": 159,
+  "source04_ledger_hashes_verified": 22
+}

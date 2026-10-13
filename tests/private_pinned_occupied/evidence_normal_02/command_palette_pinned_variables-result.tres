@@ -1,0 +1,201 @@
+[gd_resource type="Resource" script_class="LogotTestRunResult" format=3]
+
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_check_result.gd" id="1_y1k86"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_log_record.gd" id="2_g7dul"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_run_result.gd" id="3_fp20x"]
+[ext_resource type="Script" path="res://addons/logot/testing/resources/logot_test_visual_result.gd" id="4_rvqv1"]
+
+[sub_resource type="Resource" id="Resource_faptb"]
+script = ExtResource("1_y1k86")
+name = "active display exists"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_87fwi"]
+script = ExtResource("1_y1k86")
+name = "pinned variable is absent from root autocomplete"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_2lnu2"]
+script = ExtResource("1_y1k86")
+name = "pinned variable appears directly under pins"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_hoavs"]
+script = ExtResource("1_y1k86")
+name = "pinned variable group is prioritized"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_vcweu"]
+script = ExtResource("1_y1k86")
+name = "command palette opened command entry mode"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_w61y1"]
+script = ExtResource("1_y1k86")
+name = "command palette hides log body"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_5hi30"]
+script = ExtResource("1_y1k86")
+name = "command palette is not in touch mode"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_ba3no"]
+script = ExtResource("1_y1k86")
+name = "pinned variables show with command palette only"
+passed = true
+details = "root=PinnedDisplayVariables:<Control#42362472273> visible=true"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_ejcn0"]
+script = ExtResource("1_y1k86")
+name = "pinned variable row is visible"
+passed = true
+details = "rows=[\"dev/performance/fps\", \"tests/command_palette_pin\", \"tests/command_palette_long_value\", \"tests/command_palette_long_label\", \"tests/command_palette_multiline_value\", \"tests/command_palette_wrapping_value\", \"tests/command_palette_rich_text_value\"]"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_ig32e"]
+script = ExtResource("1_y1k86")
+name = "long pinned values move beneath their title"
+passed = true
+details = "row=short label:
+value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value value "
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_rvqp6"]
+script = ExtResource("1_y1k86")
+name = "wrapping pinned titles move their value beneath them"
+passed = true
+details = "row=long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label long pinned label:
+visible"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_fypak"]
+script = ExtResource("1_y1k86")
+name = "multiline pinned values retain their line breaks beneath the title"
+passed = true
+details = "row=command_palette_multiline_value:
+first line
+second line"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_4mpy5"]
+script = ExtResource("1_y1k86")
+name = "declared-wrapping pinned values move beneath their title"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_61wda"]
+script = ExtResource("1_y1k86")
+name = "non-declaring display variables remain compact"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_kdgh2"]
+script = ExtResource("1_y1k86")
+name = "declared-wrapping snapshot exposes its declaration"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_bmdfq"]
+script = ExtResource("1_y1k86")
+name = "declared-wrapping column value uses N-line measured height"
+passed = true
+details = "height=128.0 rows=[{ \"label\": \"compact before\", \"value_text\": \"one\", \"measured_value_width\": 40 }, { \"label\": \"wrapped prose\", \"value_text\": \"This declared prose value needs several measured lines in the narrow test column.\", \"wrap_value\": true, \"measured_value_width\": 400, \"wrapped_value_lines\": [\"This declared prose value\", \"needs several measured lines\", \"in the narrow test column.\"], \"row_height_multiplier\": 4.0, \"two_line\": false }, { \"label\": \"compact after\", \"value_text\": \"two\", \"measured_value_width\": 40 }]"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_yaffr"]
+script = ExtResource("1_y1k86")
+name = "non-declaring column rows retain one-line height"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_pcuf0"]
+script = ExtResource("1_y1k86")
+name = "mixed-height hit-testing resolves the row after wrapped prose"
+passed = true
+details = "y=289.0 prefix=[0.0, 32.0, 160.0, 192.0]"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_0qdvf"]
+script = ExtResource("1_y1k86")
+name = "pinned custom values parse BBCode"
+passed = true
+details = "row=command_palette_rich_text_value:
+Generation Cells"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_oeiwf"]
+script = ExtResource("1_y1k86")
+name = "command palette draws above the pinned variables"
+passed = true
+details = "palette_z=202 pinned_z=200"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_5fd4x"]
+script = ExtResource("1_y1k86")
+name = "resize handle draws above the pinned variables"
+passed = true
+details = "handle_z=203 pinned_z=200"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_tb7i3"]
+script = ExtResource("1_y1k86")
+name = "palette overlays share the pinned variables canvas"
+passed = true
+details = "palette_canvas=RID(128849018881) pinned_canvas=RID(128849018881)"
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_dabxw"]
+script = ExtResource("1_y1k86")
+name = "touch command palette still suppresses pinned variables"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_ml8ax"]
+script = ExtResource("1_y1k86")
+name = "leaving touch mode restores command palette pins"
+passed = true
+timestamp = "2026-10-13 05:57:16"
+
+[sub_resource type="Resource" id="Resource_xumy0"]
+script = ExtResource("2_g7dul")
+level = 16
+channel = "Tests"
+timestamp = "05:57:15"
+message = "[color=cyan]Running test:[/color] Command Palette Pinned Variables"
+formatted = "[table=3][cell expand=0 shrink=true][url=collapse:0][color=dim_gray]05:57:15[/color][/url] [/cell][cell expand=0 shrink=true][url=collapse:0][color=#ffffff][Tests][/color][/url][/cell][cell expand=1 shrink=false][url=collapse:0][color=#ffffff][color=cyan]Running test:[/color] Command Palette Pinned Variables[/color][/url][/cell][/table]"
+stack_trace = "GDScript backtrace (most recent call first):
+    [1] _print_line (res://addons/logot/testing/logot_test_manager.gd:807)
+    [2] _run_test_case_async (res://addons/logot/testing/logot_test_manager.gd:276)"
+
+[sub_resource type="Resource" id="Resource_010dw"]
+script = ExtResource("4_rvqv1")
+name = "declared_wrapping_column_and_overlay"
+passed = true
+details = "Skipped: screenshot capture is not available in headless mode."
+timestamp = "2026-10-13 05:57:16"
+
+[resource]
+script = ExtResource("3_fp20x")
+run_id = "20261013_055715_492"
+test_id = "command_palette_pinned_variables"
+display_name = "Command Palette Pinned Variables"
+scene_path = "res://Main.tscn"
+started_at = "2026-10-13 05:57:15"
+completed_at = "2026-10-13 05:57:16"
+passed = true
+artifact_path = "user://artifacts/tests/command_palette_pinned_variables/20261013_055715_492.tres"
+artifact_directory = "user://artifacts/tests/command_palette_pinned_variables"
+visual_directory = "user://artifacts/tests/command_palette_pinned_variables/20261013_055715_492/visuals"
+summary = "PASS: 24 code checks, 1 visual checks, 1 logs"
+code_checks = Array[ExtResource("1_y1k86")]([SubResource("Resource_faptb"), SubResource("Resource_87fwi"), SubResource("Resource_2lnu2"), SubResource("Resource_hoavs"), SubResource("Resource_vcweu"), SubResource("Resource_w61y1"), SubResource("Resource_5hi30"), SubResource("Resource_ba3no"), SubResource("Resource_ejcn0"), SubResource("Resource_ig32e"), SubResource("Resource_rvqp6"), SubResource("Resource_fypak"), SubResource("Resource_4mpy5"), SubResource("Resource_61wda"), SubResource("Resource_kdgh2"), SubResource("Resource_bmdfq"), SubResource("Resource_yaffr"), SubResource("Resource_pcuf0"), SubResource("Resource_0qdvf"), SubResource("Resource_oeiwf"), SubResource("Resource_5fd4x"), SubResource("Resource_tb7i3"), SubResource("Resource_dabxw"), SubResource("Resource_ml8ax")])
+visual_checks = Array[ExtResource("4_rvqv1")]([SubResource("Resource_010dw")])
+logs = Array[ExtResource("2_g7dul")]([SubResource("Resource_xumy0")])

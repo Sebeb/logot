@@ -1,0 +1,26 @@
+{
+  "base": "3af9ab9ea324cb36bc640c42ae52ddc627b6389f",
+  "candidate_parent": "823564a7ef495fb94ea6ddff50105aa298221b83",
+  "boundary_script_sha256": "cf9caeedcbbaccbde6a57762ea81862f4869e42783d34345d117d70bb331fd90",
+  "fixtures": {
+    "before": {
+      "path": "/private/tmp/logot-pinned-occupied-source-04/before",
+      "token": "logot-pinned-private-occupied-4191a8ffba344beeb31e6220070ff664-before",
+      "manifest_sha256": "b8dd649fad8b0aaf81b81c6f9835944197b7922d6a46e741e639fd352c78e062"
+    },
+    "after": {
+      "path": "/private/tmp/logot-pinned-occupied-source-04/after",
+      "token": "logot-pinned-private-occupied-32f8b2c100794639ac81882bbce92004-after",
+      "manifest_sha256": "c9e1563ac5a558a6d8b56f52db739e967bced8ffd9fb0776777653511a880b04"
+    }
+  },
+  "tooling": {
+    "tests/private_pinned_occupied/README.md": "d749b58c5e3237d7fbd263042da0534239c1637337dc20524283992b22d0e664",
+    "tests/private_pinned_occupied/case.gd": "8f5f416e15949e3d67bbe28b0a400bb677f5c30997f209e384ad0f8cce319944",
+    "tests/private_pinned_occupied/postflight.py": "dae45b3d75ff1d5885fc582ca9c012758a12f0af4970ada5b6459dc3e9e4bb7b",
+    "tests/private_pinned_occupied/preflight.md": "8d83c3fb07dfb3e87d7e8f982fbc151315f2ccac9ac0f6405904758516fc07c3",
+    "tests/private_pinned_occupied/prepare.py": "12f328207838ec8ef494736b4d2d1c0a01f6ac35061e394e8a74560aaba363aa",
+    "tests/private_pinned_occupied/run_gate.py": "43606c60e93255afcc1b2d0d016f6a4d5ccc54f7827bab690c4f9296c66714ae",
+    "tests/private_pinned_occupied/runner.gd": "2bc6aceca641b9ccd404a4ee4d1507b1b73630ced8affc82f83d7c51b8b416cc"
+  }
+}
