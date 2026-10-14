@@ -76,9 +76,9 @@
       "identity.unknown_released"
     ]
   },
-  "ordered_boundary": "READY; lifecycle witnesses/pass-lines1..4 ending ordinary.released; IDENTITY COLLECTION; ordered IDENTITY CHECK records; IDENTITY RESULT; lifecycle witnesses/checks5..24; main RESULT. Preexisting READY then witnesses/checks1..6 and main RESULT, no IDENTITY markers. Existing PASS/FAIL human lines and raw diagnostics remain separate full-stream evidence.",
+  "ordered_boundary": "READY; PANEL COLLECTION; PANEL CHECK1..3; PANEL RESULT; lifecycle checks1..4; IDENTITY COLLECTION/CHECK/RESULT; lifecycle checks5..24; main RESULT. Preexisting READY; PANEL collection/checks/result; lifecycle checks1..6; main RESULT, no identity. Independent ordinals per collection.",
   "main_result_prefix": "LIFECYCLE RESULT checks=",
-  "process_exit": "base main1 for main3 expected failures plus identity1; candidate main0 only if24mainclean AND8identityclean; preexisting0 for6clean; candidatecold0clean. Unknown/precondition/incomplete/wrongorder/diagnostics fail.",
+  "process_exit": "Any unexpected panel failure or precondition error forces exit1 independently of main24+6 and identity. Candidate all clean required. Current baseline foreign behavior is a demonstrated production defect and is not waived; root separately dispositions retained baseline evidence without automatic rerun.",
   "json_schemas": {
     "ready": {
       "type": "object",
@@ -334,7 +334,157 @@
           "const": ""
         }
       }
+    },
+    "panel_collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "labels",
+        "expected_checks"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "panel"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "panel.display_initialized",
+              "panel.endpoint_selection",
+              "panel.connection_state"
+            ]
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "expected_checks": {
+          "type": "integer",
+          "const": 3
+        }
+      }
+    },
+    "panel_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "ordinal",
+        "label",
+        "passed"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "panel"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "label": {
+          "type": "string",
+          "enum": [
+            "panel.display_initialized",
+            "panel.endpoint_selection",
+            "panel.connection_state"
+          ]
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "panel_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "checks",
+        "failures",
+        "failed_labels",
+        "precondition_error"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "panel"
+        },
+        "checks": {
+          "type": "integer",
+          "const": 3
+        },
+        "failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3
+        },
+        "failed_labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "panel.display_initialized",
+              "panel.endpoint_selection",
+              "panel.connection_state"
+            ]
+          },
+          "maxItems": 3,
+          "uniqueItems": true
+        },
+        "precondition_error": {
+          "type": "string",
+          "const": ""
+        }
+      }
     }
   },
-  "parser_requirements": "Reject duplicate keys, non-finite numbers, unknown fields and non-exact JSON types (booleans must not count as integers; floating numerals must not count as integer fields). JSON schemas describe structural acceptance; exact contextual counts/labels/values, ordering, result consistency and deadline equality require separate validation."
+  "parser_requirements": "Reject duplicate keys, non-finite numbers, unknown fields and non-exact JSON types (booleans must not count as integers; floating numerals must not count as integer fields). JSON schemas describe structural acceptance; exact contextual counts/labels/values, ordering, result consistency and deadline equality require separate validation.",
+  "panel_labels": [
+    "panel.display_initialized",
+    "panel.endpoint_selection",
+    "panel.connection_state"
+  ],
+  "panel_collection": {
+    "prefix": "LIFECYCLE PANEL COLLECTION ",
+    "expected_checks": 3,
+    "labels": [
+      "panel.display_initialized",
+      "panel.endpoint_selection",
+      "panel.connection_state"
+    ]
+  },
+  "panel_check": {
+    "prefix": "LIFECYCLE PANEL CHECK ",
+    "ordinal": "integer contiguous1..3",
+    "label": "exact ordered panel label",
+    "passed": "boolean true candidate; current baseline foreign known display=true/selection=false/connection=false"
+  },
+  "panel_result": {
+    "prefix": "LIFECYCLE PANEL RESULT ",
+    "checks": 3,
+    "candidate_failures": 0,
+    "candidate_failed_labels": [],
+    "precondition_error": ""
+  }
 }

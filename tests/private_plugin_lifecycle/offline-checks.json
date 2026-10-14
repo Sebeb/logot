@@ -1,18 +1,18 @@
 {
   "status": "PASS_SOURCE_ONLY",
   "controls": [
-    "source_controls.py: exact d1 ordered24+6 labels and assertion bodies preserved except identity invocation and exit aggregation",
-    "product plugin SHA unchanged9a392bbf",
-    "identity collection follows ordinary.released and affects process exit",
-    "Python AST and diff whitespace",
-    "five complete fixture SHA inventories, embedded identity/schema/driver equality",
-    "base/candidate addon delta only plugin; private configs differ only unique token",
-    "retained exact primary Godot source hashes"
+    "source_controls.py: exact ordered24+6 labels and assertion bodies preserved except separately counted integrations and exit aggregation",
+    "identity_contract.gd exact a532 bytes; product lifecycle plugin SHA exact9a392 unchanged",
+    "endpoint lookup guards mandatory visibility replay capabilities and continues fallback",
+    "separately counted panel3 controls process exit; foreign fixture remains bare Node",
+    "five complete inventories checked; addon delta lifecycle plugin plus panel only",
+    "Python AST, retained primary source hashes and diff whitespace PASS"
   ],
   "engine": "UNRUN",
   "GDScript_parser": "UNRUN",
   "runtime": "UNRUN",
   "publication": "UNAUTHORIZED_UNDONE",
   "old_d1_v4": "PRESERVED",
-  "final_freeze_sha256": "6e88aea70ab63af520f828b32f081c3940ace0921d5f91cfd51cf4aa145916b6"
+  "final_freeze_sha256": "985f014c2e5554ddc4265db5beb0cd2c308b9a8098c9f8be1af019bcb283e7e1",
+  "old_a532_v6": "PRESERVED"
 }

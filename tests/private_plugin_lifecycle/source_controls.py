@@ -20,11 +20,11 @@ def main():
     d1 = subprocess.check_output(["git", "--no-lazy-fetch", "show", "d1e0f4040fb1cb8422d97584648f554093bc211c:tests/private_plugin_lifecycle/editor_cases.gd"], cwd=ROOT, text=True)
     def body(text, name):
         return text.split("func " + name + "(", 1)[1].split("\n\nfunc ", 1)[0]
-    main = body(driver, "_run_lifecycle_cases").replace("\n\t_run_identity_contract()", "").replace(" and _identity_failures == 0", "")
+    main = body(driver, "_run_lifecycle_cases").replace("\n\t_run_identity_contract()", "").replace(" and _identity_failures == 0", "").replace(" and _panel_failures == 0", "")
     assert main == body(d1, "_run_lifecycle_cases")
-    assert body(driver, "_run_preexisting_activation") == body(d1, "_run_preexisting_activation")
+    assert body(driver, "_run_preexisting_activation").replace(" and _panel_failures == 0", "") == body(d1, "_run_preexisting_activation")
     assert driver.index('_run_identity_contract()', driver.index('func _run_lifecycle_cases')) > driver.index('"ordinary.released"')
-    assert "and _identity_failures == 0 else 1" in driver
+    assert "and _identity_failures == 0 and _panel_failures == 0 else 1" in driver
     assert 'call_deferred("_run_lifecycle_cases")' not in driver
     for event in ("sources_changed", "script_classes_updated", "filesystem_changed"):
         assert event + ".connect(" in driver
@@ -52,6 +52,13 @@ def main():
     identity = (HERE / "identity_contract.gd").read_text()
     for label in markers["identity_labels"]["base"] + markers["identity_labels"]["candidate"]:
         assert label in identity
+    panel = (ROOT / "addons/logot/editor/logot_editor_panel.gd").read_text()
+    assert 'return is_instance_valid(candidate) and candidate.has_method("set_level_visibility") and candidate.has_method("set_channel_visibility")' in panel
+    lookup = body(panel, "_get_logot")
+    assert "_is_logot_endpoint(singleton)" in lookup and "_is_logot_endpoint(candidate)" in lookup
+    old_identity = subprocess.check_output(["git", "--no-lazy-fetch", "show", "a532d1edcc0a839d1a73018cbe46bdd466120370:tests/private_plugin_lifecycle/identity_contract.gd"], cwd=ROOT)
+    assert (HERE / "identity_contract.gd").read_bytes() == old_identity
+    assert "_run_panel_contract()" in driver and "and _panel_failures == 0" in driver
     print("SOURCE CONTROLS PASS: 30 unchanged labels; signal/idle/deadline/witness source; guarded UID identity; primary-source hashes; Python AST")
     print("GDScript parsing, editor behavior and all runtime assertions UNRUN")
 

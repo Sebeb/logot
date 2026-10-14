@@ -269,16 +269,25 @@ func _connect_to_logot() -> void:
 	_connect_in_progress = false
 
 
+func _is_logot_endpoint(candidate: Object) -> bool:
+	# These are the only mandatory endpoint calls in initial filter replay.
+	# A foreign autoload may legitimately use either lookup name.
+	return is_instance_valid(candidate) and candidate.has_method("set_level_visibility") and candidate.has_method("set_channel_visibility")
+
+
 func _get_logot():
 	for singleton_name in ["Console", "Logot"]:
 		if Engine.has_singleton(singleton_name):
-			return Engine.get_singleton(singleton_name)
+			var singleton: Object = Engine.get_singleton(singleton_name)
+			if _is_logot_endpoint(singleton):
+				return singleton
 
 	var root = get_tree().root if get_tree() else null
 	if root:
 		for node_name in ["Console", "Logot"]:
-			if root.has_node(node_name):
-				return root.get_node(node_name)
+			var candidate: Node = root.get_node_or_null(node_name)
+			if _is_logot_endpoint(candidate):
+				return candidate
 
 	return null
 

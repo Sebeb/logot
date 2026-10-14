@@ -11,6 +11,7 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "98d26210ecb4be64efda8ef7a2e204316fb15f19"
 PLUGIN = "addons/logot/logot_plugin.gd"
+PANEL = "addons/logot/editor/logot_editor_panel.gd"
 
 
 def git(*args):
@@ -33,7 +34,7 @@ def main():
     driver = (ROOT / "tests/private_plugin_lifecycle/editor_cases.gd").read_bytes()
     if driver.count(b"\t_check(") != 30:
         raise SystemExit("Unexpected editor fixture assertion count")
-    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "driver_contract": {"main_checks": 24, "preexisting_checks": 6, "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>", "requires_ready_marker": True, "requires_witness_per_check": True, "identity_checks": {"base": 1, "candidate": 8}, "marker_contract_sha256": sha((ROOT / "tests/private_plugin_lifecycle/marker-contract.json").read_bytes())}, "fixtures": {}}
+    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "driver_contract": {"main_checks": 24, "preexisting_checks": 6, "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>", "requires_ready_marker": True, "requires_witness_per_check": True, "identity_checks": {"base": 1, "candidate": 8}, "panel_checks_per_driven_process": 3, "marker_contract_sha256": sha((ROOT / "tests/private_plugin_lifecycle/marker-contract.json").read_bytes())}, "fixtures": {}}
     destination.mkdir(parents=True)
     for revision in ("base", "candidate"):
         for scenario in ("cold", "cases", "preexisting"):
@@ -44,7 +45,7 @@ def main():
             for name in files:
                 path = project / name
                 path.parent.mkdir(parents=True, exist_ok=True)
-                content = (ROOT / name).read_bytes() if revision == "candidate" and name == PLUGIN else git("show", BASE + ":" + name)
+                content = (ROOT / name).read_bytes() if revision == "candidate" and name in (PLUGIN, PANEL) else git("show", BASE + ":" + name)
                 path.write_bytes(content)
             fixture = project / "fixture"
             fixture.mkdir()
@@ -54,6 +55,7 @@ def main():
             if scenario != "cold":
                 (fixture / "editor_cases.gd").write_bytes(driver)
                 (fixture / "identity_contract.gd").write_bytes((ROOT / "tests/private_plugin_lifecycle/identity_contract.gd").read_bytes())
+                (fixture / "panel_contract.gd").write_bytes((ROOT / "tests/private_plugin_lifecycle/panel_contract.gd").read_bytes())
                 (fixture / "marker-contract.json").write_bytes((ROOT / "tests/private_plugin_lifecycle/marker-contract.json").read_bytes())
                 (fixture / "plugin.cfg").write_text('[plugin]\nname="Logot lifecycle regression"\ndescription="Real production plugin subclass"\nauthor="Logot"\nversion="1"\nscript="editor_cases.gd"\n')
                 plugin_cfg = "res://fixture/plugin.cfg"

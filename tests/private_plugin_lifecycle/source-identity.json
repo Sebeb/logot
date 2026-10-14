@@ -5,9 +5,10 @@
   "clone_mode": "local --no-hardlinks --no-checkout; detached exact commit; no fetch",
   "plugin_preimage_sha256": "96a154fb655d6a3f3c621d08e6972ef9138722228a17fdfd3045285ff4b6bd9c",
   "plugin_candidate_sha256": "9a392bbf5bada287ba4e4c5ef0b0ef827dea794fa27c58dca734034d0597d987",
-  "prepared_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-identity-v6/freeze.json",
-  "prepared_fixture_manifest_sha256": "6e88aea70ab63af520f828b32f081c3940ace0921d5f91cfd51cf4aa145916b6",
+  "prepared_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-panel-v7/freeze.json",
+  "prepared_fixture_manifest_sha256": "985f014c2e5554ddc4265db5beb0cd2c308b9a8098c9f8be1af019bcb283e7e1",
   "engine_checks": "ALL UNRUN; successor source-only",
   "superseded_unrun_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-98d26210/freeze.json",
-  "parent_package_commit": "d1e0f4040fb1cb8422d97584648f554093bc211c"
+  "parent_package_commit": "a532d1edcc0a839d1a73018cbe46bdd466120370",
+  "candidate_panel_sha256": "b001970efcda172397a981f8a9a36b4eda2769b738001ded7ed765b7d31c6355"
 }
