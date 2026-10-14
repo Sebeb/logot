@@ -61,8 +61,13 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	if _added_console_autoload:
-		remove_autoload_singleton("Console")
 		_added_console_autoload = false
+		# Editor shutdown may already have cleared the project settings. An
+		# externally replaced Console belongs to its new owner, not this plugin.
+		if ProjectSettings.has_setting("autoload/Console"):
+			var current_path := str(ProjectSettings.get_setting("autoload/Console"))
+			if current_path.trim_prefix("*") == LOGOT_AUTOLOAD_PATH:
+				remove_autoload_singleton("Console")
 
 	if _debugger_plugin:
 		remove_debugger_plugin(_debugger_plugin)

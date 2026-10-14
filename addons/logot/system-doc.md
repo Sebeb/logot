@@ -1,5 +1,11 @@
 # Logot Performance Profiling and Pinned Widgets
 
+## Editor Console autoload ownership
+
+The editor plugin creates a temporary Console autoload only when no Console setting exists and records that activation's ownership. Teardown clears its ownership marker first, then removes the setting only if it still exists and its path is the exact Logot script, allowing Godot's optional leading `*` singleton marker. Entries present before activation and replacements pointing elsewhere are preserved. Repeated teardown and a setting already removed by editor shutdown perform no autoload removal. The marker and path check do not detect external replacement with an identical value.
+
+`tests/private_plugin_lifecycle` prepares exact98d baseline and candidate cold-editor projects and a production-plugin subclass with 24 main real editor API checks and six separate full preexisting-foreign activation checks. This is source-only preparation; engine execution, diagnostic acceptance, publication and host adoption remain pending a reviewed exclusive runtime contract.
+
 UID: sdoc-399e8f4a-645c-40f4-af08-59f3d4827671
 
 ## System Design
