@@ -416,6 +416,7 @@ class AutocompleteCommandColumn:
 	enum WidgetPlacement {
 		PINNED,
 		INLINE,
+		CONTENT,
 	}
 
 	var _rows: Array[Dictionary] = []
@@ -435,6 +436,9 @@ class AutocompleteCommandColumn:
 	var _row_scrollbar: VScrollBar
 	var _embedded_widget: Control
 	var _embedded_widget_path := ""
+	var _content_clip: Control
+	var _content_scroll_slot := 0
+	var _embedded_layout_queued := false
 	var _embedded_widget_height := 0.0
 	var _embedded_widget_placement := WidgetPlacement.PINNED
 	## Only meaningful for an INLINE widget: true once the content has been scrolled past the
@@ -711,6 +715,8 @@ class AutocompleteCommandColumn:
 		)
 
 	func _get_scroll_slot() -> int:
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			return _content_scroll_slot
 		if not _has_inline_widget_slot():
 			return _scroll_row
 		if _scroll_row > 0 or _inline_widget_scrolled_out:
@@ -718,6 +724,10 @@ class AutocompleteCommandColumn:
 		return 0
 
 	func _set_scroll_slot(slot: int) -> void:
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			_content_scroll_slot = clampi(slot, 0, _get_max_scroll_slot())
+			_scroll_row = maxi(0, _content_scroll_slot - _get_content_widget_slots())
+			return
 		if not _has_inline_widget_slot():
 			_inline_widget_scrolled_out = false
 			_scroll_row = clampi(slot, 0, _get_max_scroll_row())
@@ -726,7 +736,23 @@ class AutocompleteCommandColumn:
 		_inline_widget_scrolled_out = clamped_slot > 0
 		_scroll_row = maxi(0, clamped_slot - 1)
 
+	func _get_content_widget_slots() -> int:
+		return int(ceil((_embedded_widget_height + WIDGET_TOP_GAP + WIDGET_BOTTOM_GAP) / float(maxi(1, _row_height))))
+
+	func scroll_content_before_selection(direction: int) -> bool:
+		if _embedded_widget_placement != WidgetPlacement.CONTENT:
+			return false
+		var slot := _get_scroll_slot()
+		var limit := mini(_get_content_widget_slots(), _get_max_scroll_slot())
+		if (direction > 0 and slot < limit) or (direction < 0 and slot > 0):
+			_scroll_rows(direction)
+			return true
+		return false
+
 	func _get_max_scroll_slot() -> int:
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			var content_height := float(_get_content_widget_slots() * _row_height) + _row_height_prefix[_rows.size()]
+			return maxi(0, int(ceil((content_height - maxf(0.0, size.y - _header_height)) / float(maxi(1, _row_height)))))
 		if not _has_inline_widget_slot():
 			return _get_max_scroll_row()
 		# The reachable range has to be measured from the top of the content, where the widget is
@@ -762,17 +788,28 @@ class AutocompleteCommandColumn:
 
 	func set_embedded_widget(widget: Control, widget_path: String = "", placement: WidgetPlacement = WidgetPlacement.PINNED) -> void:
 		if _embedded_widget != null and is_instance_valid(_embedded_widget) and _embedded_widget != widget:
-			remove_child(_embedded_widget)
+			_embedded_widget.get_parent().remove_child(_embedded_widget)
 			_embedded_widget.queue_free()
+		_content_scroll_slot = 0
 		_embedded_widget = widget
 		_embedded_widget_path = widget_path.strip_edges()
 		_embedded_widget_placement = placement
 		_inline_widget_scrolled_out = false
 		if _embedded_widget != null:
 			_embedded_widget.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if not _embedded_widget.minimum_size_changed.is_connected(_queue_embedded_widget_layout):
+				_embedded_widget.minimum_size_changed.connect(_queue_embedded_widget_layout)
 			if _embedded_widget.get_parent() != self:
 				add_child(_embedded_widget)
 			move_child(_embedded_widget, mini(1, get_child_count() - 1))
+			if (widget.has_method("is_logot_palette_content") and widget.call("is_logot_palette_content")) or widget.get_combined_minimum_size().y > maxf(0.0, size.y - _header_height):
+				_embedded_widget_placement = WidgetPlacement.CONTENT
+				if _content_clip == null:
+					_content_clip = Control.new()
+					_content_clip.clip_contents = true
+					_content_clip.mouse_filter = Control.MOUSE_FILTER_PASS
+					add_child(_content_clip)
+				_embedded_widget.reparent(_content_clip)
 		_update_embedded_widget_layout()
 		_ensure_selection_visible()
 		_update_row_scrollbar()
@@ -782,6 +819,8 @@ class AutocompleteCommandColumn:
 		return _embedded_widget_path
 
 	func set_embedded_widget_placement(placement: WidgetPlacement) -> void:
+		if _embedded_widget != null and _embedded_widget.get_parent() == _content_clip:
+			placement = WidgetPlacement.CONTENT
 		if _embedded_widget_placement == placement:
 			return
 		_embedded_widget_placement = placement
@@ -890,6 +929,9 @@ class AutocompleteCommandColumn:
 		queue_redraw()
 
 	func _ensure_selection_visible() -> void:
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			_set_scroll_slot(_content_scroll_slot)
+			return
 		# Re-anchoring the rows always measures from the top of the content, so an inline widget
 		# that had been scrolled away comes back with them.
 		_inline_widget_scrolled_out = false
@@ -998,6 +1040,8 @@ class AutocompleteCommandColumn:
 		if row_index < 0 or row_index >= _rows.size():
 			return float(_row_height)
 		var row_data: Dictionary = _rows[row_index]
+		if bool(row_data.get("stack_value_items", false)):
+			return float(_row_height) * float((row_data.get("value_items", []) as Array).size() + 1)
 		var multiplier := 2.0 if bool(row_data.get("two_line", false)) else float(row_data.get("row_height_multiplier", 1.0))
 		return maxf(float(_row_height), float(_row_height) * maxf(1.0, multiplier))
 
@@ -1035,7 +1079,16 @@ class AutocompleteCommandColumn:
 		if _font == null:
 			return
 		for row_data in _rows:
+			var items: Array = row_data.get("value_items", [])
+			var pill_budget := maxf(1.0, _get_column_content_width() - CONTENT_PADDING_X * 2.0 - get_group_content_indent(row_data) * 2.0 - float(row_data.get("measured_action_width", 0)) - CELL_GAP)
+			var combined_width := float(row_data.get("measured_name_width", 0)) + float(row_data.get("measured_value_width", 0)) + CELL_GAP
+			row_data["stack_value_items"] = items.size() > 1 and combined_width > pill_budget
+			if bool(row_data["stack_value_items"]):
+				row_data["two_line"] = false
+				row_data["row_height_multiplier"] = float(items.size() + 1)
+				continue
 			if not bool(row_data.get("wrap_value", false)):
+				row_data["row_height_multiplier"] = 2.0 if bool(row_data.get("two_line", false)) else 1.0
 				continue
 			var group_indent := get_group_content_indent(row_data)
 			var action_width := float(row_data.get("measured_action_width", 0.0))
@@ -1202,9 +1255,23 @@ class AutocompleteCommandColumn:
 			row_top += row_height
 		return -1
 
+	func _queue_embedded_widget_layout() -> void:
+		if _embedded_layout_queued:
+			return
+		_embedded_layout_queued = true
+		call_deferred("_refresh_embedded_widget_layout")
+
+	func _refresh_embedded_widget_layout() -> void:
+		_embedded_layout_queued = false
+		_update_row_scrollbar()
+		queue_redraw()
+		visible_rows_changed.emit()
+
 	func _update_embedded_widget_layout() -> void:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
 			_embedded_widget_height = 0.0
+			if _content_clip != null:
+				_content_clip.visible = false
 			return
 		var content_width := _get_column_content_width()
 		var widget_width := maxf(0.0, content_width - CONTENT_PADDING_X * 2.0)
@@ -1216,6 +1283,11 @@ class AutocompleteCommandColumn:
 		var widget_left := CONTENT_PADDING_X + maxf(0.0, (widget_width - widget_size.x) * 0.5)
 		_embedded_widget.position = Vector2(widget_left, _header_height + WIDGET_TOP_GAP)
 		_embedded_widget.size = Vector2(widget_size.x, _embedded_widget_height)
+		if _embedded_widget_placement == WidgetPlacement.CONTENT and _content_clip != null:
+			_content_clip.visible = true
+			_content_clip.position = Vector2(0, _header_height)
+			_content_clip.size = Vector2(content_width, maxf(0.0, size.y - _header_height))
+			_embedded_widget.position = Vector2(widget_left, WIDGET_TOP_GAP - float(_content_scroll_slot * _row_height))
 
 	func _get_rows_top() -> float:
 		return _get_rows_top_for_scroll(_scroll_row)
@@ -1223,11 +1295,15 @@ class AutocompleteCommandColumn:
 	func _is_embedded_widget_visible_for_scroll(scroll_row: int) -> bool:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
 			return false
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			return _content_scroll_slot < _get_content_widget_slots()
 		if _embedded_widget_placement == WidgetPlacement.PINNED:
 			return true
 		return clampi(scroll_row, 0, maxi(0, _rows.size())) == 0 and not _inline_widget_scrolled_out
 
 	func _get_rows_top_for_scroll(scroll_row: int) -> float:
+		if _embedded_widget_placement == WidgetPlacement.CONTENT:
+			return _header_height + maxf(0.0, float((_get_content_widget_slots() - _content_scroll_slot) * _row_height))
 		if not _is_embedded_widget_visible_for_scroll(scroll_row):
 			return _header_height
 		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
@@ -1237,7 +1313,7 @@ class AutocompleteCommandColumn:
 	func _get_scroll_region_top() -> float:
 		if _embedded_widget == null or not is_instance_valid(_embedded_widget):
 			return _header_height
-		if _embedded_widget_placement == WidgetPlacement.INLINE:
+		if _embedded_widget_placement in [WidgetPlacement.INLINE, WidgetPlacement.CONTENT]:
 			return _header_height
 		return _header_height + WIDGET_TOP_GAP + _embedded_widget_height + WIDGET_BOTTOM_GAP
 
@@ -1439,6 +1515,16 @@ class AutocompleteCommandColumn:
 		var raw_label_text := str(row_data.get("label", ""))
 		var truncate_label_from_start := bool(row_data.get("truncate_label_from_start", false))
 		var label_highlight_ranges_variant = row_data.get("label_highlight_ranges", [])
+		if bool(row_data.get("stack_value_items", false)):
+			var line_height := float(_row_height)
+			var baseline := _get_baseline_offset(line_height)
+			draw_string(_font, Vector2(content_left, row_rect.position.y + baseline), _fit_text_to_width(raw_label_text, maxf(0.0, info_cursor_x - content_left)), HORIZONTAL_ALIGNMENT_LEFT, -1, _font_size, text_color)
+			for item_index in range(value_items.size()):
+				var pill_top := row_rect.position.y + line_height * float(item_index + 1)
+				_draw_value_pills(Rect2(content_left, pill_top, maxf(0.0, info_cursor_x - content_left), line_height), [value_items[item_index]], pill_top + baseline, selection_state, text_color)
+			if action_rect.size.x > 0.0:
+				_draw_action_icons(action_rect, bool(row_data.get("has_children", false)), bool(row_data.get("can_submit", false)), bool(row_data.get("draggable", false)), selection_state, text_color)
+			return
 		if bool(row_data.get("wrap_value", false)):
 			var label_height := float(_row_height)
 			var line_baseline_offset := _get_baseline_offset(label_height)
@@ -9103,8 +9189,8 @@ func _get_command_autocomplete_max_column_width() -> int:
 		max_width = int(_command_autocomplete_popup.size.x)
 	if max_width <= 0:
 		max_width = AUTOCOMPLETE_COLUMN_MAX_FALLBACK_WIDTH
-	max_width = mini(max_width, AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH)
-	return maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+	max_width = mini(max_width, int(ceil(AUTOCOMPLETE_COLUMN_HARD_MAX_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))))
+	return maxi(int(ceil(AUTOCOMPLETE_COLUMN_MIN_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))), max_width)
 
 
 func _get_command_autocomplete_row_value_width(control: Control, row_data: Dictionary) -> int:
@@ -9122,7 +9208,7 @@ func _get_command_autocomplete_row_value_width(control: Control, row_data: Dicti
 		var value_text := str(row_data.get("value_text", ""))
 		if not value_text.is_empty():
 			current_value_width = _measure_autocomplete_text_width(control, value_text) + AUTOCOMPLETE_VALUE_PILL_EXTRA_WIDTH
-	return current_value_width if bool(row_data.get("wrap_value", false)) else mini(current_value_width, AUTOCOMPLETE_VALUE_MAX_WIDTH)
+	return current_value_width if bool(row_data.get("wrap_value", false)) or (value_items_variant is Array and value_items_variant.size() > 1) else mini(current_value_width, int(ceil(AUTOCOMPLETE_VALUE_MAX_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))))
 
 
 func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
@@ -9209,7 +9295,7 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 		total_width = maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, preferred_width)
 	else:
 		var max_width := _get_command_autocomplete_max_column_width()
-		total_width = clampi(preferred_width, AUTOCOMPLETE_COLUMN_MIN_WIDTH, max_width)
+		total_width = clampi(preferred_width, int(ceil(AUTOCOMPLETE_COLUMN_MIN_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))), max_width)
 	var content_width := maxi(0, total_width - reserved_width)
 
 	for row_index in range(rows.size()):
@@ -9854,10 +9940,18 @@ func _resolve_autocomplete_column_width(list: AutocompleteCommandColumn, column_
 	if not widget_path.is_empty():
 		var widget_min := _get_widget_default_minimum_size(_get_widget_data(widget_path))
 		if widget_min.x <= 0.0 or widget_min.y <= 0.0:
-			var embedded_widget_for_measure := list.get_node_or_null("LogotEmbeddedWidget") as Control
+			var embedded_widget_for_measure := list._embedded_widget
 			if embedded_widget_for_measure != null:
 				widget_min = embedded_widget_for_measure.get_combined_minimum_size()
-		layout["width"] = maxi(int(layout.get("width", 0)), int(ceil(widget_min.x + AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + reserved_width)
+		layout["width"] = maxi(int(layout.get("width", 0)), int(ceil(widget_min.x * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE) + AutocompleteCommandColumn.CONTENT_PADDING_X * 2.0)) + reserved_width)
+	var embedded := list._embedded_widget
+	if embedded != null and embedded.has_method("get_logot_palette_preferred_width"):
+		var scale_multiplier := _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
+		var width_limit := _get_command_autocomplete_max_column_width()
+		if column_index == _autocomplete_active_column_index:
+			width_limit = mini(int(ceil(960.0 * scale_multiplier)), int(get_viewport_rect().size.x) - 24)
+		var preferred := int(ceil(float(embedded.call("get_logot_palette_preferred_width")) * scale_multiplier))
+		layout["width"] = mini(width_limit, maxi(int(layout.get("width", 0)), preferred + reserved_width))
 	column_state["left_width"] = int(layout.get("name_width", 0))
 	column_state["value_width"] = int(layout.get("value_width", 0))
 	column_state["action_width"] = int(layout.get("action_width", 0))
@@ -10277,14 +10371,12 @@ func _refresh_command_autocomplete_popup_values() -> void:
 				rows.append(row_variant as Dictionary)
 		var selected_row_index := int(row_build_result.get("selected_row_index", -1))
 
-		var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
-		var new_width := int(layout.get("width", 0))
-		if new_width != int(column_state.get("width", 0)):
-			column_state["left_width"] = int(layout.get("name_width", 0))
-			column_state["value_width"] = int(layout.get("value_width", 0))
-			column_state["action_width"] = int(layout.get("action_width", 0))
-			column_state["width"] = new_width
-			_autocomplete_column_states[column_index] = column_state
+		var reserved_width := int(ceil(list.get_row_scrollbar_reserve_width()))
+		var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, reserved_width)
+		var previous_width := int(column_state.get("width", 0))
+		_resolve_autocomplete_column_width(list, column_state, column_index, layout, _get_widget_path_for_autocomplete_column_state(column_state), reserved_width)
+		var new_width := int(column_state.get("width", 0))
+		if new_width != previous_width:
 			list.custom_minimum_size = Vector2(new_width, list.custom_minimum_size.y)
 			list.size = list.custom_minimum_size
 			needs_layout_refresh = true
@@ -10660,6 +10752,10 @@ func autocomplete_select_prev() -> void:
 			return
 
 	if _is_command_popup_visible():
+		if _autocomplete_active_column_index < _autocomplete_column_nodes.size():
+			var active_list := _autocomplete_column_nodes[_autocomplete_active_column_index] as AutocompleteCommandColumn
+			if active_list != null and active_list.scroll_content_before_selection(-1):
+				return
 		_history_access_locked_until_reset = true
 		_root_command_selection_reset_pending = false
 		var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
@@ -10696,6 +10792,10 @@ func autocomplete_select_next() -> void:
 		return
 
 	if _is_command_popup_visible():
+		if _autocomplete_active_column_index < _autocomplete_column_nodes.size():
+			var active_list := _autocomplete_column_nodes[_autocomplete_active_column_index] as AutocompleteCommandColumn
+			if active_list != null and active_list.scroll_content_before_selection(1):
+				return
 		var column_state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
 		var matches: Array = column_state.get("matches", [])
 		if matches.is_empty():
