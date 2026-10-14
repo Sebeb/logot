@@ -55,6 +55,25 @@ func run(ctx) -> void:
 	var normal: int = display._get_command_autocomplete_max_column_width()
 	display.set_render_scale_percent("command_palette", "keyboard", 200)
 	ctx.check("column width cap scales with rendering", display._get_command_autocomplete_max_column_width() == normal * 2)
+	column.configure_theme(display._history_autocomplete_popup)
+	ctx.check("scaled measurement uses the drawn font", column.get_theme_font_size("font_size") == column._font_size)
+	var expected_width := int(ceil(column._font.get_string_size("controller", HORIZONTAL_ALIGNMENT_LEFT, -1, column._font_size).x))
+	ctx.check("labels measure at render size", display._measure_autocomplete_text_width(column, "controller") == expected_width)
+	column._set_scroll_slot(0)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	ctx.check("pressed wheel scrolls content", column._handle_mouse_wheel(wheel) and column._get_scroll_slot() > 0)
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	ctx.check("wheel scrolls upward", column._handle_mouse_wheel(wheel) and column._get_scroll_slot() == 0)
+	wheel.pressed = false
+	ctx.check("wheel release does not scroll twice", not column._handle_mouse_wheel(wheel))
+	display.set_render_scale_percent("command_palette", "keyboard", 100)
+	column.configure_theme(display._history_autocomplete_popup)
+	var long_rows: Array[Dictionary] = [{"label": "PLAYGROUND-PRIVATE-PG-FIXTURE-WITH-A-LONG-OPTION-NAME", "value_loaded": true}]
+	var compact: Dictionary = display._measure_command_autocomplete_column_layout(column, "plain/", long_rows, "Options", "", 0, 0, false)
+	var wide: Dictionary = display._measure_command_autocomplete_column_layout(column, "plain/", long_rows, "Options", "", 0, 0, true)
+	ctx.check("ordinary active columns expand for long names", wide.width > compact.width and wide.width <= 960)
 	display.set_render_scale_percent("command_palette", "keyboard", previous_scale)
 	display.set_current_input_method(previous_method)
 	display.get_window().size = previous_size

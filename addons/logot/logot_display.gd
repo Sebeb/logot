@@ -425,6 +425,7 @@ class AutocompleteCommandColumn:
 	var _metrics: Dictionary = {"name_width": 0, "value_width": 0, "action_width": 0, "width": 0}
 	var _selected_index := -1
 	var _scroll_row := 0
+	var _manual_scroll := false
 	var _row_height := 28
 	var _is_preview := false
 	var _selected_is_active := true
@@ -562,7 +563,7 @@ class AutocompleteCommandColumn:
 				accept_event()
 
 	func _handle_mouse_wheel(mouse_event: InputEventMouseButton) -> bool:
-		if mouse_event.pressed:
+		if not mouse_event.pressed:
 			return false
 		match mouse_event.button_index:
 			MOUSE_BUTTON_WHEEL_UP:
@@ -699,6 +700,7 @@ class AutocompleteCommandColumn:
 		var next_slot := clampi(current_slot + delta_rows, 0, _get_max_scroll_slot())
 		if next_slot == current_slot:
 			return
+		_manual_scroll = true
 		_set_scroll_slot(next_slot)
 		_update_row_scrollbar()
 		queue_redraw()
@@ -789,6 +791,9 @@ class AutocompleteCommandColumn:
 		queue_redraw()
 
 	func set_embedded_widget(widget: Control, widget_path: String = "", placement: WidgetPlacement = WidgetPlacement.PINNED) -> void:
+		if widget == null and _embedded_widget == null:
+			return
+		_manual_scroll = false
 		if _embedded_widget != null and is_instance_valid(_embedded_widget) and _embedded_widget != widget:
 			_embedded_widget.get_parent().remove_child(_embedded_widget)
 			_embedded_widget.queue_free()
@@ -843,6 +848,10 @@ class AutocompleteCommandColumn:
 		_font_size = theme_source.get_theme_font_size("font_size")
 		if _font_size <= 0:
 			_font_size = 16
+		# Measurement, wrapping and drawing must resolve exactly the same scaled font.
+		add_theme_font_size_override("font_size", _font_size)
+		if _font != null:
+			add_theme_font_override("font", _font)
 		_header_title_font_size = maxi(20, _font_size + 6)
 		_header_description_font_size = maxi(11, _font_size - 2)
 		_font_color = theme_source.get_theme_color("font_color")
@@ -872,6 +881,11 @@ class AutocompleteCommandColumn:
 		_update_header_layout()
 
 	func set_column_data(rows: Array[Dictionary], metrics: Dictionary, selected_index: int, is_preview: bool, row_height: int, selected_is_active: bool = true, header_title: String = "", header_description: String = "") -> void:
+		var selection_changed := selected_index != _selected_index or header_title != _header_title or rows.size() != _rows.size()
+		if not selection_changed and selected_index >= 0 and selected_index < rows.size():
+			selection_changed = str(rows[selected_index].get("label", "")) != str(_rows[selected_index].get("label", ""))
+		if selection_changed:
+			_manual_scroll = false
 		_rows = rows
 		_metrics = metrics
 		_selected_index = selected_index
@@ -931,6 +945,9 @@ class AutocompleteCommandColumn:
 		queue_redraw()
 
 	func _ensure_selection_visible() -> void:
+		if _manual_scroll:
+			_set_scroll_slot(_get_scroll_slot())
+			return
 		if _embedded_widget_placement == WidgetPlacement.CONTENT:
 			_set_scroll_slot(_content_scroll_slot)
 			if not _is_preview and _selected_index >= 0 and _content_scroll_slot >= _get_content_widget_slots():
@@ -1383,6 +1400,7 @@ class AutocompleteCommandColumn:
 		var next_slot := clampi(int(round(value)), 0, _get_max_scroll_slot())
 		if next_slot == current_slot:
 			return
+		_manual_scroll = true
 		_set_scroll_slot(next_slot)
 		_update_row_scrollbar()
 		queue_redraw()
@@ -3839,8 +3857,14 @@ func _apply_pinned_variables_render_scale() -> void:
 
 func _get_scaled_autocomplete_item_height() -> int:
 	var touch_target_multiplier := 2.0 if _is_touch_command_palette_layout() else 1.0
-	var scaled_height := float(AUTOCOMPLETE_ITEM_HEIGHT) * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE) * touch_target_multiplier
-	return maxi(1, int(round(scaled_height)))
+	var render_multiplier := _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
+	var scaled_height := float(AUTOCOMPLETE_ITEM_HEIGHT) * render_multiplier
+	if _history_autocomplete_popup != null:
+		var font := _history_autocomplete_popup.get_theme_font("font")
+		var font_size := _history_autocomplete_popup.get_theme_font_size("font_size")
+		if font != null:
+			scaled_height = maxf(scaled_height, font.get_height(font_size) + 8.0 * render_multiplier)
+	return maxi(1, int(ceil(scaled_height * touch_target_multiplier)))
 
 
 func _get_scaled_autocomplete_popup_gap() -> float:
@@ -9184,7 +9208,9 @@ func _measure_autocomplete_text_width_with_font_size(control: Control, text: Str
 	return measured_width
 
 
-func _get_command_autocomplete_max_column_width() -> int:
+func _get_command_autocomplete_max_column_width(is_active_column: bool = false) -> int:
+	if is_active_column:
+		return maxi(1, mini(int(ceil(960.0 * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))), int(get_viewport_rect().size.x) - 24))
 	var max_width := 0
 	if line_edit:
 		max_width = int(line_edit.size.x)
@@ -9233,7 +9259,7 @@ func _get_command_autocomplete_row_action_width(row_data: Dictionary) -> int:
 	return current_action_width
 
 
-func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String, reserved_width: int = 0, unloaded_value_sample_count: int = AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT) -> Dictionary:
+func _measure_command_autocomplete_column_layout(control: Control, prefix: String, rows: Array[Dictionary], column_name: String, column_description: String, reserved_width: int = 0, unloaded_value_sample_count: int = AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT, is_active_column: bool = false) -> Dictionary:
 	var column_has_icons := false
 	for candidate_row in rows:
 		if (candidate_row as Dictionary).get("icon") is Texture2D:
@@ -9299,8 +9325,8 @@ func _measure_command_autocomplete_column_layout(control: Control, prefix: Strin
 	if prefix == AUTOCOMPLETE_GLOBAL_SEARCH_PREFIX:
 		total_width = maxi(AUTOCOMPLETE_COLUMN_MIN_WIDTH, preferred_width)
 	else:
-		var max_width := _get_command_autocomplete_max_column_width()
-		total_width = clampi(preferred_width, int(ceil(AUTOCOMPLETE_COLUMN_MIN_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))), max_width)
+		var max_width := _get_command_autocomplete_max_column_width(is_active_column)
+		total_width = mini(max_width, maxi(preferred_width, int(ceil(AUTOCOMPLETE_COLUMN_MIN_WIDTH * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)))))
 	var content_width := maxi(0, total_width - reserved_width)
 
 	for row_index in range(rows.size()):
@@ -9832,7 +9858,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		tracked_display_variable_addresses.append(tracked_address)
 	column_state["tracked_display_variable_addresses"] = tracked_display_variable_addresses
 
-	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
+	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, 0, AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT, column_index == _autocomplete_active_column_index)
 	_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, 0)
 
 	var column_height := _get_command_autocomplete_column_viewport_height()
@@ -9853,7 +9879,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 		var fitted_rows := _collapse_rows_between_highlights(rows, row_capacity)
 		if fitted_rows.size() != rows.size():
 			rows = fitted_rows
-			layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description)
+			layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, 0, AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT, column_index == _autocomplete_active_column_index)
 			_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, 0)
 	list.custom_minimum_size = Vector2(column_state["width"], column_height)
 	list.size = list.custom_minimum_size
@@ -9876,7 +9902,7 @@ func _configure_command_autocomplete_column(list: AutocompleteCommandColumn, col
 	# rows taller (never shorter), so the scrollbar cannot vanish and one pass suffices.
 	var scrollbar_reserve := int(ceil(list.get_row_scrollbar_reserve_width()))
 	if scrollbar_reserve > 0:
-		layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve)
+		layout = _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve, AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT, column_index == _autocomplete_active_column_index)
 		_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, scrollbar_reserve)
 		list.custom_minimum_size = Vector2(column_state["width"], column_height)
 		list.size = list.custom_minimum_size
@@ -9909,7 +9935,7 @@ func _refresh_autocomplete_column_layout_after_visible_hydration(list: Autocompl
 	var column_description := str(column_state.get("column_description_override", _get_command_autocomplete_column_description(prefix, command_name)))
 	var widget_path := _get_widget_path_for_autocomplete_column_state(column_state)
 	var scrollbar_reserve := int(ceil(list.get_row_scrollbar_reserve_width()))
-	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve, 0)
+	var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, scrollbar_reserve, 0, column_index == _autocomplete_active_column_index)
 	var previous_width := int(column_state.get("width", 0))
 	_resolve_autocomplete_column_width(list, column_state, column_index, layout, widget_path, scrollbar_reserve)
 	if int(column_state.get("width", 0)) == previous_width:
@@ -9952,9 +9978,7 @@ func _resolve_autocomplete_column_width(list: AutocompleteCommandColumn, column_
 	var embedded := list._embedded_widget
 	if embedded != null and embedded.has_method("get_logot_palette_preferred_width"):
 		var scale_multiplier := _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE)
-		var width_limit := _get_command_autocomplete_max_column_width()
-		if column_index == _autocomplete_active_column_index:
-			width_limit = mini(int(ceil(960.0 * scale_multiplier)), int(get_viewport_rect().size.x) - 24)
+		var width_limit := _get_command_autocomplete_max_column_width(column_index == _autocomplete_active_column_index)
 		var preferred := int(ceil(float(embedded.call("get_logot_palette_preferred_width")) * scale_multiplier))
 		layout["width"] = mini(width_limit, maxi(int(layout.get("width", 0)), preferred + reserved_width))
 	column_state["left_width"] = int(layout.get("name_width", 0))
@@ -10377,7 +10401,7 @@ func _refresh_command_autocomplete_popup_values() -> void:
 		var selected_row_index := int(row_build_result.get("selected_row_index", -1))
 
 		var reserved_width := int(ceil(list.get_row_scrollbar_reserve_width()))
-		var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, reserved_width)
+		var layout := _measure_command_autocomplete_column_layout(list, prefix, rows, column_name, column_description, reserved_width, AUTOCOMPLETE_VALUE_MEASUREMENT_SAMPLE_COUNT, column_index == _autocomplete_active_column_index)
 		var previous_width := int(column_state.get("width", 0))
 		_resolve_autocomplete_column_width(list, column_state, column_index, layout, _get_widget_path_for_autocomplete_column_state(column_state), reserved_width)
 		var new_width := int(column_state.get("width", 0))

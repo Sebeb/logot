@@ -102,7 +102,7 @@ func run(ctx) -> void:
 			var previous_scroll: int = typed_root_list._scroll_row
 			var wheel := InputEventMouseButton.new()
 			wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
-			wheel.pressed = false
+			wheel.pressed = true
 			typed_root_list._gui_input(wheel)
 			ctx.check(
 				"touch command palette wheel scrolls rows",

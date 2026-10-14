@@ -120,15 +120,16 @@ func run(ctx) -> void:
 		"handle_bottom=%s popup_top=%s" % [handle_rect.end.y, popup_rect.position.y]
 	)
 
-	# The dragged height survives a settings round trip.
+	# Persist the actual pixel-rounded drag result, including half-pixel minima.
+	var dragged_height: float = display._command_palette_height_override
 	var config := ConfigFile.new()
 	display._save_custom_settings(config)
 	display._command_palette_height_override = 0.0
 	display._load_custom_settings(config)
 	ctx.check(
 		"dragged height persists through save/load",
-		is_equal_approx(display._command_palette_height_override, resized_height),
-		"override=%s expected=%s" % [display._command_palette_height_override, resized_height]
+		is_equal_approx(display._command_palette_height_override, dragged_height),
+		"override=%s expected=%s" % [display._command_palette_height_override, dragged_height]
 	)
 
 	# The drag released above wrote a height to the real settings file; put it back.
