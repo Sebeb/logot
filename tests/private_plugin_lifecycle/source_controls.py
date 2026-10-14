@@ -17,6 +17,14 @@ def main():
     old = subprocess.check_output(["git", "--no-lazy-fetch", "show", OLD + ":tests/private_plugin_lifecycle/editor_cases.gd"], cwd=ROOT, text=True)
     labels = lambda text: re.findall(r'^\s+_check\(.*?, "([^"]+)"\)$', text, re.M)
     assert labels(driver) == labels(old) and len(labels(driver)) == 30
+    d1 = subprocess.check_output(["git", "--no-lazy-fetch", "show", "d1e0f4040fb1cb8422d97584648f554093bc211c:tests/private_plugin_lifecycle/editor_cases.gd"], cwd=ROOT, text=True)
+    def body(text, name):
+        return text.split("func " + name + "(", 1)[1].split("\n\nfunc ", 1)[0]
+    main = body(driver, "_run_lifecycle_cases").replace("\n\t_run_identity_contract()", "").replace(" and _identity_failures == 0", "")
+    assert main == body(d1, "_run_lifecycle_cases")
+    assert body(driver, "_run_preexisting_activation") == body(d1, "_run_preexisting_activation")
+    assert driver.index('_run_identity_contract()', driver.index('func _run_lifecycle_cases')) > driver.index('"ordinary.released"')
+    assert "and _identity_failures == 0 else 1" in driver
     assert 'call_deferred("_run_lifecycle_cases")' not in driver
     for event in ("sources_changed", "script_classes_updated", "filesystem_changed"):
         assert event + ".connect(" in driver
@@ -24,6 +32,7 @@ def main():
     assert "--lifecycle-deadline-unix-ms=" in driver
     assert "LIFECYCLE WITNESS " in driver and "LIFECYCLE READY " in driver
     product = (ROOT / "addons/logot/logot_plugin.gd").read_text()
+    assert hashlib.sha256(product.encode()).hexdigest() == "9a392bbf5bada287ba4e4c5ef0b0ef827dea794fa27c58dca734034d0597d987"
     helper = product.split("func _is_logot_autoload_path", 1)[1]
     assert helper.index("ResourceUID.has_id(uid)") < helper.index("ResourceUID.get_id_path(uid)")
     assert "uid == ResourceUID.INVALID_ID or not ResourceUID.has_id(uid)" in helper
@@ -39,6 +48,10 @@ def main():
     filesystem = (HERE / "upstream/editor_file_system.cpp").read_text()
     assert "return scanning || scanning_changes || first_scan;" in filesystem
     assert '_update_script_classes();' in filesystem
+    markers = json.loads((HERE / "marker-contract.json").read_text())
+    identity = (HERE / "identity_contract.gd").read_text()
+    for label in markers["identity_labels"]["base"] + markers["identity_labels"]["candidate"]:
+        assert label in identity
     print("SOURCE CONTROLS PASS: 30 unchanged labels; signal/idle/deadline/witness source; guarded UID identity; primary-source hashes; Python AST")
     print("GDScript parsing, editor behavior and all runtime assertions UNRUN")
 

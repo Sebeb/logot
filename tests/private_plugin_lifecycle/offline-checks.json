@@ -1,0 +1,18 @@
+{
+  "status": "PASS_SOURCE_ONLY",
+  "controls": [
+    "source_controls.py: exact d1 ordered24+6 labels and assertion bodies preserved except identity invocation and exit aggregation",
+    "product plugin SHA unchanged9a392bbf",
+    "identity collection follows ordinary.released and affects process exit",
+    "Python AST and diff whitespace",
+    "five complete fixture SHA inventories, embedded identity/schema/driver equality",
+    "base/candidate addon delta only plugin; private configs differ only unique token",
+    "retained exact primary Godot source hashes"
+  ],
+  "engine": "UNRUN",
+  "GDScript_parser": "UNRUN",
+  "runtime": "UNRUN",
+  "publication": "UNAUTHORIZED_UNDONE",
+  "old_d1_v4": "PRESERVED",
+  "final_freeze_sha256": "6e88aea70ab63af520f828b32f081c3940ace0921d5f91cfd51cf4aa145916b6"
+}

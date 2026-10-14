@@ -1,44 +1,44 @@
 {
   "status": "SOURCE_ONLY_ALL_ENGINE_UNRUN",
-  "parent_package_commit": "f7b0ee491b86f438226d370ed77e6c8912af73ad",
+  "parent_package_commit": "d1e0f4040fb1cb8422d97584648f554093bc211c",
   "base_commit": "98d26210ecb4be64efda8ef7a2e204316fb15f19",
   "old_proposal_plugin_sha256": "59b90955198c2b8bc0b11ac60c378cfcdd40b723a158eb72c381cc95b019d8cd",
   "candidate_plugin_sha256": "9a392bbf5bada287ba4e4c5ef0b0ef827dea794fa27c58dca734034d0597d987",
-  "driver_sha256": "3dff1f82ebdbe839232629a014730586aee8fdf3d6d1daae5b044dd58b81beba",
-  "freeze_path": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-readiness-v4/freeze.json",
-  "freeze_sha256": "c0e73f9d9b4b2d872d9a18dee6956609807f50aa1fd2d2b5e92d23fdfc12d4b4",
-  "assertion_check_line": 102,
+  "driver_sha256": "129b5cdb5e4a0c9b2a72040054dac6065f746eea081e5081f6c7d68ebe24cf46",
+  "freeze_path": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-identity-v6/freeze.json",
+  "freeze_sha256": "6e88aea70ab63af520f828b32f081c3940ace0921d5f91cfd51cf4aa145916b6",
+  "assertion_check_line": 109,
   "labels": {
-    "ordinary.claimed": 110,
-    "ordinary.created": 111,
-    "ordinary.removed": 113,
-    "ordinary.released": 114,
-    "absent.claimed": 118,
-    "absent.precondition": 120,
-    "absent.stays_absent": 122,
-    "absent.released": 123,
-    "preexisting.precondition": 127,
-    "preexisting.unclaimed": 129,
-    "preexisting.preserved": 131,
-    "replaced.claimed": 136,
-    "replaced.precondition": 139,
-    "replaced.preserved": 141,
-    "replaced.released": 142,
-    "repeated.foreign_preserved": 144,
-    "repeated.absent": 147,
-    "repeated.released": 148,
-    "unstarred.owned_removed": 154,
-    "unstarred.released": 155,
-    "unstarred.foreign_preserved": 161,
-    "unstarred.foreign_released": 162,
-    "final.absent": 164,
-    "final.editor_references_released": 165,
-    "cold_foreign.unclaimed": 171,
-    "cold_foreign.preserved_during_enter": 172,
-    "cold_foreign.preserved_during_exit": 174,
-    "cold_foreign.released": 175,
-    "cold_foreign.repeated_exit": 177,
-    "cold_foreign.editor_references_released": 178
+    "ordinary.claimed": 117,
+    "ordinary.created": 118,
+    "ordinary.removed": 120,
+    "ordinary.released": 121,
+    "absent.claimed": 126,
+    "absent.precondition": 128,
+    "absent.stays_absent": 130,
+    "absent.released": 131,
+    "preexisting.precondition": 135,
+    "preexisting.unclaimed": 137,
+    "preexisting.preserved": 139,
+    "replaced.claimed": 144,
+    "replaced.precondition": 147,
+    "replaced.preserved": 149,
+    "replaced.released": 150,
+    "repeated.foreign_preserved": 152,
+    "repeated.absent": 155,
+    "repeated.released": 156,
+    "unstarred.owned_removed": 162,
+    "unstarred.released": 163,
+    "unstarred.foreign_preserved": 169,
+    "unstarred.foreign_released": 170,
+    "final.absent": 172,
+    "final.editor_references_released": 173,
+    "cold_foreign.unclaimed": 179,
+    "cold_foreign.preserved_during_enter": 180,
+    "cold_foreign.preserved_during_exit": 182,
+    "cold_foreign.released": 183,
+    "cold_foreign.repeated_exit": 185,
+    "cold_foreign.editor_references_released": 186
   },
   "baseline_expected_failed_labels": [
     "replaced.preserved",
@@ -46,25 +46,46 @@
     "unstarred.foreign_preserved"
   ],
   "baseline_expected_missing_setting_call_sites": {
-    "absent_exit": 121,
-    "foreign_cleanup": 145,
-    "unstarred_cleanup": 163
+    "absent_exit": 129,
+    "foreign_cleanup": 153,
+    "unstarred_cleanup": 171
   },
   "unknown_diagnostics": "FAIL; no automatic waivers",
   "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>",
-  "separate_identity_contract": {
+  "integrated_identity_contract": {
     "path": "tests/private_plugin_lifecycle/identity_contract.gd",
+    "sha256": "c1cbc44c5c75fe4976e73e8eab2d3ec900f235f8827a540425fc399d00a5d779",
+    "marker_schema_path": "tests/private_plugin_lifecycle/marker-contract.json",
+    "marker_schema_sha256": "36e6f92137ca51435f1a6c09fe649bfff4c6a9737749a2211479d1d70194644d",
+    "position": "after lifecycle ordinary.released, before absent.claimed",
     "expected_base": {
       "checks": 1,
-      "failures": [
+      "failures": 1,
+      "failed_labels": [
         "identity.capability_absent"
       ]
     },
     "expected_candidate": {
       "checks": 8,
-      "failures": []
+      "failures": 0,
+      "failed_labels": []
     },
-    "integration": "NOT in six prepared projects; requires separate explicit harness review; UNRUN",
-    "sha256": "2a3eea93b8e21333d6114d85bfe5bbc025feb17420e55b26666e128692a8e7f2"
-  }
+    "preexisting": "NO identity collection",
+    "main_result": "unchanged24 counts; exit additionally requires identity_failures==0",
+    "no_added_stderr_diagnostics": true
+  },
+  "runtime_projects": [
+    "base-cases",
+    "base-preexisting",
+    "candidate-cold",
+    "candidate-cases",
+    "candidate-preexisting"
+  ],
+  "budgets": {
+    "total": 600,
+    "work": 540,
+    "cleanup": 60,
+    "editor_families": 5
+  },
+  "superseded_unrun_freeze": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-identity-v5/freeze.json"
 }

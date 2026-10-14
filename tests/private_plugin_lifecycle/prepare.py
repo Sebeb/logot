@@ -33,10 +33,12 @@ def main():
     driver = (ROOT / "tests/private_plugin_lifecycle/editor_cases.gd").read_bytes()
     if driver.count(b"\t_check(") != 30:
         raise SystemExit("Unexpected editor fixture assertion count")
-    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "driver_contract": {"main_checks": 24, "preexisting_checks": 6, "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>", "requires_ready_marker": True, "requires_witness_per_check": True}, "fixtures": {}}
+    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "driver_contract": {"main_checks": 24, "preexisting_checks": 6, "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>", "requires_ready_marker": True, "requires_witness_per_check": True, "identity_checks": {"base": 1, "candidate": 8}, "marker_contract_sha256": sha((ROOT / "tests/private_plugin_lifecycle/marker-contract.json").read_bytes())}, "fixtures": {}}
     destination.mkdir(parents=True)
     for revision in ("base", "candidate"):
         for scenario in ("cold", "cases", "preexisting"):
+            if revision == "base" and scenario == "cold":
+                continue  # Historical clean control remains in immutable v4.
             project = destination / (revision + "-" + scenario)
             project.mkdir()
             for name in files:
@@ -51,6 +53,8 @@ def main():
             plugin_cfg = "res://addons/logot/plugin.cfg"
             if scenario != "cold":
                 (fixture / "editor_cases.gd").write_bytes(driver)
+                (fixture / "identity_contract.gd").write_bytes((ROOT / "tests/private_plugin_lifecycle/identity_contract.gd").read_bytes())
+                (fixture / "marker-contract.json").write_bytes((ROOT / "tests/private_plugin_lifecycle/marker-contract.json").read_bytes())
                 (fixture / "plugin.cfg").write_text('[plugin]\nname="Logot lifecycle regression"\ndescription="Real production plugin subclass"\nauthor="Logot"\nversion="1"\nscript="editor_cases.gd"\n')
                 plugin_cfg = "res://fixture/plugin.cfg"
             (project / "project.godot").write_text(

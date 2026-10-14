@@ -3,10 +3,13 @@ extends "res://addons/logot/logot_plugin.gd"
 
 # Inherits the real plugin, including its real editor registration APIs.
 # Explicit teardown calls are intentional: the contract includes repeated exit.
+const IdentityContract = preload("res://fixture/identity_contract.gd")
+
 const SETTING := "autoload/Console"
 const FOREIGN := "*res://fixture/foreign_console.gd"
 var _checks := 0
 var _failures := 0
+var _identity_failures := 0
 
 
 var _filesystem: EditorFileSystem
@@ -70,7 +73,7 @@ func _process(_delta: float) -> void:
 		get_tree().quit(2)
 		return
 	_driver_started = true
-	print("LIFECYCLE READY ", JSON.stringify({"sources_completed": _sources_completed, "classes_updated": _classes_updated, "filesystem_changed": _filesystem_changed, "scanning": _filesystem.is_scanning(), "importing": _filesystem.is_importing(), "deadline_unix_ms": _deadline_unix_ms}))
+	print("LIFECYCLE READY ", JSON.stringify({"schema": 1, "collection": "lifecycle", "scenario": "preexisting" if ProjectSettings.get_setting("lifecycle_test/preexisting", false) else "main", "sources_completed": _sources_completed, "classes_updated": _classes_updated, "filesystem_changed": _filesystem_changed, "scanning": _filesystem.is_scanning(), "importing": _filesystem.is_importing(), "deadline_unix_ms": _deadline_unix_ms}))
 	_run_lifecycle_cases()
 
 
@@ -91,6 +94,10 @@ func _same_resource(raw: String, expected: String) -> bool:
 
 func _check(condition: bool, label: String) -> void:
 	var witness := _identity(str(ProjectSettings.get_setting(SETTING, "")))
+	witness["schema"] = 1
+	witness["collection"] = "lifecycle"
+	witness["ordinal"] = _checks + 1
+	witness["passed"] = condition
 	witness["label"] = label
 	witness["exists"] = ProjectSettings.has_setting(SETTING)
 	print("LIFECYCLE WITNESS ", JSON.stringify(witness))
@@ -112,6 +119,7 @@ func _run_lifecycle_cases() -> void:
 	super._exit_tree()
 	_check(not ProjectSettings.has_setting(SETTING), "ordinary.removed")
 	_check(not _added_console_autoload, "ordinary.released")
+	_run_identity_contract()
 
 	# Real editor removal before production teardown reproduces the missing setting.
 	_ensure_console_autoload()
@@ -164,7 +172,7 @@ func _run_lifecycle_cases() -> void:
 	_check(not ProjectSettings.has_setting(SETTING), "final.absent")
 	_check(_debugger_plugin == null and _editor_dock == null and _editor_panel == null, "final.editor_references_released")
 	print("LIFECYCLE RESULT checks=%d failures=%d" % [_checks, _failures])
-	get_tree().quit(0 if _failures == 0 and _checks == 24 else 1)
+	get_tree().quit(0 if _failures == 0 and _checks == 24 and _identity_failures == 0 else 1)
 
 
 func _run_preexisting_activation() -> void:
@@ -179,3 +187,17 @@ func _run_preexisting_activation() -> void:
 	remove_autoload_singleton("Console")
 	print("LIFECYCLE RESULT checks=%d failures=%d" % [_checks, _failures])
 	get_tree().quit(0 if _failures == 0 and _checks == 6 else 1)
+
+
+func _run_identity_contract() -> void:
+	var labels: Array[String] = IdentityContract.collect(self)
+	print("LIFECYCLE IDENTITY COLLECTION ", JSON.stringify({"schema": 1, "collection": "identity", "labels": labels, "expected_checks": labels.size()}))
+	var result: Dictionary = IdentityContract.check(self)
+	var records: Array = result["results"]
+	for index in records.size():
+		var record: Dictionary = records[index]
+		print("LIFECYCLE IDENTITY CHECK ", JSON.stringify({"schema": 1, "collection": "identity", "ordinal": index + 1, "label": record["label"], "passed": record["passed"]}))
+	_identity_failures = int(result["failures"])
+	if int(result["checks"]) != labels.size() or records.size() != labels.size() or not str(result["precondition_error"]).is_empty():
+		_identity_failures = maxi(1, _identity_failures)
+	print("LIFECYCLE IDENTITY RESULT ", JSON.stringify({"schema": 1, "collection": "identity", "checks": result["checks"], "failures": _identity_failures, "failed_labels": result["failed_labels"], "precondition_error": result["precondition_error"]}))

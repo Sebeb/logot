@@ -1,0 +1,340 @@
+{
+  "schema_version": 1,
+  "encoding": "one exact prefix then one JSON object per line",
+  "ready": {
+    "prefix": "LIFECYCLE READY ",
+    "count_per_driven_process": 1,
+    "fields": {
+      "schema": "integer exactly1",
+      "collection": "string exactly lifecycle",
+      "scenario": "string main or preexisting",
+      "sources_completed": "boolean true",
+      "classes_updated": "boolean true",
+      "filesystem_changed": "boolean true",
+      "scanning": "boolean false",
+      "importing": "boolean false",
+      "deadline_unix_ms": "integer exactly admitted fixed editor deadline"
+    }
+  },
+  "witness": {
+    "prefix": "LIFECYCLE WITNESS ",
+    "fields": {
+      "schema": "integer exactly1",
+      "collection": "string exactly lifecycle",
+      "ordinal": "integer contiguous1..24 or1..6",
+      "passed": "boolean exact expected outcome for label",
+      "label": "string exact ordered main/preexisting label",
+      "exists": "boolean",
+      "raw": "string",
+      "resolved": "string",
+      "known": "boolean",
+      "singleton": "boolean"
+    }
+  },
+  "identity_collection": {
+    "prefix": "LIFECYCLE IDENTITY COLLECTION ",
+    "fields": {
+      "schema": "integer exactly1",
+      "collection": "string exactly identity",
+      "labels": "array of exact ordered strings",
+      "expected_checks": "integer exactly1 baseline or8 candidate"
+    }
+  },
+  "identity_check": {
+    "prefix": "LIFECYCLE IDENTITY CHECK ",
+    "fields": {
+      "schema": "integer exactly1",
+      "collection": "string exactly identity",
+      "ordinal": "integer contiguous1..1 baseline or1..8 candidate",
+      "label": "string exact identity label",
+      "passed": "boolean false for baseline capability_absent; true for all candidate checks"
+    }
+  },
+  "identity_result": {
+    "prefix": "LIFECYCLE IDENTITY RESULT ",
+    "fields": {
+      "schema": "integer exactly1",
+      "collection": "string exactly identity",
+      "checks": "integer exactly1 baseline or8 candidate",
+      "failures": "integer exactly1 baseline or0 candidate",
+      "failed_labels": "array exactly[identity.capability_absent] baseline or[] candidate",
+      "precondition_error": "string empty"
+    }
+  },
+  "identity_labels": {
+    "base": [
+      "identity.capability_absent"
+    ],
+    "candidate": [
+      "identity.singleton_path",
+      "identity.singleton_uid",
+      "identity.path",
+      "identity.foreign_path",
+      "identity.unknown_uid",
+      "identity.unknown_unclaimed",
+      "identity.unknown_preserved",
+      "identity.unknown_released"
+    ]
+  },
+  "ordered_boundary": "READY; lifecycle witnesses/pass-lines1..4 ending ordinary.released; IDENTITY COLLECTION; ordered IDENTITY CHECK records; IDENTITY RESULT; lifecycle witnesses/checks5..24; main RESULT. Preexisting READY then witnesses/checks1..6 and main RESULT, no IDENTITY markers. Existing PASS/FAIL human lines and raw diagnostics remain separate full-stream evidence.",
+  "main_result_prefix": "LIFECYCLE RESULT checks=",
+  "process_exit": "base main1 for main3 expected failures plus identity1; candidate main0 only if24mainclean AND8identityclean; preexisting0 for6clean; candidatecold0clean. Unknown/precondition/incomplete/wrongorder/diagnostics fail.",
+  "json_schemas": {
+    "ready": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "scenario",
+        "sources_completed",
+        "classes_updated",
+        "filesystem_changed",
+        "scanning",
+        "importing",
+        "deadline_unix_ms"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "lifecycle"
+        },
+        "scenario": {
+          "type": "string",
+          "enum": [
+            "main",
+            "preexisting"
+          ]
+        },
+        "sources_completed": {
+          "type": "boolean",
+          "const": true
+        },
+        "classes_updated": {
+          "type": "boolean",
+          "const": true
+        },
+        "filesystem_changed": {
+          "type": "boolean",
+          "const": true
+        },
+        "scanning": {
+          "type": "boolean",
+          "const": false
+        },
+        "importing": {
+          "type": "boolean",
+          "const": false
+        },
+        "deadline_unix_ms": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "ordinal",
+        "passed",
+        "label",
+        "exists",
+        "raw",
+        "resolved",
+        "known",
+        "singleton"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "lifecycle"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "raw": {
+          "type": "string"
+        },
+        "resolved": {
+          "type": "string"
+        },
+        "known": {
+          "type": "boolean"
+        },
+        "singleton": {
+          "type": "boolean"
+        }
+      }
+    },
+    "identity_collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "labels",
+        "expected_checks"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "identity"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "identity.capability_absent",
+              "identity.singleton_path",
+              "identity.singleton_uid",
+              "identity.path",
+              "identity.foreign_path",
+              "identity.unknown_uid",
+              "identity.unknown_unclaimed",
+              "identity.unknown_preserved",
+              "identity.unknown_released"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "expected_checks": {
+          "type": "integer",
+          "enum": [
+            1,
+            8
+          ]
+        }
+      }
+    },
+    "identity_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "ordinal",
+        "label",
+        "passed"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "identity"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "label": {
+          "type": "string",
+          "enum": [
+            "identity.capability_absent",
+            "identity.singleton_path",
+            "identity.singleton_uid",
+            "identity.path",
+            "identity.foreign_path",
+            "identity.unknown_uid",
+            "identity.unknown_unclaimed",
+            "identity.unknown_preserved",
+            "identity.unknown_released"
+          ]
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "identity_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "collection",
+        "checks",
+        "failures",
+        "failed_labels",
+        "precondition_error"
+      ],
+      "properties": {
+        "schema": {
+          "type": "integer",
+          "const": 1
+        },
+        "collection": {
+          "type": "string",
+          "const": "identity"
+        },
+        "checks": {
+          "type": "integer",
+          "enum": [
+            1,
+            8
+          ]
+        },
+        "failures": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "failed_labels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "identity.capability_absent",
+              "identity.singleton_path",
+              "identity.singleton_uid",
+              "identity.path",
+              "identity.foreign_path",
+              "identity.unknown_uid",
+              "identity.unknown_unclaimed",
+              "identity.unknown_preserved",
+              "identity.unknown_released"
+            ]
+          },
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "precondition_error": {
+          "type": "string",
+          "const": ""
+        }
+      }
+    }
+  },
+  "parser_requirements": "Reject duplicate keys, non-finite numbers, unknown fields and non-exact JSON types (booleans must not count as integers; floating numerals must not count as integer fields). JSON schemas describe structural acceptance; exact contextual counts/labels/values, ordering, result consistency and deadline equality require separate validation."
+}
