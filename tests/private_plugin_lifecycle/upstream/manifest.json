@@ -1,0 +1,30 @@
+{
+  "editor/settings/editor_autoload_settings.cpp": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/editor/settings/editor_autoload_settings.cpp",
+    "sha256": "866f93f6b5b48af8bd1508f0e936a2c98cc01fdbf55b2a1e36595b115776aa7e"
+  },
+  "editor/file_system/editor_file_system.cpp": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/editor/file_system/editor_file_system.cpp",
+    "sha256": "92366b3f271fadb500e02dd8b27e25870dfc4eb99b8d53522e07c766695174ae"
+  },
+  "doc/classes/EditorFileSystem.xml": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/doc/classes/EditorFileSystem.xml",
+    "sha256": "49ebae3ee9c0913a79d383fe5221f9243a029f1e5e209a3106018c64d5251a59"
+  },
+  "doc/classes/ResourceUID.xml": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/doc/classes/ResourceUID.xml",
+    "sha256": "b0825dba6ad0e89a43155c4d3de88e132f9b4bb6384b560d09f3de2d615d0bd6"
+  },
+  "core/io/resource_uid.cpp": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/core/io/resource_uid.cpp",
+    "sha256": "229e16b495f1071074d6c19babfbe2ddbee8207e624bd57260407fd0d4cc3aa9"
+  },
+  "editor/editor_node.cpp": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/editor/editor_node.cpp",
+    "sha256": "ca8e106bffb9501c82cacc196075dfa968a7b9a44130bb84af357202215e3ca6"
+  },
+  "editor/plugins/editor_plugin.cpp": {
+    "url": "https://raw.githubusercontent.com/godotengine/godot/ed1daf0bf/editor/plugins/editor_plugin.cpp",
+    "sha256": "794b4594b625ad4fe308e28d69b3f160cbd9eadad5c05191b5262c71b4db424d"
+  }
+}

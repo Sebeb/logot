@@ -2,9 +2,10 @@
 
 ## Editor Console autoload ownership
 
-The editor plugin creates a temporary Console autoload only when no Console setting exists and records that activation's ownership. Teardown clears its ownership marker first, then removes the setting only if it still exists and its path is the exact Logot script, allowing Godot's optional leading `*` singleton marker. Entries present before activation and replacements pointing elsewhere are preserved. Repeated teardown and a setting already removed by editor shutdown perform no autoload removal. The marker and path check do not detect external replacement with an identical value.
+The editor plugin creates a temporary Console autoload only when no Console setting exists. It claims ownership only after the created setting resolves to the exact Logot script. Teardown clears the ownership marker first and removes only a still-present setting with that resource identity. Godot may represent the path directly or as a UID, with an optional leading singleton marker. UID resolution checks validity and ResourceUID.has_id before get_id_path; unknown identities are neither claimed nor removed. Foreign entries and preexisting entries remain intact. The marker cannot distinguish an external remove/re-add with identical resource identity.
 
-`tests/private_plugin_lifecycle` prepares exact98d baseline and candidate cold-editor projects and a production-plugin subclass with 24 main real editor API checks and six separate full preexisting-foreign activation checks. This is source-only preparation; engine execution, diagnostic acceptance, publication and host adoption remain pending a reviewed exclusive runtime contract.
+The source-only successor under tests/private_plugin_lifecycle waits for observed class, filesystem and source completion signals, idle scan/import state and an exact UID mapping before driving its unchanged 24+6 labeled checks. It logs raw/resolved setting witnesses and requires a supplied fixed absolute deadline. The exact baseline remains98d; this candidate extends the earlier59b proposal with the engine-supported resource-identity guard. Native parsing, behavior, diagnostic acceptance, publication and host adoption are all pending. Earlier f7/v2 sources and raw failures remain immutable.
+
 
 UID: sdoc-399e8f4a-645c-40f4-af08-59f3d4827671
 

@@ -1,0 +1,70 @@
+{
+  "status": "SOURCE_ONLY_ALL_ENGINE_UNRUN",
+  "parent_package_commit": "f7b0ee491b86f438226d370ed77e6c8912af73ad",
+  "base_commit": "98d26210ecb4be64efda8ef7a2e204316fb15f19",
+  "old_proposal_plugin_sha256": "59b90955198c2b8bc0b11ac60c378cfcdd40b723a158eb72c381cc95b019d8cd",
+  "candidate_plugin_sha256": "9a392bbf5bada287ba4e4c5ef0b0ef827dea794fa27c58dca734034d0597d987",
+  "driver_sha256": "3dff1f82ebdbe839232629a014730586aee8fdf3d6d1daae5b044dd58b81beba",
+  "freeze_path": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-readiness-v4/freeze.json",
+  "freeze_sha256": "c0e73f9d9b4b2d872d9a18dee6956609807f50aa1fd2d2b5e92d23fdfc12d4b4",
+  "assertion_check_line": 102,
+  "labels": {
+    "ordinary.claimed": 110,
+    "ordinary.created": 111,
+    "ordinary.removed": 113,
+    "ordinary.released": 114,
+    "absent.claimed": 118,
+    "absent.precondition": 120,
+    "absent.stays_absent": 122,
+    "absent.released": 123,
+    "preexisting.precondition": 127,
+    "preexisting.unclaimed": 129,
+    "preexisting.preserved": 131,
+    "replaced.claimed": 136,
+    "replaced.precondition": 139,
+    "replaced.preserved": 141,
+    "replaced.released": 142,
+    "repeated.foreign_preserved": 144,
+    "repeated.absent": 147,
+    "repeated.released": 148,
+    "unstarred.owned_removed": 154,
+    "unstarred.released": 155,
+    "unstarred.foreign_preserved": 161,
+    "unstarred.foreign_released": 162,
+    "final.absent": 164,
+    "final.editor_references_released": 165,
+    "cold_foreign.unclaimed": 171,
+    "cold_foreign.preserved_during_enter": 172,
+    "cold_foreign.preserved_during_exit": 174,
+    "cold_foreign.released": 175,
+    "cold_foreign.repeated_exit": 177,
+    "cold_foreign.editor_references_released": 178
+  },
+  "baseline_expected_failed_labels": [
+    "replaced.preserved",
+    "repeated.foreign_preserved",
+    "unstarred.foreign_preserved"
+  ],
+  "baseline_expected_missing_setting_call_sites": {
+    "absent_exit": 121,
+    "foreign_cleanup": 145,
+    "unstarred_cleanup": 163
+  },
+  "unknown_diagnostics": "FAIL; no automatic waivers",
+  "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>",
+  "separate_identity_contract": {
+    "path": "tests/private_plugin_lifecycle/identity_contract.gd",
+    "expected_base": {
+      "checks": 1,
+      "failures": [
+        "identity.capability_absent"
+      ]
+    },
+    "expected_candidate": {
+      "checks": 8,
+      "failures": []
+    },
+    "integration": "NOT in six prepared projects; requires separate explicit harness review; UNRUN",
+    "sha256": "2a3eea93b8e21333d6114d85bfe5bbc025feb17420e55b26666e128692a8e7f2"
+  }
+}

@@ -4,9 +4,10 @@
   "clone_source": "/Users/seb/Documents/Adventure Infinitum/.vendor/logot",
   "clone_mode": "local --no-hardlinks --no-checkout; detached exact commit; no fetch",
   "plugin_preimage_sha256": "96a154fb655d6a3f3c621d08e6972ef9138722228a17fdfd3045285ff4b6bd9c",
-  "plugin_candidate_sha256": "59b90955198c2b8bc0b11ac60c378cfcdd40b723a158eb72c381cc95b019d8cd",
-  "prepared_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-98d26210-v2/freeze.json",
-  "prepared_fixture_manifest_sha256": "4bc33ccacade9444d9d5ab88fb40a1bc40f9cb9503aa6fadd84af2e2c745001f",
-  "engine_checks": "UNRUN; no runtime grant",
-  "superseded_unrun_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-98d26210/freeze.json"
+  "plugin_candidate_sha256": "9a392bbf5bada287ba4e4c5ef0b0ef827dea794fa27c58dca734034d0597d987",
+  "prepared_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-readiness-v4/freeze.json",
+  "prepared_fixture_manifest_sha256": "c0e73f9d9b4b2d872d9a18dee6956609807f50aa1fd2d2b5e92d23fdfc12d4b4",
+  "engine_checks": "ALL UNRUN; successor source-only",
+  "superseded_unrun_fixture_manifest": "/private/tmp/m1-logot-plugin-lifecycle-fixtures-98d26210/freeze.json",
+  "parent_package_commit": "f7b0ee491b86f438226d370ed77e6c8912af73ad"
 }

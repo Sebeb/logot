@@ -66,7 +66,7 @@ func _exit_tree() -> void:
 		# externally replaced Console belongs to its new owner, not this plugin.
 		if ProjectSettings.has_setting("autoload/Console"):
 			var current_path := str(ProjectSettings.get_setting("autoload/Console"))
-			if current_path.trim_prefix("*") == LOGOT_AUTOLOAD_PATH:
+			if _is_logot_autoload_path(current_path):
 				remove_autoload_singleton("Console")
 
 	if _debugger_plugin:
@@ -147,4 +147,16 @@ func _ensure_console_autoload() -> void:
 	if ProjectSettings.has_setting("autoload/Console"):
 		return
 	add_autoload_singleton("Console", LOGOT_AUTOLOAD_PATH)
-	_added_console_autoload = true
+	# The editor may reject creation or canonicalize the path to a resource UID.
+	# Unknown identities are never claimed, even when a setting was created.
+	_added_console_autoload = ProjectSettings.has_setting("autoload/Console") and _is_logot_autoload_path(str(ProjectSettings.get_setting("autoload/Console", "")))
+
+
+func _is_logot_autoload_path(value: String) -> bool:
+	var path := value.trim_prefix("*")
+	if path.begins_with("uid://"):
+		var uid := ResourceUID.text_to_id(path)
+		if uid == ResourceUID.INVALID_ID or not ResourceUID.has_id(uid):
+			return false
+		path = ResourceUID.get_id_path(uid)
+	return path == LOGOT_AUTOLOAD_PATH

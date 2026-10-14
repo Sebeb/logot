@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import subprocess
 import uuid
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = "98d26210ecb4be64efda8ef7a2e204316fb15f19"
@@ -32,7 +33,7 @@ def main():
     driver = (ROOT / "tests/private_plugin_lifecycle/editor_cases.gd").read_bytes()
     if driver.count(b"\t_check(") != 30:
         raise SystemExit("Unexpected editor fixture assertion count")
-    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "fixtures": {}}
+    manifest = {"base_commit": BASE, "status": "PREPARED_UNRUN", "driver_contract": {"main_checks": 24, "preexisting_checks": 6, "required_user_argument": "--lifecycle-deadline-unix-ms=<fixed admitted absolute Unix milliseconds>", "requires_ready_marker": True, "requires_witness_per_check": True}, "fixtures": {}}
     destination.mkdir(parents=True)
     for revision in ("base", "candidate"):
         for scenario in ("cold", "cases", "preexisting"):
