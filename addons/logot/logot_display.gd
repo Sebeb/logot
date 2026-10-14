@@ -743,6 +743,8 @@ class AutocompleteCommandColumn:
 		if _embedded_widget_placement != WidgetPlacement.CONTENT:
 			return false
 		var slot := _get_scroll_slot()
+		if direction < 0 and _selected_index > 0 and slot >= _get_content_widget_slots():
+			return false
 		var limit := mini(_get_content_widget_slots(), _get_max_scroll_slot())
 		if (direction > 0 and slot < limit) or (direction < 0 and slot > 0):
 			_scroll_rows(direction)
@@ -931,6 +933,9 @@ class AutocompleteCommandColumn:
 	func _ensure_selection_visible() -> void:
 		if _embedded_widget_placement == WidgetPlacement.CONTENT:
 			_set_scroll_slot(_content_scroll_slot)
+			if not _is_preview and _selected_index >= 0 and _content_scroll_slot >= _get_content_widget_slots():
+				var selected_scroll := _find_best_scroll_row_for_selection(_selected_index, _get_max_scroll_row())
+				_set_scroll_slot(_get_content_widget_slots() + selected_scroll)
 			return
 		# Re-anchoring the rows always measures from the top of the content, so an inline widget
 		# that had been scrolled away comes back with them.

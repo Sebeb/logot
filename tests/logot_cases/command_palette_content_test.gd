@@ -29,6 +29,14 @@ func run(ctx) -> void:
 	ctx.check("down resumes selection at bottom", not column.scroll_content_before_selection(1))
 	ctx.check("up scrolls toward top", column.scroll_content_before_selection(-1))
 	ctx.check("body clips below heading", column._content_clip.position.y == column._header_height)
+	var rows: Array[Dictionary] = []
+	for index in range(30): rows.append({"label": "option-%d" % index})
+	column.set_column_data(rows, {}, 0, false, 28)
+	column._set_scroll_slot(column._get_content_widget_slots())
+	column.set_column_data(rows, {}, 25, false, 28)
+	var visible: Vector2i = column.get_visible_row_range()
+	ctx.check("selected trailing option remains visible", 25 >= visible.x and 25 < visible.y)
+	ctx.check("up navigates later options before returning to body", not column.scroll_content_before_selection(-1))
 	var previous_size: Vector2i = display.get_window().size
 	var previous_scale: float = display.get_render_scale_percent("command_palette", "keyboard")
 	var previous_method: String = display.get_current_input_method()
