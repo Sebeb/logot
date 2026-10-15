@@ -1792,7 +1792,7 @@ class AutocompleteCommandColumn:
 		# draw_arc(center, radius - 0.5, 0.0, TAU, 20, _resolve_action_circle_border_color(selection_state), 1.0, true)
 
 		if draw_filled_arrow:
-			_draw_action_symbol(center, "▶︎", icon_color)
+			_draw_action_symbol(center, ">", icon_color)
 		elif draw_return_symbol:
 			_draw_action_symbol(center, "⏎", icon_color)
 

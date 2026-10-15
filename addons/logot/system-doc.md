@@ -138,3 +138,7 @@ A content widget can implement `get_logot_palette_preferred_width()` to request 
 Column theme configuration copies the resolved font and scaled font size from the palette source onto the custom-drawn column itself. Measuring names, headers and value pills therefore uses the same font metrics as drawing and wrapping. Row height is at least the font height plus scaled vertical padding, with the touch multiplier applied afterward, so custom themes and larger scale settings cannot make text overlap adjacent rows.
 
 Godot wheel input is handled on pressed wheel events, with release events ignored. Manual wheel and scrollbar movement remains authoritative across value refreshes, header relayouts and resize fitting; changing the selection or displayed row identity restores automatic selection visibility. The content regression verifies both directions, refresh preservation, text metrics and ordinary active-column expansion. The resize regression compares the persisted height with the actual pixel-rounded drag result, including half-pixel minimum heights.
+
+### Portable command navigation marker
+
+Command palette rows with child commands draw an ASCII `>` navigation marker. The marker uses the existing action-symbol sizing, placement and theme color. It avoids dependence on the Unicode triangle and text-presentation selector, which could render as missing-glyph boxes in Web exports without system-font fallback. Submit and drag markers retain their existing behavior.
