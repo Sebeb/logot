@@ -142,3 +142,8 @@ Godot wheel input is handled on pressed wheel events, with release events ignore
 ### Portable command navigation marker
 
 Command palette rows with child commands draw an ASCII `>` navigation marker. The marker uses the existing action-symbol sizing, placement and theme color. It avoids dependence on the Unicode triangle and text-presentation selector, which could render as missing-glyph boxes in Web exports without system-font fallback. Submit and drag markers retain their existing behavior.
+
+
+### Ordinary command row tooltips
+
+`AutocompleteCommandColumn._get_tooltip(at_position)` returns the full authored label of the actual virtual row under the pointer. It reuses input hit testing, including scroll and bottom alignment, and excludes column bounds, scrollbar space, nonrow space and group headings. Selection does not select tooltip content. No feature-specific tooltip controls or eager row materialization are introduced. `command_palette_column_scroll_test.gd` exercises the native getter across scrolling, replacement, clipping and empty data. The exact native suite passed 21 of 21 code checks on the candidate. The same new regression against its pinned predecessor collected the expected tooltip failure after eight passing checks. Both used Godot 4.7.2 and collected no visual checks. The first minimal fixture failed resource UID preflight; the qualified pair retained the original import metadata and passed strict diagnostic and cleanup checks. A rendered native hover popup has not been verified.

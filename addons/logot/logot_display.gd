@@ -1243,6 +1243,18 @@ class AutocompleteCommandColumn:
 		_header_height = HEADER_TOP_PADDING + content_height + HEADER_BOTTOM_PADDING + HEADER_CONTENT_GAP
 		_update_embedded_widget_layout()
 
+	## Native full-row tooltip follows the actual hovered row, never the selection.
+	func _get_tooltip(at_position: Vector2) -> String:
+		if not Rect2(Vector2.ZERO, Vector2(_get_column_content_width(), size.y)).has_point(at_position):
+			return ""
+		var row_index := _get_row_index_at_position(at_position)
+		if row_index < 0 or row_index >= _rows.size():
+			return ""
+		var row: Dictionary = _rows[row_index]
+		if bool(row.get("is_group_header", false)):
+			return ""
+		return str(row.get("label", ""))
+
 	func _get_row_index_at_position(position: Vector2) -> int:
 		if _rows.is_empty():
 			return -1
