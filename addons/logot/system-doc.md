@@ -147,3 +147,22 @@ Command palette rows with child commands draw an ASCII `>` navigation marker. Th
 ### Ordinary command row tooltips
 
 `AutocompleteCommandColumn._get_tooltip(at_position)` returns the full authored label of the actual virtual row under the pointer. It reuses input hit testing, including scroll and bottom alignment, and excludes column bounds, scrollbar space, nonrow space and group headings. Selection does not select tooltip content. No feature-specific tooltip controls or eager row materialization are introduced. `command_palette_column_scroll_test.gd` exercises the native getter across scrolling, replacement, clipping and empty data. The exact native suite passed 21 of 21 code checks on the candidate. The same new regression against its pinned predecessor collected the expected tooltip failure after eight passing checks. Both used Godot 4.7.2 and collected no visual checks. The first minimal fixture failed resource UID preflight; the qualified pair retained the original import metadata and passed strict diagnostic and cleanup checks. A rendered native hover popup has not been verified.
+
+### Registered widget labels and narrow keyboard columns
+
+Ordinary command-palette rows honor a registered widget display label before
+falling back to a command label or route suffix. Explicit full-path search and
+tier overrides keep their original precedence; submission paths do not change.
+Keyboard child previews use only spare horizontal space: scrolling to a preview
+also keeps the active column inside the scroll viewport. An oversized active
+column starts at its leading edge rather than hiding its line beginnings.
+Touch's single-column layout is unchanged.
+
+The stock `command_palette_widget_labels` case exercises actual registered row
+data and a packed prose widget at390x844 in keyboard mode. Baseline222853 has
+two expected failures: internal row ID and active prose beginning atx=-159 after
+child selection. The correction passes10checks. Column scroll/content/resize and
+widget ordering preservation pass; touch layout assertions pass but that stock
+case's exit-resource warnings also reproduce on baseline222853, so it is not a
+clean native-lifetime qualification. Host-specific change-review rendering and
+browser390 acceptance remain separate from this shared test.

@@ -7709,6 +7709,9 @@ func _get_autocomplete_tier_label(prefix: String, match_data: Dictionary) -> Str
 	if not tier_label_override.is_empty():
 		return tier_label_override
 	var tier: String = match_data.get("tier", "")
+	var widget_label := _get_widget_display_label(tier)
+	if not widget_label.is_empty():
+		return widget_label
 	var display_label := _get_command_display_label(tier)
 	if not display_label.is_empty():
 		return display_label
@@ -9594,6 +9597,8 @@ func _scroll_command_autocomplete_columns_to_end() -> void:
 		content_width += separation * (_autocomplete_column_states.size() - 1)
 	var target_scroll := maxi(0, content_width - viewport_width)
 	_command_autocomplete_scroll.scroll_horizontal = target_scroll
+	# A child preview may use spare space, but cannot push the active column offscreen.
+	_ensure_active_command_column_visible()
 
 
 func _ensure_active_command_column_visible() -> void:
@@ -9612,11 +9617,13 @@ func _ensure_active_command_column_visible() -> void:
 
 	var active_width := int(_autocomplete_column_states[_autocomplete_active_column_index].get("width", 0))
 	var active_end := active_start + active_width
-	var viewport_width := int(_command_autocomplete_popup.size.x)
+	var viewport_width := int(_command_autocomplete_scroll.size.x)
 	var current_scroll := _command_autocomplete_scroll.scroll_horizontal
 	var target_scroll := current_scroll
 
-	if active_start < current_scroll:
+	if active_width >= viewport_width:
+		target_scroll = active_start
+	elif active_start < current_scroll:
 		target_scroll = active_start
 	elif active_end > current_scroll + viewport_width:
 		target_scroll = active_end - viewport_width
