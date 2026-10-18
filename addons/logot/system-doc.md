@@ -181,9 +181,9 @@ popup rectangles, not a screenshot or physical-device readability claim.
 
 ### Ordinary-console active content width
 
-An ordinary console's toolbar reduces its command input and palette width.
-The active column ceiling uses the actual scroll viewport after that toolbar,
-not just the whole window. The soft ceiling applies only to widgets explicitly declaring
+Sibling actions can reduce the command input and palette width in both ordinary
+console and dedicated command-entry routes. The active column ceiling uses the
+actual scroll viewport after those actions, not just the whole window. The soft ceiling applies only to widgets explicitly declaring
 `is_logot_palette_content()`. Fixed-minimum controls retain their column extent
 and horizontal overflow. Responsive widgets still own their child minimums:
 the shared system cannot make a fixed-width host control shrink.
@@ -191,8 +191,8 @@ the shared system cannot make a fixed-width host control shrink.
 The existing deferred viewport-fit pass remeasures only the active column's
 already-built visible rows after popup sizing, then restores active-column
 visibility after container layout. It keeps the same widget and exact input
-through narrow/wide resize. Dedicated command-entry and touch sizing retain
-their separate paths. The stock content-width case checks actual body/label
+through narrow/wide resize. Both keyboard routes use this settled content width;
+touch retains its separate safe-area path. The stock content-width case checks actual body/label
 rectangles in ordinary390/320/390 and dedicated390, not only the column bounds.
 
 The fixed-width stock regression mounts the real performance overview at320,
@@ -200,3 +200,11 @@ checks its actual minimum and column extent, and proves its right edge is
 reachable using the native horizontal scroll range. It does not assume that
 a pinned widget has the responsive content clip. Parent2dcb passes this gate,
 the unconditional-cap c49 fails it, and the responsive-only correction passes.
+
+The dedicated-width stock regression selects a real child preview at390 with a
+sibling action in the actual input HBox. Headless normally omits the production
+Tests button, so the test installs an equivalent sibling through that same
+container, then removes it. It checks the actual active column, embedded body
+and child text against the scroll/popup rectangles. Exact parent2eea overflows
+366px into327px; the corrected route fits its actual327px allocation. This
+objective native geometry gate does not substitute for host browser readback.

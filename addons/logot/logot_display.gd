@@ -9242,9 +9242,9 @@ func _measure_autocomplete_text_width_with_font_size(control: Control, text: Str
 func _get_command_autocomplete_max_column_width(is_active_column: bool = false) -> int:
 	if is_active_column:
 		var available := int(get_viewport_rect().size.x) - 24
-		# Ordinary console toolbars narrow the input and its palette independently
-		# of the viewport. Dedicated command entry and touch retain their sizing.
-		if not _command_entry_mode and not _is_touch_command_palette_layout() and _command_autocomplete_scroll != null and _command_autocomplete_scroll.size.x > 0.0:
+		# Sibling actions can narrow either keyboard input route independently of
+		# the viewport. Touch retains its separate safe-area sizing.
+		if not _is_touch_command_palette_layout() and _command_autocomplete_scroll != null and _command_autocomplete_scroll.size.x > 0.0:
 			available = mini(available, int(floor(_command_autocomplete_scroll.size.x)))
 		return maxi(1, mini(int(ceil(960.0 * _get_render_scale_multiplier(RENDER_SCALE_TARGET_COMMAND_PALETTE))), available))
 	var max_width := 0
@@ -10021,7 +10021,7 @@ func _resolve_autocomplete_column_width(list: AutocompleteCommandColumn, column_
 		var width_limit := _get_command_autocomplete_max_column_width(column_index == _autocomplete_active_column_index)
 		var preferred := int(ceil(float(embedded.call("get_logot_palette_preferred_width")) * scale_multiplier))
 		layout["width"] = mini(width_limit, maxi(int(layout.get("width", 0)), preferred + reserved_width))
-	if embedded != null and embedded.has_method("is_logot_palette_content") and bool(embedded.call("is_logot_palette_content")) and column_index == _autocomplete_active_column_index and not _command_entry_mode and not _is_touch_command_palette_layout():
+	if embedded != null and embedded.has_method("is_logot_palette_content") and bool(embedded.call("is_logot_palette_content")) and column_index == _autocomplete_active_column_index and not _is_touch_command_palette_layout():
 		layout["width"] = mini(int(layout.get("width", 0)), _get_command_autocomplete_max_column_width(true))
 	column_state["left_width"] = int(layout.get("name_width", 0))
 	column_state["value_width"] = int(layout.get("value_width", 0))
@@ -10402,9 +10402,9 @@ func _fit_command_autocomplete_columns_to_viewport() -> void:
 	if not _is_command_popup_visible() or _is_touch_command_palette_layout():
 		return
 	# The scroll viewport settles after popup positioning. Reuse the bounded
-	# visible-row layout pass so an ordinary toolbar resize cannot leave the
-	# active body's earlier, wider measurement behind.
-	if not _command_entry_mode and _autocomplete_active_column_index >= 0 and _autocomplete_active_column_index < _autocomplete_column_nodes.size():
+	# visible-row layout pass so sibling actions in either keyboard route cannot
+	# leave the active body's earlier, wider measurement behind.
+	if _autocomplete_active_column_index >= 0 and _autocomplete_active_column_index < _autocomplete_column_nodes.size():
 		var active := _autocomplete_column_nodes[_autocomplete_active_column_index] as AutocompleteCommandColumn
 		if active != null:
 			var state: Dictionary = _autocomplete_column_states[_autocomplete_active_column_index]
