@@ -178,3 +178,18 @@ The stock tooltip bounds case drives native mouse motion and observes the real
 PopupPanel, including full text and line count, at 390/320/844 widths. It also checks
 unbroken text wrapping and short-label natural width. These are actual native
 popup rectangles, not a screenshot or physical-device readability claim.
+
+### Ordinary-console active content width
+
+An ordinary console's toolbar reduces its command input and palette width.
+The active column ceiling uses the actual scroll viewport after that toolbar,
+not just the whole window. Embedded minimum/preferred width requests respect
+this ceiling in the ordinary route. Responsive widgets still own their child
+minimums: the shared system cannot make a fixed-width host control shrink.
+
+The existing deferred viewport-fit pass remeasures only the active column's
+already-built visible rows after popup sizing, then restores active-column
+visibility after container layout. It keeps the same widget and exact input
+through narrow/wide resize. Dedicated command-entry and touch sizing retain
+their separate paths. The stock content-width case checks actual body/label
+rectangles in ordinary390/320/390 and dedicated390, not only the column bounds.
