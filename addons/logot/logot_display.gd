@@ -10021,7 +10021,7 @@ func _resolve_autocomplete_column_width(list: AutocompleteCommandColumn, column_
 		var width_limit := _get_command_autocomplete_max_column_width(column_index == _autocomplete_active_column_index)
 		var preferred := int(ceil(float(embedded.call("get_logot_palette_preferred_width")) * scale_multiplier))
 		layout["width"] = mini(width_limit, maxi(int(layout.get("width", 0)), preferred + reserved_width))
-	if not widget_path.is_empty() and column_index == _autocomplete_active_column_index and not _command_entry_mode and not _is_touch_command_palette_layout():
+	if embedded != null and embedded.has_method("is_logot_palette_content") and bool(embedded.call("is_logot_palette_content")) and column_index == _autocomplete_active_column_index and not _command_entry_mode and not _is_touch_command_palette_layout():
 		layout["width"] = mini(int(layout.get("width", 0)), _get_command_autocomplete_max_column_width(true))
 	column_state["left_width"] = int(layout.get("name_width", 0))
 	column_state["value_width"] = int(layout.get("value_width", 0))
