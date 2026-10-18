@@ -166,3 +166,15 @@ widget ordering preservation pass; touch layout assertions pass but that stock
 case's exit-resource warnings also reproduce on baseline222853, so it is not a
 clean native-lifetime qualification. Host-specific change-review rendering and
 browser390 acceptance remain separate from this shared test.
+
+### Viewport-bounded row tooltip
+
+Ordinary command rows keep the full hovered label. The native tooltip API now
+instantiates a wrapped Label scene whose maximum content width subtracts the
+actual TooltipPanel style margins from the current viewport width. Short labels
+retain their natural width. Godot still owns popup placement and lifetime;
+there is no second hover timer, selected-row tooltip, truncation or host override.
+The stock tooltip bounds case drives native mouse motion and observes the real
+PopupPanel, including full text and line count, at 390/320/844 widths. It also checks
+unbroken text wrapping and short-label natural width. These are actual native
+popup rectangles, not a screenshot or physical-device readability claim.

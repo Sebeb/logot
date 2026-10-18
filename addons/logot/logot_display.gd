@@ -1255,6 +1255,22 @@ class AutocompleteCommandColumn:
 			return ""
 		return str(row.get("label", ""))
 
+	## Godot owns popup placement; constrain its content so that placement can
+	## keep the complete tooltip inside this column's actual viewport.
+	func _make_custom_tooltip(for_text: String) -> Object:
+		var label := preload("res://addons/logot/row_tooltip.tscn").instantiate() as Label
+		label.theme = theme
+		label.text = for_text
+		var font := get_theme_font("font", "TooltipLabel")
+		var font_size := get_theme_font_size("font_size", "TooltipLabel")
+		label.add_theme_font_override("font", font)
+		label.add_theme_font_size_override("font_size", font_size)
+		var panel := get_theme_stylebox("panel", "TooltipPanel")
+		var available := maxf(1.0, get_viewport_rect().size.x - panel.get_minimum_size().x)
+		var natural := font.get_multiline_string_size(for_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		label.custom_minimum_size.x = minf(natural, available)
+		return label
+
 	func _get_row_index_at_position(position: Vector2) -> int:
 		if _rows.is_empty():
 			return -1
